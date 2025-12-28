@@ -39,7 +39,7 @@
 		"validate-npm-package-name": "7.0.1"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.2.3",
+		"@biomejs/biome": "2.3.10",
 		"@commitlint/cli": "^19.8.1",
 		"@commitlint/config-conventional": "^19.8.1",
 		"@stryker-mutator/core": "^9.4.0",

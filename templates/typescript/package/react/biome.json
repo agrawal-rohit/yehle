@@ -1,8 +1,8 @@
 {
+  "root": false,
 	"$schema": "https://biomejs.dev/schemas/2.3.10/schema.json",
 	"files": {
 		"includes": [
-			"bin/**",
 			"!**/.stryker-tmp/*",
 			"src/**/*.{js,ts,jsx,tsx,json,cjs,mjs,yaml,css}"
 		]
@@ -13,6 +13,11 @@
 	"linter": {
 		"enabled": true,
 		"rules": { "recommended": true }
+	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		}
 	},
 	"assist": {
 		"enabled": true,
