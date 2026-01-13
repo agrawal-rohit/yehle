@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://cdn.rohit.build/oss/yehle/logo.png" alt="Yehle" style="width: 30%; margin: auto" />
+  <img src="https://cdn.rohit-agrawal.com/oss/yehle/logo.png" alt="Yehle" style="width: 30%; margin: auto" />
 </div>
 
 <br />
@@ -21,7 +21,7 @@
 <br />
 
 <div align="center">
-    <img src="https://cdn.rohit.build/oss/yehle/preview.gif" alt="Yehle Preview" style="margin: auto" />
+    <img src="https://cdn.rohit-agrawal.com/oss/yehle/preview.gif" alt="Yehle Preview" style="margin: auto" />
 </div>
 
 <br />
