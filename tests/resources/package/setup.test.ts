@@ -8,6 +8,8 @@ vi.mock("node:fs", () => ({
 		promises: {
 			readdir: vi.fn(),
 			readFile: vi.fn(),
+			access: vi.fn(),
+			writeFile: vi.fn(),
 		},
 	},
 }));
@@ -209,6 +211,62 @@ describe("resources/package/setup", () => {
 			await applyTemplateModifications(targetDir, generateConfig, packageManagerVersion);
 
 			expect(removeFilesByBasename).not.toHaveBeenCalled();
+		});
+
+		it("should remove the 'root' property from biome.json if it exists", async () => {
+			const targetDir = "/path/to/package";
+			const generateConfig = {
+				lang: Language.TYPESCRIPT,
+				name: "test-package",
+				template: "basic",
+				public: true,
+			};
+			const packageManagerVersion = "pnpm@9.0.0";
+			const biomeJsonPath = "/path/to/package/biome.json";
+			const originalConfig = {
+				root: false,
+				$schema: "https://biomejs.dev/schemas/2.3.10/schema.json",
+				formatter: { enabled: true },
+			};
+			const expectedConfig = {
+				$schema: "https://biomejs.dev/schemas/2.3.10/schema.json",
+				formatter: { enabled: true },
+			};
+
+			vi.mocked(resolveTemplatesDir).mockResolvedValue("/template/dir");
+			vi.mocked(isDirAsync).mockResolvedValue(false);
+			vi.mocked(renderMustacheTemplates).mockResolvedValue();
+			vi.mocked(fs.promises.access).mockResolvedValue();
+			vi.mocked(fs.promises.readFile).mockResolvedValue(JSON.stringify(originalConfig, null, "\t"));
+			vi.mocked(fs.promises.writeFile).mockResolvedValue();
+
+			await applyTemplateModifications(targetDir, generateConfig, packageManagerVersion);
+
+			expect(fs.promises.access).toHaveBeenCalledWith(biomeJsonPath);
+			expect(fs.promises.readFile).toHaveBeenCalledWith(biomeJsonPath, "utf8");
+			expect(fs.promises.writeFile).toHaveBeenCalledWith(biomeJsonPath, JSON.stringify(expectedConfig, null, "\t") + "\n");
+		});
+
+		it("should do nothing if biome.json does not exist", async () => {
+			const targetDir = "/path/to/package";
+			const generateConfig = {
+				lang: Language.TYPESCRIPT,
+				name: "test-package",
+				template: "basic",
+				public: true,
+			};
+			const packageManagerVersion = "pnpm@9.0.0";
+
+			vi.mocked(resolveTemplatesDir).mockResolvedValue("/template/dir");
+			vi.mocked(isDirAsync).mockResolvedValue(false);
+			vi.mocked(renderMustacheTemplates).mockResolvedValue();
+			vi.mocked(fs.promises.access).mockRejectedValue(new Error("ENOENT"));
+
+			await applyTemplateModifications(targetDir, generateConfig, packageManagerVersion);
+
+			expect(fs.promises.access).toHaveBeenCalledWith("/path/to/package/biome.json");
+			expect(fs.promises.readFile).not.toHaveBeenCalled();
+			expect(fs.promises.writeFile).not.toHaveBeenCalled();
 		});
 	});
 

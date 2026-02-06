@@ -64,6 +64,21 @@ export async function applyTemplateModifications(
 		];
 		await removeFilesByBasename(targetDir, publicFiles);
 	}
+
+	// Remove "root" property from biome.json if it exists
+	const biomeJsonPath = path.join(targetDir, "biome.json");
+	try {
+		await fs.promises.access(biomeJsonPath);
+		const content = await fs.promises.readFile(biomeJsonPath, "utf8");
+		const config = JSON.parse(content);
+		delete config.root;
+		await fs.promises.writeFile(
+			biomeJsonPath,
+			JSON.stringify(config, null, "\t") + "\n",
+		);
+	} catch {
+		// biome.json does not exist or error; ignore
+	}
 }
 
 export async function getRequiredGithubSecrets(
