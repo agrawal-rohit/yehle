@@ -3,14 +3,14 @@ import os from "node:os";
 import path from "node:path";
 
 import {
-	isDirAsync,
-	ensureDirAsync,
-	writeFileAsync,
-	copyFileSafeAsync,
 	copyDirSafeAsync,
-	removeMatchingFilesRecursively,
+	copyFileSafeAsync,
+	ensureDirAsync,
+	isDirAsync,
 	removeFilesByBasename,
+	removeMatchingFilesRecursively,
 	renderMustacheTemplates,
+	writeFileAsync,
 } from "../../src/core/fs";
 
 function makeTempDir(prefix = "fs-test-"): string {
@@ -216,8 +216,9 @@ describe("core/fs", () => {
 			writeFileSync(path.join(keepDir, "file.txt"), "keep");
 			writeFileSync(nestedFile, "remove");
 
-			await removeMatchingFilesRecursively(root, (basename) =>
-				basename === "remove-me",
+			await removeMatchingFilesRecursively(
+				root,
+				(basename) => basename === "remove-me",
 			);
 
 			expect(fs.existsSync(keepDir)).toBe(true);
@@ -314,10 +315,10 @@ describe("core/fs", () => {
 			const root = makeTempDir();
 			const templatePath = path.join(root, "workflow.mustache.yml");
 			const content =
-      "name: CI\n" +
-      "env:\n" +
-      '  APP_NAME: "{{appName}}"\n' +
-      "  SECRET_VAL: ${{ secrets.MY_SECRET }}\n";
+				"name: CI\n" +
+				"env:\n" +
+				'  APP_NAME: "{{appName}}"\n' +
+				"  SECRET_VAL: ${{ secrets.MY_SECRET }}\n";
 
 			writeFileSync(templatePath, content);
 
@@ -326,7 +327,7 @@ describe("core/fs", () => {
 			const renderedPath = path.join(root, "workflow.yml");
 			const rendered = fs.readFileSync(renderedPath, "utf8");
 
-			expect(rendered).toContain("APP_NAME: \"my-app\"");
+			expect(rendered).toContain('APP_NAME: "my-app"');
 			expect(rendered).toContain("${{ secrets.MY_SECRET }}");
 		});
 

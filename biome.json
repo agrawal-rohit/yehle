@@ -3,8 +3,8 @@
 	"files": {
 		"includes": [
 			"bin/**",
-			"!**/.stryker-tmp/*",
-			"src/**/*.{js,ts,jsx,tsx,json,cjs,mjs,yaml,css}"
+			"src/**/*.{js,ts,jsx,tsx,json,cjs,mjs,yaml,css}",
+			"!templates"
 		]
 	},
 	"formatter": {

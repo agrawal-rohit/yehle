@@ -2,9 +2,9 @@
 
 /* Theme configuration */
 @theme {
-  --font-sans: "Geist Sans", system-ui, sans-serif;
+	--font-sans: "Geist Sans", system-ui, sans-serif;
 }
 
 :root {
-    @apply bg-white text-zinc-600 tracking-tight antialiased dark:bg-zinc-900 dark:text-zinc-300 font-normal leading-relaxed;
+	@apply bg-white text-zinc-600 tracking-tight antialiased dark:bg-zinc-900 dark:text-zinc-300 font-normal leading-relaxed;
 }

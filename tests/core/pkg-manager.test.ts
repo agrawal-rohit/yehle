@@ -1,14 +1,14 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	ensurePackageManager,
+	getInstallScript,
 	LANGUAGE_PACKAGE_MANAGER,
 	LANGUAGE_PACKAGE_REGISTRY,
 	type PackageManager,
 	validatePackageName,
-	ensurePackageManager,
-	getInstallScript,
 } from "../../src/core/pkg-manager";
-import { Language } from "../../src/resources/package/config";
 import * as shell from "../../src/core/shell";
+import { Language } from "../../src/resources/package/config";
 
 describe("core/pkg-manager", () => {
 	describe("LANGUAGE_PACKAGE_MANAGER", () => {
@@ -81,10 +81,7 @@ describe("core/pkg-manager", () => {
 		let runAsyncSpy: any;
 
 		beforeEach(() => {
-			commandExistsSpy = vi.spyOn(
-				shell as any,
-				"commandExistsAsync",
-			) as any;
+			commandExistsSpy = vi.spyOn(shell as any, "commandExistsAsync") as any;
 			runAsyncSpy = vi.spyOn(shell as any, "runAsync") as any;
 		});
 
@@ -131,9 +128,9 @@ describe("core/pkg-manager", () => {
 		});
 
 		it("throws for unsupported package manager", () => {
-			expect(() =>
-				getInstallScript("npm" as PackageManager),
-			).toThrowError("Unsupported package manager: npm");
+			expect(() => getInstallScript("npm" as PackageManager)).toThrowError(
+				"Unsupported package manager: npm",
+			);
 		});
 	});
 });

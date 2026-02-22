@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock node modules and internal modules
 vi.mock("../../../src/cli/prompts", () => ({
@@ -46,6 +46,12 @@ vi.mock("../../../src/core/utils", () => ({
 	toSlug: vi.fn(),
 }));
 
+import prompts from "../../../src/cli/prompts";
+import tasks from "../../../src/cli/tasks";
+import { getGitEmail, getGitUsername } from "../../../src/core/git";
+import { validatePackageName } from "../../../src/core/pkg-manager";
+import { listAvailableTemplates } from "../../../src/core/template-registry";
+import { capitalizeFirstLetter, toSlug } from "../../../src/core/utils";
 // Import after mocks
 import {
 	getGeneratePackageConfiguration,
@@ -53,17 +59,11 @@ import {
 	getPackageName,
 	getPackageTemplate,
 	getPackageVisibility,
-	promptAuthorName,
+	Language,
 	promptAuthorGitEmail,
 	promptAuthorGitUsername,
-	Language,
+	promptAuthorName,
 } from "../../../src/resources/package/config";
-import prompts from "../../../src/cli/prompts";
-import tasks from "../../../src/cli/tasks";
-import { getGitEmail, getGitUsername } from "../../../src/core/git";
-import { validatePackageName } from "../../../src/core/pkg-manager";
-import { listAvailableTemplates } from "../../../src/core/template-registry";
-import { capitalizeFirstLetter, toSlug } from "../../../src/core/utils";
 
 describe("resources/package/config", () => {
 	beforeEach(() => {
@@ -103,7 +103,10 @@ describe("resources/package/config", () => {
 			vi.mocked(prompts.selectInput).mockResolvedValueOnce(Language.TYPESCRIPT);
 			vi.mocked(validatePackageName).mockImplementation(() => {});
 			vi.mocked(prompts.textInput).mockResolvedValueOnce("my-package");
-			vi.mocked(listAvailableTemplates).mockResolvedValue(["basic", "advanced"]);
+			vi.mocked(listAvailableTemplates).mockResolvedValue([
+				"basic",
+				"advanced",
+			]);
 			vi.mocked(prompts.selectInput).mockResolvedValueOnce("basic");
 			vi.mocked(prompts.confirmInput).mockResolvedValueOnce(true);
 			vi.mocked(getGitUsername).mockResolvedValue("John");
@@ -158,7 +161,10 @@ describe("resources/package/config", () => {
 			});
 
 			expect(result).toBe("my-package");
-			expect(validatePackageName).toHaveBeenCalledWith("my-package", Language.TYPESCRIPT);
+			expect(validatePackageName).toHaveBeenCalledWith(
+				"my-package",
+				Language.TYPESCRIPT,
+			);
 		});
 
 		it("should prompt for name if not provided in cliFlags", async () => {
@@ -188,7 +194,10 @@ describe("resources/package/config", () => {
 
 	describe("getPackageTemplate", () => {
 		it("should return template from cliFlags if valid", async () => {
-			vi.mocked(listAvailableTemplates).mockResolvedValue(["basic", "advanced"]);
+			vi.mocked(listAvailableTemplates).mockResolvedValue([
+				"basic",
+				"advanced",
+			]);
 
 			const result = await getPackageTemplate(Language.TYPESCRIPT, {
 				template: "basic",
@@ -206,7 +215,10 @@ describe("resources/package/config", () => {
 		});
 
 		it("should prompt for template if not provided and multiple available", async () => {
-			vi.mocked(listAvailableTemplates).mockResolvedValue(["basic", "advanced"]);
+			vi.mocked(listAvailableTemplates).mockResolvedValue([
+				"basic",
+				"advanced",
+			]);
 			vi.mocked(prompts.selectInput).mockResolvedValue("advanced");
 
 			const result = await getPackageTemplate(Language.TYPESCRIPT, {});
@@ -236,7 +248,10 @@ describe("resources/package/config", () => {
 
 			const result = await getPackageTemplate(Language.TYPESCRIPT, {});
 
-			expect(listAvailableTemplates).toHaveBeenCalledWith(Language.TYPESCRIPT, "package");
+			expect(listAvailableTemplates).toHaveBeenCalledWith(
+				Language.TYPESCRIPT,
+				"package",
+			);
 			expect(tasks.runWithTasks).not.toHaveBeenCalled();
 			expect(result).toBe("basic");
 		});
@@ -250,7 +265,10 @@ describe("resources/package/config", () => {
 		});
 
 		it("should throw an error for an invalid template", async () => {
-			vi.mocked(listAvailableTemplates).mockResolvedValue(["basic", "advanced"]);
+			vi.mocked(listAvailableTemplates).mockResolvedValue([
+				"basic",
+				"advanced",
+			]);
 
 			await expect(
 				getPackageTemplate(Language.TYPESCRIPT, { template: "invalid" }),

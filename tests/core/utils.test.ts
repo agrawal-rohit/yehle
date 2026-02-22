@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	capitalizeFirstLetter,
-	toSlug,
 	sleep,
+	toSlug,
 	truncate,
 } from "../../src/core/utils";
 
@@ -63,12 +63,8 @@ describe("core/utils", () => {
 		});
 
 		it("handles repository-like URLs", () => {
-			expect(toSlug("https://github.com/user/my-package")).toBe(
-				"my-package",
-			);
-			expect(toSlug("git@github.com:user/my-package.git")).toBe(
-				"my-package",
-			);
+			expect(toSlug("https://github.com/user/my-package")).toBe("my-package");
+			expect(toSlug("git@github.com:user/my-package.git")).toBe("my-package");
 		});
 
 		it("handles Windows-style paths", () => {

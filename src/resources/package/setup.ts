@@ -74,7 +74,7 @@ export async function applyTemplateModifications(
 		delete config.root;
 		await fs.promises.writeFile(
 			biomeJsonPath,
-			JSON.stringify(config, null, "\t") + "\n",
+			`${JSON.stringify(config, null, "\t")}\n`,
 		);
 	} catch {
 		// biome.json does not exist or error; ignore

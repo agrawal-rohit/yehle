@@ -1,6 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isDirAsync } from "../../../src/core/fs";
-
 
 // Mock node modules and internal modules
 vi.mock("node:fs", () => ({
@@ -16,7 +15,8 @@ vi.mock("node:fs", () => ({
 
 vi.mock("spdx-license-list/licenses/MIT.json", () => ({
 	default: {
-		licenseText: "MIT License\n\nCopyright (c) <year> <copyright holders>\n\nPermission is hereby granted...",
+		licenseText:
+			"MIT License\n\nCopyright (c) <year> <copyright holders>\n\nPermission is hereby granted...",
 	},
 }));
 
@@ -75,14 +75,6 @@ vi.mock("../../../src/cli/tasks", () => ({
 	},
 }));
 
-// Import after mocks
-import {
-	createPackageDirectory,
-	applyTemplateModifications,
-	getRequiredGithubSecrets,
-	writePackageTemplateFiles,
-} from "../../../src/resources/package/setup";
-import { Language } from "../../../src/resources/package/config";
 import fs from "node:fs";
 import {
 	copyDirSafeAsync,
@@ -92,6 +84,14 @@ import {
 	writeFileAsync,
 } from "../../../src/core/fs";
 import { resolveTemplatesDir } from "../../../src/core/template-registry";
+import { Language } from "../../../src/resources/package/config";
+// Import after mocks
+import {
+	applyTemplateModifications,
+	createPackageDirectory,
+	getRequiredGithubSecrets,
+	writePackageTemplateFiles,
+} from "../../../src/resources/package/setup";
 
 describe("resources/package/setup", () => {
 	beforeEach(() => {
@@ -138,9 +138,16 @@ describe("resources/package/setup", () => {
 			vi.mocked(isDirAsync).mockResolvedValue(true);
 			vi.mocked(renderMustacheTemplates).mockResolvedValue();
 
-			await applyTemplateModifications(targetDir, generateConfig, packageManagerVersion);
+			await applyTemplateModifications(
+				targetDir,
+				generateConfig,
+				packageManagerVersion,
+			);
 
-			expect(renderMustacheTemplates).toHaveBeenCalledWith(targetDir, expectedMetadata);
+			expect(renderMustacheTemplates).toHaveBeenCalledWith(
+				targetDir,
+				expectedMetadata,
+			);
 		});
 
 		it("should remove public files if package is not public", async () => {
@@ -158,7 +165,11 @@ describe("resources/package/setup", () => {
 			vi.mocked(renderMustacheTemplates).mockResolvedValue();
 			vi.mocked(removeFilesByBasename).mockResolvedValue();
 
-			await applyTemplateModifications(targetDir, generateConfig, packageManagerVersion);
+			await applyTemplateModifications(
+				targetDir,
+				generateConfig,
+				packageManagerVersion,
+			);
 
 			expect(removeFilesByBasename).toHaveBeenCalledWith(targetDir, [
 				"CODE_OF_CONDUCT.md",
@@ -184,7 +195,11 @@ describe("resources/package/setup", () => {
 			vi.mocked(renderMustacheTemplates).mockResolvedValue();
 			vi.mocked(removeFilesByBasename).mockResolvedValue();
 
-			await applyTemplateModifications(targetDir, generateConfig, packageManagerVersion);
+			await applyTemplateModifications(
+				targetDir,
+				generateConfig,
+				packageManagerVersion,
+			);
 
 			expect(removeFilesByBasename).toHaveBeenCalledWith(targetDir, [
 				"CODE_OF_CONDUCT.md",
@@ -208,7 +223,11 @@ describe("resources/package/setup", () => {
 			vi.mocked(isDirAsync).mockResolvedValue(true);
 			vi.mocked(renderMustacheTemplates).mockResolvedValue();
 
-			await applyTemplateModifications(targetDir, generateConfig, packageManagerVersion);
+			await applyTemplateModifications(
+				targetDir,
+				generateConfig,
+				packageManagerVersion,
+			);
 
 			expect(removeFilesByBasename).not.toHaveBeenCalled();
 		});
@@ -237,14 +256,23 @@ describe("resources/package/setup", () => {
 			vi.mocked(isDirAsync).mockResolvedValue(false);
 			vi.mocked(renderMustacheTemplates).mockResolvedValue();
 			vi.mocked(fs.promises.access).mockResolvedValue();
-			vi.mocked(fs.promises.readFile).mockResolvedValue(JSON.stringify(originalConfig, null, "\t"));
+			vi.mocked(fs.promises.readFile).mockResolvedValue(
+				JSON.stringify(originalConfig, null, "\t"),
+			);
 			vi.mocked(fs.promises.writeFile).mockResolvedValue();
 
-			await applyTemplateModifications(targetDir, generateConfig, packageManagerVersion);
+			await applyTemplateModifications(
+				targetDir,
+				generateConfig,
+				packageManagerVersion,
+			);
 
 			expect(fs.promises.access).toHaveBeenCalledWith(biomeJsonPath);
 			expect(fs.promises.readFile).toHaveBeenCalledWith(biomeJsonPath, "utf8");
-			expect(fs.promises.writeFile).toHaveBeenCalledWith(biomeJsonPath, JSON.stringify(expectedConfig, null, "\t") + "\n");
+			expect(fs.promises.writeFile).toHaveBeenCalledWith(
+				biomeJsonPath,
+				JSON.stringify(expectedConfig, null, "\t") + "\n",
+			);
 		});
 
 		it("should do nothing if biome.json does not exist", async () => {
@@ -262,9 +290,15 @@ describe("resources/package/setup", () => {
 			vi.mocked(renderMustacheTemplates).mockResolvedValue();
 			vi.mocked(fs.promises.access).mockRejectedValue(new Error("ENOENT"));
 
-			await applyTemplateModifications(targetDir, generateConfig, packageManagerVersion);
+			await applyTemplateModifications(
+				targetDir,
+				generateConfig,
+				packageManagerVersion,
+			);
 
-			expect(fs.promises.access).toHaveBeenCalledWith("/path/to/package/biome.json");
+			expect(fs.promises.access).toHaveBeenCalledWith(
+				"/path/to/package/biome.json",
+			);
 			expect(fs.promises.readFile).not.toHaveBeenCalled();
 			expect(fs.promises.writeFile).not.toHaveBeenCalled();
 		});
@@ -295,7 +329,9 @@ describe("resources/package/setup", () => {
 
 			const result = await getRequiredGithubSecrets(targetDir);
 
-			expect(fs.promises.readdir).toHaveBeenCalledWith(workflowsDir, { withFileTypes: true });
+			expect(fs.promises.readdir).toHaveBeenCalledWith(workflowsDir, {
+				withFileTypes: true,
+			});
 			expect(fs.promises.readFile).toHaveBeenCalledTimes(2);
 			expect(result).toEqual(["CODECOV_TOKEN", "NPM_TOKEN"]);
 		});
@@ -334,9 +370,18 @@ describe("resources/package/setup", () => {
 			await writePackageTemplateFiles(targetDir, generateConfig);
 
 			expect(resolveTemplatesDir).toHaveBeenCalledWith("shared");
-			expect(resolveTemplatesDir).toHaveBeenCalledWith(Language.TYPESCRIPT, "shared");
-			expect(resolveTemplatesDir).toHaveBeenCalledWith(Language.TYPESCRIPT, "package/shared");
-			expect(resolveTemplatesDir).toHaveBeenCalledWith(Language.TYPESCRIPT, "package/basic");
+			expect(resolveTemplatesDir).toHaveBeenCalledWith(
+				Language.TYPESCRIPT,
+				"shared",
+			);
+			expect(resolveTemplatesDir).toHaveBeenCalledWith(
+				Language.TYPESCRIPT,
+				"package/shared",
+			);
+			expect(resolveTemplatesDir).toHaveBeenCalledWith(
+				Language.TYPESCRIPT,
+				"package/basic",
+			);
 			expect(copyDirSafeAsync).toHaveBeenCalledTimes(4);
 		});
 
