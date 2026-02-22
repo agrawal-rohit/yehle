@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock node modules and internal modules
 vi.mock("../../src/cli/logger", () => ({
@@ -11,9 +11,9 @@ vi.mock("../../src/resources/package/command", () => ({
 	default: vi.fn(),
 }));
 
+import logger from "../../src/cli/logger";
 // Import after mocks
 import { registerResourcesCli } from "../../src/resources/index";
-import logger from "../../src/cli/logger";
 import generatePackage from "../../src/resources/package/command";
 
 describe("resources/index", () => {
@@ -44,19 +44,39 @@ describe("resources/index", () => {
 			registerResourcesCli(mockApp);
 
 			expect(mockApp.usage).toHaveBeenCalledWith("<resource> [options]");
-			expect(mockApp.command).toHaveBeenCalledWith("package", "Generate a package");
+			expect(mockApp.command).toHaveBeenCalledWith(
+				"package",
+				"Generate a package",
+			);
 
-			expect(mockCommand.option).toHaveBeenCalledWith("--name <name>", "Package name");
-			expect(mockCommand.option).toHaveBeenCalledWith("--lang <lang>", "Target language (e.g., typescript)");
-			expect(mockCommand.option).toHaveBeenCalledWith("--public", "Public package (will setup for publishing to a package registry)");
-			expect(mockCommand.option).toHaveBeenCalledWith("--template <template>", "Starter template for the package");
+			expect(mockCommand.option).toHaveBeenCalledWith(
+				"--name <name>",
+				"Package name",
+			);
+			expect(mockCommand.option).toHaveBeenCalledWith(
+				"--lang <lang>",
+				"Target language (e.g., typescript)",
+			);
+			expect(mockCommand.option).toHaveBeenCalledWith(
+				"--public",
+				"Public package (will setup for publishing to a package registry)",
+			);
+			expect(mockCommand.option).toHaveBeenCalledWith(
+				"--template <template>",
+				"Starter template for the package",
+			);
 		});
 
 		it("should call generatePackage for resource 'package' with correct options", async () => {
 			vi.mocked(generatePackage).mockResolvedValue();
 
 			registerResourcesCli(mockApp);
-			await capturedAction({ name: "test", lang: "typescript", public: true, template: "basic" });
+			await capturedAction({
+				name: "test",
+				lang: "typescript",
+				public: true,
+				template: "basic",
+			});
 
 			expect(generatePackage).toHaveBeenCalledWith({
 				lang: "typescript",
@@ -81,7 +101,9 @@ describe("resources/index", () => {
 		});
 
 		it("should log usage for unknown resource", async () => {
-			const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+			const consoleLogSpy = vi
+				.spyOn(console, "log")
+				.mockImplementation(() => {});
 
 			registerResourcesCli(mockApp);
 			await capturedAction("unknown", {});

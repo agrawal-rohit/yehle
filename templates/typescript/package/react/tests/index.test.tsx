@@ -1,17 +1,17 @@
-import { render, screen } from '@testing-library/react'
-import { expect, test } from 'vitest'
-import { Button } from '../src'
+import { render, screen } from "@testing-library/react";
+import { expect, test } from "vitest";
+import { Button } from "../src";
 
-test('button', () => {
-  render(<Button type="primary" />)
+test("button", () => {
+	render(<Button type="primary" />);
 
-  const buttonElement = screen.getByText(/button: type primary/i)
+	const buttonElement = screen.getByText(/button: type primary/i);
 
-  expect(buttonElement).toBeInTheDocument()
-  expect(buttonElement).toHaveTextContent('button: type primary')
-  expect(buttonElement.outerHTML).toMatchInlineSnapshot(
-    `"<button class="button">button: type primary</button>"`,
-  )
+	expect(buttonElement).toBeInTheDocument();
+	expect(buttonElement).toHaveTextContent("button: type primary");
+	expect(buttonElement.outerHTML).toMatchInlineSnapshot(
+		`"<button class="button">button: type primary</button>"`,
+	);
 
-  expect(buttonElement).toHaveClass('button')
-})
+	expect(buttonElement).toHaveClass("button");
+});
