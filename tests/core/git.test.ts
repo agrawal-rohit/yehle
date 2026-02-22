@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	getGitUsername,
 	getGitEmail,
-	isGitRepo,
+	getGitUsername,
 	initGitRepo,
+	isGitRepo,
 	makeInitialCommit,
 } from "../../src/core/git";
 import * as shell from "../../src/core/shell";
@@ -29,10 +29,9 @@ describe("core/git", () => {
 
 			const result = await getGitUsername();
 
-			expect(runAsyncSpy).toHaveBeenCalledWith(
-				"git config --get user.name",
-				{ stdio: "pipe" },
-			);
+			expect(runAsyncSpy).toHaveBeenCalledWith("git config --get user.name", {
+				stdio: "pipe",
+			});
 			expect(result).toBe("Jane Doe");
 		});
 
@@ -59,10 +58,9 @@ describe("core/git", () => {
 
 			const result = await getGitEmail();
 
-			expect(runAsyncSpy).toHaveBeenCalledWith(
-				"git config --get user.email",
-				{ stdio: "pipe" },
-			);
+			expect(runAsyncSpy).toHaveBeenCalledWith("git config --get user.email", {
+				stdio: "pipe",
+			});
 			expect(result).toBe("user@example.com");
 		});
 
@@ -178,11 +176,10 @@ describe("core/git", () => {
 
 			// When not a repo, initGitRepo should run before add/commit, which results
 			// in an extra initial runAsync call prior to the git add/commit calls.
-			expect(runAsyncSpy).toHaveBeenNthCalledWith(
-				1,
-				"git init -b main",
-				{ cwd, stdio: "ignore" },
-			);
+			expect(runAsyncSpy).toHaveBeenNthCalledWith(1, "git init -b main", {
+				cwd,
+				stdio: "ignore",
+			});
 			expect(runAsyncSpy).toHaveBeenNthCalledWith(2, "git add -A", {
 				cwd,
 				stdio: "ignore",

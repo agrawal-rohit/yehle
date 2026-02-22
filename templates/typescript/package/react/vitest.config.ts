@@ -14,7 +14,7 @@ export default defineConfig({
 				"**/lint-staged.config.js",
 				"**/tsdown.config.ts",
 				"**/stryker.config.mjs",
-				"**/playground/**"
+				"**/playground/**",
 			],
 		},
 	},

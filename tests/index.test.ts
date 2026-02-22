@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock node modules and internal modules
 const mockApp = {
@@ -15,9 +15,9 @@ vi.mock("../src/resources", () => ({
 	registerResourcesCli: vi.fn(),
 }));
 
+import cac from "cac";
 // Import after mocks
 import run from "../src/index";
-import cac from "cac";
 import { registerResourcesCli } from "../src/resources";
 
 describe("index", () => {

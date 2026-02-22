@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 // Helper to load the module fresh with current env
 const importConstants = async () => {
@@ -29,7 +29,7 @@ describe("core/constants", () => {
 		expect(IS_LOCAL_MODE).toBe(true);
 	});
 
-	it('treats YEHLE_LOCAL_TEMPLATES value as truthy in current test environment', async () => {
+	it("treats YEHLE_LOCAL_TEMPLATES value as truthy in current test environment", async () => {
 		process.env.YEHLE_LOCAL_TEMPLATES = "false";
 
 		const { IS_LOCAL_MODE } = await importConstants();
