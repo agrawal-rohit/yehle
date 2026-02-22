@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock node modules
 vi.mock("node:fs", () => ({
@@ -72,18 +72,24 @@ vi.mock("../../../src/resources/package/setup", () => ({
 	writePackageTemplateFiles: vi.fn(),
 }));
 
-// Import after mocks
-import { generatePackage } from "../../../src/resources/package/command";
-import { type GeneratePackageConfiguration, Language } from "../../../src/resources/package/config";
 import fs from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
 import logger from "../../../src/cli/logger";
 import tasks from "../../../src/cli/tasks";
 import { initGitRepo, makeInitialCommit } from "../../../src/core/git";
-import { ensurePackageManager, getInstallScript } from "../../../src/core/pkg-manager";
+import {
+	ensurePackageManager,
+	getInstallScript,
+} from "../../../src/core/pkg-manager";
 import { toSlug } from "../../../src/core/utils";
-import { getGeneratePackageConfiguration } from "../../../src/resources/package/config";
+// Import after mocks
+import { generatePackage } from "../../../src/resources/package/command";
+import {
+	type GeneratePackageConfiguration,
+	getGeneratePackageConfiguration,
+	Language,
+} from "../../../src/resources/package/config";
 import {
 	applyTemplateModifications,
 	createPackageDirectory,
@@ -104,7 +110,7 @@ describe("resources/package/command", () => {
 	describe("generatePackage", () => {
 		it("should call logger.intro to start the process", async () => {
 			// Arrange
-		  const mockConfig: GeneratePackageConfiguration = {
+			const mockConfig: GeneratePackageConfiguration = {
 				lang: "typescript" as any,
 				name: "test-package",
 				template: "basic",
@@ -116,7 +122,9 @@ describe("resources/package/command", () => {
 			vi.mocked(path.resolve).mockReturnValue("/path/to/test-package");
 			vi.mocked(fs.existsSync).mockReturnValue(false);
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue("/path/to/test-package");
+			vi.mocked(createPackageDirectory).mockResolvedValue(
+				"/path/to/test-package",
+			);
 			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
@@ -128,12 +136,15 @@ describe("resources/package/command", () => {
 			await generatePackage({});
 
 			// Assert
-	    expect(logger.intro).toHaveBeenCalledWith("generating package...");
+			expect(logger.intro).toHaveBeenCalledWith("generating package...");
 		});
 
 		it("should retrieve package configuration", async () => {
 			// Arrange
-			const options: Partial<GeneratePackageConfiguration> = { lang: Language.TYPESCRIPT, name: "my-package" };
+			const options: Partial<GeneratePackageConfiguration> = {
+				lang: Language.TYPESCRIPT,
+				name: "my-package",
+			};
 			const mockConfig: GeneratePackageConfiguration = {
 				lang: Language.TYPESCRIPT,
 				name: "my-package",
@@ -145,7 +156,9 @@ describe("resources/package/command", () => {
 			vi.mocked(path.resolve).mockReturnValue("/path/to/my-package");
 			vi.mocked(fs.existsSync).mockReturnValue(false);
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue("/path/to/my-package");
+			vi.mocked(createPackageDirectory).mockResolvedValue(
+				"/path/to/my-package",
+			);
 			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
@@ -196,7 +209,9 @@ describe("resources/package/command", () => {
 				throw new Error("Permission denied");
 			});
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue("/path/to/test-package");
+			vi.mocked(createPackageDirectory).mockResolvedValue(
+				"/path/to/test-package",
+			);
 			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
@@ -221,7 +236,9 @@ describe("resources/package/command", () => {
 			vi.mocked(path.resolve).mockReturnValue("/path/to/test-package");
 			vi.mocked(fs.existsSync).mockReturnValue(false);
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue("/path/to/test-package");
+			vi.mocked(createPackageDirectory).mockResolvedValue(
+				"/path/to/test-package",
+			);
 			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
@@ -233,7 +250,7 @@ describe("resources/package/command", () => {
 			await generatePackage({});
 
 			// Assert
-	    expect(tasks.runWithTasks).toHaveBeenCalledWith(
+			expect(tasks.runWithTasks).toHaveBeenCalledWith(
 				"Preflight checks",
 				expect.any(Function),
 			);
@@ -253,7 +270,9 @@ describe("resources/package/command", () => {
 			vi.mocked(path.resolve).mockReturnValue("/path/to/test-package");
 			vi.mocked(fs.existsSync).mockReturnValue(false);
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue("/path/to/test-package");
+			vi.mocked(createPackageDirectory).mockResolvedValue(
+				"/path/to/test-package",
+			);
 			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
@@ -265,7 +284,7 @@ describe("resources/package/command", () => {
 			await generatePackage({});
 
 			// Assert
-	    expect(tasks.runWithTasks).toHaveBeenCalledWith(
+			expect(tasks.runWithTasks).toHaveBeenCalledWith(
 				"Preparing package",
 				undefined,
 				expect.arrayContaining([
@@ -304,7 +323,9 @@ describe("resources/package/command", () => {
 			vi.mocked(path.resolve).mockReturnValue("/path/to/test-package");
 			vi.mocked(fs.existsSync).mockReturnValue(false);
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue("/path/to/test-package");
+			vi.mocked(createPackageDirectory).mockResolvedValue(
+				"/path/to/test-package",
+			);
 			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
@@ -316,7 +337,7 @@ describe("resources/package/command", () => {
 			await generatePackage({});
 
 			// Assert
-	    expect(tasks.runWithTasks).toHaveBeenCalledWith(
+			expect(tasks.runWithTasks).toHaveBeenCalledWith(
 				"Finishing up",
 				undefined,
 				expect.arrayContaining([
@@ -327,7 +348,9 @@ describe("resources/package/command", () => {
 			);
 			expect(initGitRepo).toHaveBeenCalledWith("/path/to/test-package");
 			expect(makeInitialCommit).toHaveBeenCalledWith("/path/to/test-package");
-			expect(getRequiredGithubSecrets).toHaveBeenCalledWith("/path/to/test-package");
+			expect(getRequiredGithubSecrets).toHaveBeenCalledWith(
+				"/path/to/test-package",
+			);
 		});
 
 		it("should print next steps including cd, git push, secrets, and install command", async () => {
@@ -344,7 +367,9 @@ describe("resources/package/command", () => {
 			vi.mocked(path.resolve).mockReturnValue("/path/to/test-package");
 			vi.mocked(fs.existsSync).mockReturnValue(false);
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue("/path/to/test-package");
+			vi.mocked(createPackageDirectory).mockResolvedValue(
+				"/path/to/test-package",
+			);
 			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
@@ -356,17 +381,17 @@ describe("resources/package/command", () => {
 			await generatePackage({});
 
 			// Assert
-	    expect(vi.mocked(console.log)).toHaveBeenCalledWith(
+			expect(vi.mocked(console.log)).toHaveBeenCalledWith(
 				chalk.bold("Package generated successfully! Next steps:"),
 			);
-	    expect(vi.mocked(console.log)).toHaveBeenCalledWith();
-	    expect(vi.mocked(console.log)).toHaveBeenCalledWith(
+			expect(vi.mocked(console.log)).toHaveBeenCalledWith();
+			expect(vi.mocked(console.log)).toHaveBeenCalledWith(
 				expect.stringContaining("cd test-package"),
 			);
-	    expect(vi.mocked(console.log)).toHaveBeenCalledWith(
+			expect(vi.mocked(console.log)).toHaveBeenCalledWith(
 				expect.stringContaining("git push -u origin main"),
 			);
-	    expect(vi.mocked(console.log)).toHaveBeenCalledWith(
+			expect(vi.mocked(console.log)).toHaveBeenCalledWith(
 				expect.stringContaining("npm install"),
 			);
 			expect(vi.mocked(console.log)).toHaveBeenCalledWith(
@@ -391,7 +416,9 @@ describe("resources/package/command", () => {
 			vi.mocked(path.resolve).mockReturnValue("/path/to/test-package");
 			vi.mocked(fs.existsSync).mockReturnValue(false);
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue("/path/to/test-package");
+			vi.mocked(createPackageDirectory).mockResolvedValue(
+				"/path/to/test-package",
+			);
 			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
@@ -406,8 +433,12 @@ describe("resources/package/command", () => {
 			expect(vi.mocked(console.log)).toHaveBeenCalledWith(
 				expect.stringContaining("Configure the following repository secrets"),
 			);
-		    expect(vi.mocked(console.log)).toHaveBeenCalledWith(`    - ${chalk.magentaBright("SECRET_KEY")}`);
-		    expect(vi.mocked(console.log)).toHaveBeenCalledWith(`    - ${chalk.magentaBright("API_TOKEN")}`);
+			expect(vi.mocked(console.log)).toHaveBeenCalledWith(
+				`    - ${chalk.magentaBright("SECRET_KEY")}`,
+			);
+			expect(vi.mocked(console.log)).toHaveBeenCalledWith(
+				`    - ${chalk.magentaBright("API_TOKEN")}`,
+			);
 		});
 	});
 });
