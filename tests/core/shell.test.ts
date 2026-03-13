@@ -278,7 +278,7 @@ describe("core/shell", () => {
 		});
 
 		describe("commandExistsAsync", () => {
-			it("returns true when command exists on non-Windows (uses 'command -v')", async () => {
+			it("returns true when command exists on non-Windows (uses 'which')", async () => {
 				// Simulate a successful check on non-Windows by mocking spawn
 				const fakeChild = {
 					stdout: { on: vi.fn() },
@@ -319,8 +319,8 @@ describe("core/shell", () => {
 
 				expect(result).toBe(true);
 				expect(spawnMock).toHaveBeenCalledWith(
-					"command",
-					["-v", "node"],
+					"which",
+					["node"],
 					expect.objectContaining({
 						stdio: ["ignore", "pipe", "pipe"],
 					}),
@@ -405,8 +405,8 @@ describe("core/shell", () => {
 
 				expect(result).toBe(false);
 				expect(spawnMock).toHaveBeenCalledWith(
-					"command",
-					["-v", "nonexistent-cmd"],
+					"which",
+					["nonexistent-cmd"],
 					expect.objectContaining({
 						stdio: ["ignore", "pipe", "pipe"],
 					}),

@@ -103,7 +103,7 @@ export async function commandExistsAsync(command: string): Promise<boolean> {
 		if (process.platform === "win32") {
 			await runAsync(`where ${command}`, { stdio: "ignore" });
 		} else {
-			await runAsync(`command -v ${command}`, { stdio: "ignore" });
+			await runAsync(`which ${command}`, { stdio: "ignore" });
 		}
 		return true;
 	} catch {
