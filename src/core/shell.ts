@@ -103,7 +103,9 @@ export async function commandExistsAsync(command: string): Promise<boolean> {
 		if (process.platform === "win32") {
 			await runAsync(`where ${command}`, { stdio: "ignore" });
 		} else {
-			await runAsync(`command -v ${command}`, { stdio: "ignore" });
+			// `which` is a real executable, unlike `command` which is a shell
+			// built-in that spawn() cannot invoke without a shell.
+			await runAsync(`which ${command}`, { stdio: "ignore" });
 		}
 		return true;
 	} catch {
