@@ -281,3 +281,43 @@ export async function listAvailableTemplates(
 	const apiNames = await listRemoteChildDirsViaAPI(language, resource);
 	return apiNames;
 }
+
+/** Virtual "language" for agent rules; templates live at templates/agent-rules/. */
+const AGENT_RULES_LANG = "agent-rules";
+
+/** Filename for the rule content within each agent rule template directory. */
+const AGENT_RULE_FILE = "rule.md";
+
+/**
+ * Resolve the on-disk directory that contains agent rule templates.
+ * Uses templates/agent-rules/ (local or remote).
+ * @returns The absolute path to the agent rules templates directory.
+ */
+export async function resolveAgentRulesTemplatesDir(): Promise<string> {
+	return resolveTemplatesDir(AGENT_RULES_LANG);
+}
+
+/**
+ * List available agent rule template names (subdirectories of templates/agent-rules/).
+ * @returns An array of available agent rule template names.
+ */
+export async function listAvailableAgentRules(): Promise<string[]> {
+	if (IS_LOCAL_MODE) {
+		const agentRulesDir = await getLocalTemplatesSubdir(AGENT_RULES_LANG);
+		if (!agentRulesDir) return [];
+		return listChildDirs(agentRulesDir);
+	}
+	return listRemoteChildDirsViaAPI(AGENT_RULES_LANG);
+}
+
+/**
+ * Read the rule content for a given agent rule template.
+ * @param ruleName - The agent rule template name (e.g. "react-vite").
+ * @returns The raw markdown content of the rule.
+ */
+export async function getAgentRuleContent(ruleName: string): Promise<string> {
+	const agentRulesDir = await resolveAgentRulesTemplatesDir();
+	const rulePath = path.join(agentRulesDir, ruleName, AGENT_RULE_FILE);
+	const content = await fs.promises.readFile(rulePath, "utf8");
+	return content;
+}

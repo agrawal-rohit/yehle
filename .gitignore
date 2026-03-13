@@ -17,3 +17,9 @@ coverage/
 # Stryker mutation testing files
 .stryker-tmp
 reports/
+
+# Generated agent rules (from local testing)
+.cursor/
+.windsurf/
+.clinerules/
+.claude/

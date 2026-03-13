@@ -1,11 +1,33 @@
 import type { CAC } from "cac";
 import logger from "../cli/logger";
+import generateAgentRule from "./agent-rule/command";
+import type { GenerateAgentRuleConfiguration } from "./agent-rule/config";
 import generatePackage from "./package/command";
 import type { GeneratePackageConfiguration } from "./package/config";
 
 export async function registerResourcesCli(app: CAC) {
 	// Top-level description
 	app.usage("<resource> [options]");
+
+	// Register the `agent-rule` command
+	app
+		.command("agent-rule", "Summon an agent rule template for your IDE")
+		.option("--rule <rule>", "Agent rule template name")
+		.option(
+			"--ide-format <format>",
+			"Target IDE format (cursor, windsurf, cline, claude, copilot, gemini)",
+		)
+		.action(async (options: Partial<GenerateAgentRuleConfiguration>) => {
+			try {
+				await generateAgentRule({
+					rule: options.rule,
+					ideFormat: options.ideFormat,
+				});
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				logger.error(msg);
+			}
+		});
 
 	// Register the `package` command
 	app

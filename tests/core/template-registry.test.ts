@@ -997,4 +997,122 @@ describe("core/template-registry", () => {
 			});
 		});
 	});
+
+	describe("agent rules", () => {
+		describe("resolveAgentRulesTemplatesDir", () => {
+			it("returns agent-rules directory path in local mode", async () => {
+				setLocalModeEnv(true);
+				const { resolveAgentRulesTemplatesDir } =
+					await importTemplateRegistry();
+				const projectRoot = makeTempDir("yehle-agent-rules-");
+				const agentRulesDir = path.join(
+					projectRoot,
+					"templates",
+					"agent-rules",
+				);
+				fs.mkdirSync(agentRulesDir, { recursive: true });
+
+				const originalCwd = process.cwd();
+				process.chdir(projectRoot);
+
+				try {
+					const dir = await resolveAgentRulesTemplatesDir();
+					expect(fs.realpathSync(dir)).toBe(
+						fs.realpathSync(agentRulesDir),
+					);
+				} finally {
+					process.chdir(originalCwd);
+				}
+			});
+		});
+
+		describe("listAvailableAgentRules", () => {
+			it("returns rule names from local templates/agent-rules", async () => {
+				setLocalModeEnv(true);
+				const { listAvailableAgentRules } =
+					await importTemplateRegistry();
+				const projectRoot = makeTempDir("yehle-agent-rules-");
+				const agentRulesDir = path.join(
+					projectRoot,
+					"templates",
+					"agent-rules",
+				);
+				fs.mkdirSync(path.join(agentRulesDir, "react-vite"), {
+					recursive: true,
+				});
+				fs.mkdirSync(path.join(agentRulesDir, "typescript-library"), {
+					recursive: true,
+				});
+
+				const originalCwd = process.cwd();
+				process.chdir(projectRoot);
+
+				try {
+					const rules = await listAvailableAgentRules();
+					expect(rules).toContain("react-vite");
+					expect(rules).toContain("typescript-library");
+					expect(rules).toHaveLength(2);
+				} finally {
+					process.chdir(originalCwd);
+				}
+			});
+
+			it("excludes shared directory from rule list", async () => {
+				setLocalModeEnv(true);
+				const { listAvailableAgentRules } =
+					await importTemplateRegistry();
+				const projectRoot = makeTempDir("yehle-agent-rules-");
+				const agentRulesDir = path.join(
+					projectRoot,
+					"templates",
+					"agent-rules",
+				);
+				fs.mkdirSync(path.join(agentRulesDir, "shared"), {
+					recursive: true,
+				});
+				fs.mkdirSync(path.join(agentRulesDir, "react-vite"), {
+					recursive: true,
+				});
+
+				const originalCwd = process.cwd();
+				process.chdir(projectRoot);
+
+				try {
+					const rules = await listAvailableAgentRules();
+					expect(rules).not.toContain("shared");
+					expect(rules).toContain("react-vite");
+				} finally {
+					process.chdir(originalCwd);
+				}
+			});
+		});
+
+		describe("getAgentRuleContent", () => {
+			it("reads rule content from rule.md", async () => {
+				setLocalModeEnv(true);
+				const { getAgentRuleContent } = await importTemplateRegistry();
+				const projectRoot = makeTempDir("yehle-agent-rules-");
+				const ruleDir = path.join(
+					projectRoot,
+					"templates",
+					"agent-rules",
+					"react-vite",
+				);
+				fs.mkdirSync(ruleDir, { recursive: true });
+				const rulePath = path.join(ruleDir, "rule.md");
+				const content = "# My Rule\n\nContent here.";
+				fs.writeFileSync(rulePath, content, "utf8");
+
+				const originalCwd = process.cwd();
+				process.chdir(projectRoot);
+
+				try {
+					const result = await getAgentRuleContent("react-vite");
+					expect(result).toBe(content);
+				} finally {
+					process.chdir(originalCwd);
+				}
+			});
+		});
+	});
 });
