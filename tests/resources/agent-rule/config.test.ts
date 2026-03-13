@@ -17,13 +17,22 @@ vi.mock("../../../src/cli/tasks", () => ({
 	},
 }));
 
+vi.mock("../../../src/cli/prompts", () => ({
+	default: {
+		selectInput: vi.fn(),
+	},
+}));
+
 import {
+	fetchAgentRuleContent,
 	getGenerateAgentRuleConfiguration,
 	getAgentRuleSelection,
 	getIdeFormatSelection,
 } from "../../../src/resources/agent-rule/config";
 import { IdeFormat } from "../../../src/resources/agent-rule/config";
+import prompts from "../../../src/cli/prompts";
 import {
+	getAgentRuleContent,
 	listAvailableAgentRules,
 } from "../../../src/core/template-registry";
 
@@ -59,6 +68,36 @@ describe("agent-rule/config", () => {
 				"No agent rule templates found",
 			);
 		});
+
+		it("should auto-select when only one template is available", async () => {
+			vi.mocked(listAvailableAgentRules).mockResolvedValue([
+				"react-vite",
+			]);
+			const result = await getAgentRuleSelection({});
+			expect(result).toBe("react-vite");
+			expect(prompts.selectInput).not.toHaveBeenCalled();
+		});
+
+		it("should prompt when no rule in flags and multiple templates", async () => {
+			vi.mocked(prompts.selectInput).mockResolvedValue("typescript-library");
+			const result = await getAgentRuleSelection({});
+			expect(result).toBe("typescript-library");
+			expect(prompts.selectInput).toHaveBeenCalledWith(
+				"Which agent rule would you like to use?",
+				{ options: expect.any(Array) },
+				"react-vite",
+			);
+		});
+
+	});
+
+	describe("fetchAgentRuleContent", () => {
+		it("should delegate to getAgentRuleContent", async () => {
+			vi.mocked(getAgentRuleContent).mockResolvedValue("# Rule markdown");
+			const result = await fetchAgentRuleContent("react-vite");
+			expect(result).toBe("# Rule markdown");
+			expect(getAgentRuleContent).toHaveBeenCalledWith("react-vite");
+		});
 	});
 
 	describe("getIdeFormatSelection", () => {
@@ -75,6 +114,17 @@ describe("agent-rule/config", () => {
 					ideFormat: "invalid" as IdeFormat,
 				}),
 			).rejects.toThrow("Unsupported IDE format");
+		});
+
+		it("should prompt when no ideFormat in flags", async () => {
+			vi.mocked(prompts.selectInput).mockResolvedValue(IdeFormat.WINDSURF);
+			const result = await getIdeFormatSelection({});
+			expect(result).toBe(IdeFormat.WINDSURF);
+			expect(prompts.selectInput).toHaveBeenCalledWith(
+				"Which IDE format should the rule be formatted for?",
+				{ options: expect.any(Array) },
+				IdeFormat.CURSOR,
+			);
 		});
 	});
 
