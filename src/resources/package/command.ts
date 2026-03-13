@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
 import logger, { primaryText } from "../../cli/logger";
-import tasks from "../../cli/tasks";
+import tasks, { conditionalTask } from "../../cli/tasks";
 import { initGitRepo, makeInitialCommit } from "../../core/git";
 import {
 	ensurePackageManager,
@@ -16,6 +16,7 @@ import {
 	getGeneratePackageConfiguration,
 } from "./config";
 import {
+	addPackageInstructions,
 	applyTemplateModifications,
 	createPackageDirectory,
 	getRequiredGithubSecrets,
@@ -92,6 +93,12 @@ export async function generatePackage(
 				);
 			},
 		},
+		...conditionalTask(Boolean(generateConfig.includeInstructions), {
+			title: "Add agent instructions",
+			task: async () => {
+				await addPackageInstructions(targetDir, generateConfig);
+			},
+		}),
 	]);
 
 	let githubSecrets: string[] = [];

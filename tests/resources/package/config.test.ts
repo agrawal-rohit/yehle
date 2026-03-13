@@ -41,6 +41,13 @@ vi.mock("../../../src/core/template-registry", () => ({
 	listAvailableTemplates: vi.fn(),
 }));
 
+vi.mock("../../../src/resources/instructions/config", () => ({
+	getPackageInstructionsConfiguration: vi.fn().mockResolvedValue({
+		includeInstructions: false,
+		ideFormat: undefined,
+	}),
+}));
+
 vi.mock("../../../src/core/utils", () => ({
 	capitalizeFirstLetter: vi.fn(),
 	toSlug: vi.fn(),
@@ -93,6 +100,8 @@ describe("resources/package/config", () => {
 				name: "my-package",
 				template: "basic",
 				public: false,
+				includeInstructions: false,
+				instructionsIdeFormat: undefined,
 				authorName: undefined,
 				authorGitEmail: undefined,
 				authorGitUsername: undefined,
@@ -100,6 +109,14 @@ describe("resources/package/config", () => {
 		});
 
 		it("should prompt for author info when package is public", async () => {
+			const { getPackageInstructionsConfiguration } = await import(
+				"../../../src/resources/instructions/config"
+			);
+			vi.mocked(getPackageInstructionsConfiguration).mockResolvedValueOnce({
+				includeInstructions: false,
+				ideFormat: undefined,
+			});
+
 			vi.mocked(prompts.selectInput).mockResolvedValueOnce(Language.TYPESCRIPT);
 			vi.mocked(validatePackageName).mockImplementation(() => {});
 			vi.mocked(prompts.textInput).mockResolvedValueOnce("my-package");
@@ -168,7 +185,7 @@ describe("resources/package/config", () => {
 		});
 
 		it("should prompt for name if not provided in cliFlags", async () => {
-			vi.mocked(prompts.textInput).mockResolvedValue("prompted-package");
+			vi.mocked(prompts.textInput).mockResolvedValueOnce("prompted-package");
 			vi.mocked(validatePackageName).mockImplementation(() => {});
 
 			const result = await getPackageName(Language.TYPESCRIPT, {});
@@ -285,6 +302,8 @@ describe("resources/package/config", () => {
 		});
 
 		it("should prompt for visibility if not provided in cliFlags", async () => {
+			vi.mocked(prompts.confirmInput).mockResolvedValueOnce(true);
+
 			const result = await getPackageVisibility(Language.TYPESCRIPT, {});
 
 			expect(prompts.confirmInput).toHaveBeenCalledWith(
@@ -299,7 +318,7 @@ describe("resources/package/config", () => {
 	describe("promptAuthorName", () => {
 		it("should prompt for author's full name with git username as default", async () => {
 			vi.mocked(getGitUsername).mockResolvedValue("John");
-			vi.mocked(prompts.textInput).mockResolvedValue("John Doe");
+			vi.mocked(prompts.textInput).mockResolvedValueOnce("John Doe");
 
 			const result = await promptAuthorName();
 
@@ -316,7 +335,7 @@ describe("resources/package/config", () => {
 	describe("promptAuthorGitEmail", () => {
 		it("should prompt for author's git email with inferred email as default", async () => {
 			vi.mocked(getGitEmail).mockResolvedValue("john@example.com");
-			vi.mocked(prompts.textInput).mockResolvedValue("john@example.com");
+			vi.mocked(prompts.textInput).mockResolvedValueOnce("john@example.com");
 
 			const result = await promptAuthorGitEmail();
 

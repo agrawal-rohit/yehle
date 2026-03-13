@@ -81,6 +81,41 @@ export async function applyTemplateModifications(
 	}
 }
 
+/**
+ * Add agent instructions to the package when includeInstructions is true.
+ * Writes the language-specific instruction (e.g. typescript) for the package language.
+ */
+export async function addPackageInstructions(
+	targetDir: string,
+	generateConfig: GeneratePackageConfiguration,
+): Promise<void> {
+	if (
+		!generateConfig.includeInstructions ||
+		!generateConfig.instructionsIdeFormat
+	)
+		return;
+
+	const { getLanguageInstructionForPackageLang, fetchInstructionContent } =
+		await import("../instructions/config");
+	const { writeInstructionToFile } = await import(
+		"../instructions/ide-formats"
+	);
+
+	const instructionName = await getLanguageInstructionForPackageLang(
+		generateConfig.lang,
+	);
+	if (!instructionName) return;
+
+	const content = await fetchInstructionContent("languages", instructionName);
+	await writeInstructionToFile(
+		targetDir,
+		instructionName,
+		content,
+		generateConfig.instructionsIdeFormat as import("../instructions/config").IdeFormat,
+		"languages",
+	);
+}
+
 export async function getRequiredGithubSecrets(
 	targetDir: string,
 ): Promise<string[]> {

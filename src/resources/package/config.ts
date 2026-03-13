@@ -35,6 +35,10 @@ export type GeneratePackageConfiguration = {
 	template: string;
 	/** Indicates whether the package should be published to a public registry. */
 	public: boolean;
+	/** Whether to include agent instructions for the package language. */
+	includeInstructions?: boolean;
+	/** IDE format for agent instructions (when includeInstructions is true). */
+	instructionsIdeFormat?: import("../instructions/config").IdeFormat;
 	/** Optional full name of the author (Only required for public packages). */
 	authorName?: string;
 	/** Optional Git username (Only required for public packages). */
@@ -55,6 +59,9 @@ export async function getGeneratePackageConfiguration(
 	const template = await getPackageTemplate(lang, cliFlags);
 	const isPublic = await getPackageVisibility(lang, cliFlags);
 
+	const { includeInstructions, instructionsIdeFormat } =
+		await getPackageInstructionsConfig(cliFlags);
+
 	let authorName: string | undefined;
 	let authorGitEmail: string | undefined;
 	let authorGitUsername: string | undefined;
@@ -69,12 +76,36 @@ export async function getGeneratePackageConfiguration(
 		name: name,
 		template: template,
 		public: isPublic,
+		includeInstructions: includeInstructions,
+		instructionsIdeFormat: instructionsIdeFormat,
 		authorName: authorName,
 		authorGitEmail: authorGitEmail,
 		authorGitUsername: authorGitUsername,
 	};
 
 	return answers;
+}
+
+/**
+ * Prompts for whether to include agent instructions and IDE format.
+ */
+async function getPackageInstructionsConfig(
+	cliFlags: Partial<GeneratePackageConfiguration> = {},
+): Promise<{
+	includeInstructions: boolean;
+	instructionsIdeFormat?: GeneratePackageConfiguration["instructionsIdeFormat"];
+}> {
+	const { getPackageInstructionsConfiguration } = await import(
+		"../instructions/config"
+	);
+	const result = await getPackageInstructionsConfiguration({
+		includeInstructions: cliFlags.includeInstructions,
+		ideFormat: cliFlags.instructionsIdeFormat,
+	});
+	return {
+		includeInstructions: result.includeInstructions,
+		instructionsIdeFormat: result.ideFormat,
+	};
 }
 
 /**

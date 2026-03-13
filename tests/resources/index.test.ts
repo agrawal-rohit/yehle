@@ -7,7 +7,7 @@ vi.mock("../../src/cli/logger", () => ({
 	},
 }));
 
-vi.mock("../../src/resources/agent-rule/command", () => ({
+vi.mock("../../src/resources/instructions/command", () => ({
 	default: vi.fn(),
 }));
 
@@ -18,7 +18,7 @@ vi.mock("../../src/resources/package/command", () => ({
 import logger from "../../src/cli/logger";
 // Import after mocks
 import { registerResourcesCli } from "../../src/resources/index";
-import generateAgentRule from "../../src/resources/agent-rule/command";
+import generateInstructions from "../../src/resources/instructions/command";
 import generatePackage from "../../src/resources/package/command";
 
 describe("resources/index", () => {
@@ -45,17 +45,17 @@ describe("resources/index", () => {
 	});
 
 	describe("registerResourcesCli", () => {
-		it("should register the `agent-rule` command with correct options", () => {
+		it("should register the `instructions` command with correct options", () => {
 			registerResourcesCli(mockApp);
 
 			expect(mockApp.usage).toHaveBeenCalledWith("<resource> [options]");
 			expect(mockApp.command).toHaveBeenCalledWith(
-				"agent-rule",
-				"Summon an agent rule template for your IDE",
+				"instructions",
+				"Add agent instructions to an existing project",
 			);
 			expect(mockCommand.option).toHaveBeenCalledWith(
-				"--rule <rule>",
-				"Agent rule template name",
+				"--instruction <name>",
+				expect.stringContaining("react-vite"),
 			);
 			expect(mockCommand.option).toHaveBeenCalledWith(
 				"--ide-format <format>",
@@ -89,21 +89,20 @@ describe("resources/index", () => {
 			);
 		});
 
-		it("should call generateAgentRule for resource 'agent-rule' with correct options", async () => {
-			vi.mocked(generateAgentRule).mockResolvedValue();
+		it("should call generateInstructions for resource 'instructions' with correct options", async () => {
+			vi.mocked(generateInstructions).mockResolvedValue();
 
 			registerResourcesCli(mockApp);
-			// Agent-rule is registered first, so we need to call its action - get it from the first command registration
-			const agentRuleAction = mockCommand.action.mock.calls[0]?.[0];
-			if (agentRuleAction) {
-				await agentRuleAction({
-					rule: "react-vite",
+			const instructionsAction = mockCommand.action.mock.calls[0]?.[0];
+			if (instructionsAction) {
+				await instructionsAction({
+					instruction: "react-vite",
 					ideFormat: "cursor",
 				});
 			}
 
-			expect(generateAgentRule).toHaveBeenCalledWith({
-				rule: "react-vite",
+			expect(generateInstructions).toHaveBeenCalledWith({
+				instruction: "react-vite",
 				ideFormat: "cursor",
 			});
 		});

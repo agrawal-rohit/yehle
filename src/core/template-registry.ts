@@ -73,6 +73,19 @@ async function listChildDirs(dir: string): Promise<string[]> {
 }
 
 /**
+ * List .md file names (without extension) in a directory.
+ * @param dir The directory to list files from.
+ * @returns An array of basenames without .md extension.
+ */
+async function listChildMdFiles(dir: string): Promise<string[]> {
+	if (!(await isDirAsync(dir))) return [];
+	const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+	return entries
+		.filter((e) => e.isFile() && e.name.endsWith(".md"))
+		.map((e) => e.name.replace(/\.md$/, ""));
+}
+
+/**
  * Build a GitHub API Contents URL for a templates subtree.
  * @param language - The programming language for the templates.
  * @param resource - Optional resource within the language.
@@ -231,6 +244,39 @@ async function listRemoteChildDirsViaAPI(
 }
 
 /**
+ * List .md file names (without extension) from GitHub Contents API.
+ * @param language - The path segment (e.g. "agent-rules").
+ * @param resource - Optional subpath (e.g. "preferences" or "languages").
+ * @returns An array of .md file basenames without extension.
+ */
+async function listRemoteChildMdFilesViaAPI(
+	language: string,
+	resource?: string,
+): Promise<string[]> {
+	const url = buildContentsURL(language, resource);
+	const res = await fetch(url, { headers: GITHUB_HEADERS });
+	if (!res.ok)
+		throw new Error(
+			`Failed to fetch from GitHub API: ${res.status} ${res.statusText}`,
+		);
+
+	const data = await res.json();
+	if (!Array.isArray(data))
+		throw new Error(
+			"Invalid response from GitHub API: expected array of contents",
+		);
+
+	return data
+		.filter(
+			(entry: { type?: string; name?: string }) =>
+				entry?.type === "file" &&
+				typeof entry.name === "string" &&
+				entry.name.endsWith(".md"),
+		)
+		.map((entry: { name: string }) => entry.name.replace(/\.md$/, ""));
+}
+
+/**
  * Resolve the on-disk directory that contains templates for a given language and resource.
  * @param language - The programming language for the templates.
  * @param resource - Optional resource within the language.
@@ -282,42 +328,60 @@ export async function listAvailableTemplates(
 	return apiNames;
 }
 
-/** Virtual "language" for agent rules; templates live at templates/agent-rules/. */
+/** Virtual "language" for agent instructions; templates live at templates/agent-rules/. */
 const AGENT_RULES_LANG = "agent-rules";
 
-/** Filename for the rule content within each agent rule template directory. */
-const AGENT_RULE_FILE = "rule.md";
+/** Instruction categories: preferences (coding standards) or languages (language-specific). */
+export type InstructionCategory = "preferences" | "languages";
 
 /**
- * Resolve the on-disk directory that contains agent rule templates.
- * Uses templates/agent-rules/ (local or remote).
- * @returns The absolute path to the agent rules templates directory.
+ * Resolve the on-disk directory for an instruction category.
+ * Uses templates/agent-rules/preferences or templates/agent-rules/languages.
  */
-export async function resolveAgentRulesTemplatesDir(): Promise<string> {
-	return resolveTemplatesDir(AGENT_RULES_LANG);
+export async function resolveInstructionsTemplatesDir(
+	category: InstructionCategory,
+): Promise<string> {
+	return resolveTemplatesDir(AGENT_RULES_LANG, category);
 }
 
 /**
- * List available agent rule template names (subdirectories of templates/agent-rules/).
- * @returns An array of available agent rule template names.
+ * List available preference instruction names (.md files in preferences/).
+ * @returns An array of instruction names (e.g. ["react-vite", "codebase-management"]).
  */
-export async function listAvailableAgentRules(): Promise<string[]> {
+export async function listAvailablePreferenceInstructions(): Promise<string[]> {
 	if (IS_LOCAL_MODE) {
-		const agentRulesDir = await getLocalTemplatesSubdir(AGENT_RULES_LANG);
-		if (!agentRulesDir) return [];
-		return listChildDirs(agentRulesDir);
+		const dir = await getLocalTemplatesSubdir(AGENT_RULES_LANG, "preferences");
+		if (!dir) return [];
+		return listChildMdFiles(dir);
 	}
-	return listRemoteChildDirsViaAPI(AGENT_RULES_LANG);
+	return listRemoteChildMdFilesViaAPI(AGENT_RULES_LANG, "preferences");
 }
 
 /**
- * Read the rule content for a given agent rule template.
- * @param ruleName - The agent rule template name (e.g. "react-vite").
- * @returns The raw markdown content of the rule.
+ * List available language instruction names (.md files in languages/).
+ * @returns An array of instruction names (e.g. ["typescript"]).
  */
-export async function getAgentRuleContent(ruleName: string): Promise<string> {
-	const agentRulesDir = await resolveAgentRulesTemplatesDir();
-	const rulePath = path.join(agentRulesDir, ruleName, AGENT_RULE_FILE);
-	const content = await fs.promises.readFile(rulePath, "utf8");
+export async function listAvailableLanguageInstructions(): Promise<string[]> {
+	if (IS_LOCAL_MODE) {
+		const dir = await getLocalTemplatesSubdir(AGENT_RULES_LANG, "languages");
+		if (!dir) return [];
+		return listChildMdFiles(dir);
+	}
+	return listRemoteChildMdFilesViaAPI(AGENT_RULES_LANG, "languages");
+}
+
+/**
+ * Read the instruction content for a given category and name.
+ * @param category - "preferences" or "languages".
+ * @param name - Instruction name (e.g. "react-vite" or "typescript").
+ * @returns The raw markdown content.
+ */
+export async function getInstructionContent(
+	category: InstructionCategory,
+	name: string,
+): Promise<string> {
+	const dir = await resolveInstructionsTemplatesDir(category);
+	const filePath = path.join(dir, `${name}.md`);
+	const content = await fs.promises.readFile(filePath, "utf8");
 	return content;
 }

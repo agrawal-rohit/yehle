@@ -29,18 +29,29 @@ vi.mock("../../../src/cli/logger", () => ({
 	primaryText: vi.fn((text) => text),
 }));
 
-vi.mock("../../../src/cli/tasks", () => ({
-	default: {
-		runWithTasks: vi.fn(async (goal, task, subtasks) => {
-			if (task) await task();
-			if (subtasks) {
-				for (const sub of subtasks) {
-					if (sub.task) await sub.task();
-				}
+vi.mock("../../../src/cli/tasks", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../../src/cli/tasks")>();
+	const mockRunWithTasks = vi.fn(async (
+		_goal: string,
+		task?: () => Promise<void>,
+		subtasks?: { task?: () => Promise<void> }[],
+	) => {
+		if (task) await task();
+		if (subtasks) {
+			for (const sub of subtasks) {
+				if (sub.task) await sub.task();
 			}
-		}),
-	},
-}));
+		}
+	});
+	return {
+		...actual,
+		default: {
+			runWithTasks: mockRunWithTasks,
+			task: actual.default.task,
+			conditionalTask: actual.default.conditionalTask,
+		},
+	};
+});
 
 vi.mock("../../../src/core/git", () => ({
 	initGitRepo: vi.fn(),

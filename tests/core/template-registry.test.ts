@@ -998,27 +998,30 @@ describe("core/template-registry", () => {
 		});
 	});
 
-	describe("agent rules", () => {
-		describe("resolveAgentRulesTemplatesDir", () => {
-			it("returns agent-rules directory path in local mode", async () => {
+	describe("agent instructions", () => {
+		describe("resolveInstructionsTemplatesDir", () => {
+			it("returns preferences directory path in local mode", async () => {
 				setLocalModeEnv(true);
-				const { resolveAgentRulesTemplatesDir } =
+				const { resolveInstructionsTemplatesDir } =
 					await importTemplateRegistry();
-				const projectRoot = makeTempDir("yehle-agent-rules-");
-				const agentRulesDir = path.join(
+				const projectRoot = makeTempDir("yehle-instructions-");
+				const prefsDir = path.join(
 					projectRoot,
 					"templates",
 					"agent-rules",
+					"preferences",
 				);
-				fs.mkdirSync(agentRulesDir, { recursive: true });
+				fs.mkdirSync(prefsDir, { recursive: true });
 
 				const originalCwd = process.cwd();
 				process.chdir(projectRoot);
 
 				try {
-					const dir = await resolveAgentRulesTemplatesDir();
+					const dir = await resolveInstructionsTemplatesDir(
+						"preferences",
+					);
 					expect(fs.realpathSync(dir)).toBe(
-						fs.realpathSync(agentRulesDir),
+						fs.realpathSync(prefsDir),
 					);
 				} finally {
 					process.chdir(originalCwd);
@@ -1026,88 +1029,104 @@ describe("core/template-registry", () => {
 			});
 		});
 
-		describe("listAvailableAgentRules", () => {
-			it("returns rule names from local templates/agent-rules", async () => {
+		describe("listAvailablePreferenceInstructions", () => {
+			it("returns instruction names from .md files in preferences/", async () => {
 				setLocalModeEnv(true);
-				const { listAvailableAgentRules } =
+				const { listAvailablePreferenceInstructions } =
 					await importTemplateRegistry();
-				const projectRoot = makeTempDir("yehle-agent-rules-");
-				const agentRulesDir = path.join(
+				const projectRoot = makeTempDir("yehle-instructions-");
+				const prefsDir = path.join(
 					projectRoot,
 					"templates",
 					"agent-rules",
+					"preferences",
 				);
-				fs.mkdirSync(path.join(agentRulesDir, "react-vite"), {
-					recursive: true,
-				});
-				fs.mkdirSync(path.join(agentRulesDir, "typescript-library"), {
-					recursive: true,
-				});
+				fs.mkdirSync(prefsDir, { recursive: true });
+				fs.writeFileSync(
+					path.join(prefsDir, "react-vite.md"),
+					"# React",
+					"utf8",
+				);
+				fs.writeFileSync(
+					path.join(prefsDir, "general.md"),
+					"# General",
+					"utf8",
+				);
 
 				const originalCwd = process.cwd();
 				process.chdir(projectRoot);
 
 				try {
-					const rules = await listAvailableAgentRules();
+					const rules = await listAvailablePreferenceInstructions();
 					expect(rules).toContain("react-vite");
-					expect(rules).toContain("typescript-library");
+					expect(rules).toContain("general");
 					expect(rules).toHaveLength(2);
-				} finally {
-					process.chdir(originalCwd);
-				}
-			});
-
-			it("excludes shared directory from rule list", async () => {
-				setLocalModeEnv(true);
-				const { listAvailableAgentRules } =
-					await importTemplateRegistry();
-				const projectRoot = makeTempDir("yehle-agent-rules-");
-				const agentRulesDir = path.join(
-					projectRoot,
-					"templates",
-					"agent-rules",
-				);
-				fs.mkdirSync(path.join(agentRulesDir, "shared"), {
-					recursive: true,
-				});
-				fs.mkdirSync(path.join(agentRulesDir, "react-vite"), {
-					recursive: true,
-				});
-
-				const originalCwd = process.cwd();
-				process.chdir(projectRoot);
-
-				try {
-					const rules = await listAvailableAgentRules();
-					expect(rules).not.toContain("shared");
-					expect(rules).toContain("react-vite");
 				} finally {
 					process.chdir(originalCwd);
 				}
 			});
 		});
 
-		describe("getAgentRuleContent", () => {
-			it("reads rule content from rule.md", async () => {
+		describe("listAvailableLanguageInstructions", () => {
+			it("returns instruction names from .md files in languages/", async () => {
 				setLocalModeEnv(true);
-				const { getAgentRuleContent } = await importTemplateRegistry();
-				const projectRoot = makeTempDir("yehle-agent-rules-");
-				const ruleDir = path.join(
+				const { listAvailableLanguageInstructions } =
+					await importTemplateRegistry();
+				const projectRoot = makeTempDir("yehle-instructions-");
+				const langsDir = path.join(
 					projectRoot,
 					"templates",
 					"agent-rules",
-					"react-vite",
+					"languages",
 				);
-				fs.mkdirSync(ruleDir, { recursive: true });
-				const rulePath = path.join(ruleDir, "rule.md");
-				const content = "# My Rule\n\nContent here.";
-				fs.writeFileSync(rulePath, content, "utf8");
+				fs.mkdirSync(langsDir, { recursive: true });
+				fs.writeFileSync(
+					path.join(langsDir, "typescript.md"),
+					"# TypeScript",
+					"utf8",
+				);
 
 				const originalCwd = process.cwd();
 				process.chdir(projectRoot);
 
 				try {
-					const result = await getAgentRuleContent("react-vite");
+					const rules = await listAvailableLanguageInstructions();
+					expect(rules).toContain("typescript");
+					expect(rules).toHaveLength(1);
+				} finally {
+					process.chdir(originalCwd);
+				}
+			});
+		});
+
+		describe("getInstructionContent", () => {
+			it("reads instruction content from preferences/<name>.md", async () => {
+				setLocalModeEnv(true);
+				const { getInstructionContent } =
+					await importTemplateRegistry();
+				const projectRoot = makeTempDir("yehle-instructions-");
+				const prefsDir = path.join(
+					projectRoot,
+					"templates",
+					"agent-rules",
+					"preferences",
+				);
+				fs.mkdirSync(prefsDir, { recursive: true });
+				const content = "# My Rule\n\nContent here.";
+				fs.writeFileSync(
+					path.join(prefsDir, "react-vite.md"),
+					content,
+					"utf8",
+				);
+
+				const originalCwd = process.cwd();
+				process.chdir(projectRoot);
+
+				try {
+					const result = await getInstructionContent(
+						"preferences",
+						"react-vite",
+					);
 					expect(result).toBe(content);
 				} finally {
 					process.chdir(originalCwd);

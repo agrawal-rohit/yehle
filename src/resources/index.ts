@@ -1,7 +1,7 @@
 import type { CAC } from "cac";
 import logger from "../cli/logger";
-import generateAgentRule from "./agent-rule/command";
-import type { GenerateAgentRuleConfiguration } from "./agent-rule/config";
+import generateInstructions from "./instructions/command";
+import type { GenerateInstructionsConfiguration } from "./instructions/config";
 import generatePackage from "./package/command";
 import type { GeneratePackageConfiguration } from "./package/config";
 
@@ -9,18 +9,21 @@ export async function registerResourcesCli(app: CAC) {
 	// Top-level description
 	app.usage("<resource> [options]");
 
-	// Register the `agent-rule` command
+	// Register the `instructions` command (add agent instructions to existing project)
 	app
-		.command("agent-rule", "Summon an agent rule template for your IDE")
-		.option("--rule <rule>", "Agent rule template name")
+		.command("instructions", "Add agent instructions to an existing project")
+		.option(
+			"--instruction <name>",
+			"Instruction template name (e.g. react-vite)",
+		)
 		.option(
 			"--ide-format <format>",
 			"Target IDE format (cursor, windsurf, cline, claude, copilot, gemini)",
 		)
-		.action(async (options: Partial<GenerateAgentRuleConfiguration>) => {
+		.action(async (options: Partial<GenerateInstructionsConfiguration>) => {
 			try {
-				await generateAgentRule({
-					rule: options.rule,
+				await generateInstructions({
+					instruction: options.instruction,
 					ideFormat: options.ideFormat,
 				});
 			} catch (err) {
@@ -46,6 +49,8 @@ export async function registerResourcesCli(app: CAC) {
 					name: options.name,
 					template: options.template,
 					public: options.public ? Boolean(options.public) : undefined,
+					includeInstructions: options.includeInstructions,
+					instructionsIdeFormat: options.instructionsIdeFormat,
 				});
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
