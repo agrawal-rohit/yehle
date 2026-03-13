@@ -103,6 +103,12 @@ describe("instructions/config", () => {
 			const result = await getIdeFormatSelection({});
 			expect(result).toBe(IdeFormat.WINDSURF);
 		});
+
+		it("should throw when ideFormat from flags is invalid", async () => {
+			await expect(
+				getIdeFormatSelection({ ideFormat: "invalid" as IdeFormat }),
+			).rejects.toThrow("Unsupported IDE format");
+		});
 	});
 
 	describe("getGenerateInstructionsConfiguration", () => {

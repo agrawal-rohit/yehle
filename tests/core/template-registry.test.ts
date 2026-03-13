@@ -1099,6 +1099,36 @@ describe("core/template-registry", () => {
 			});
 		});
 
+		describe("listAvailablePreferenceInstructions (remote)", () => {
+			it("returns instruction names from GitHub API when not in local mode", async () => {
+				setLocalModeEnv(false);
+				vi.stubGlobal(
+					"fetch",
+					vi.fn().mockResolvedValue(
+						new Response(
+							JSON.stringify([
+								{ type: "file", name: "react-vite.md" },
+								{ type: "file", name: "general.md" },
+								{ type: "dir", name: "other" },
+							]),
+							{
+								status: 200,
+								headers: { "Content-Type": "application/json" },
+							},
+						),
+					),
+				);
+
+				const { listAvailablePreferenceInstructions } =
+					await importTemplateRegistry();
+				const rules = await listAvailablePreferenceInstructions();
+				expect(rules).toContain("react-vite");
+				expect(rules).toContain("general");
+				expect(rules).not.toContain("other");
+				expect(rules).toHaveLength(2);
+			});
+		});
+
 		describe("getInstructionContent", () => {
 			it("reads instruction content from preferences/<name>.md", async () => {
 				setLocalModeEnv(true);

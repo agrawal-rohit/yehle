@@ -107,6 +107,20 @@ describe("resources/index", () => {
 			});
 		});
 
+		it("should log error when generateInstructions throws", async () => {
+			vi.mocked(generateInstructions).mockRejectedValue(
+				new Error("Instructions error"),
+			);
+
+			registerResourcesCli(mockApp);
+			const instructionsAction = mockCommand.action.mock.calls[0]?.[0];
+			if (instructionsAction) {
+				await instructionsAction({});
+			}
+
+			expect(logger.error).toHaveBeenCalledWith("Instructions error");
+		});
+
 		it("should call generatePackage for resource 'package' with correct options", async () => {
 			vi.mocked(generatePackage).mockResolvedValue();
 

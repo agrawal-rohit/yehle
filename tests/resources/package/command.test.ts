@@ -77,6 +77,7 @@ vi.mock("../../../src/resources/package/config", () => ({
 }));
 
 vi.mock("../../../src/resources/package/setup", () => ({
+	addPackageInstructions: vi.fn(),
 	applyTemplateModifications: vi.fn(),
 	createPackageDirectory: vi.fn(),
 	getRequiredGithubSecrets: vi.fn(),
@@ -102,6 +103,7 @@ import {
 	Language,
 } from "../../../src/resources/package/config";
 import {
+	addPackageInstructions,
 	applyTemplateModifications,
 	createPackageDirectory,
 	getRequiredGithubSecrets,
@@ -410,6 +412,38 @@ describe("resources/package/command", () => {
 			);
 			expect(vi.mocked(console.log)).toHaveBeenCalledWith(
 				expect.stringContaining("Stuck?"),
+			);
+		});
+
+		it("should call addPackageInstructions when includeInstructions is true", async () => {
+			const mockConfig: GeneratePackageConfiguration = {
+				lang: Language.TYPESCRIPT,
+				name: "test-package",
+				template: "basic",
+				public: false,
+				includeInstructions: true,
+				instructionsIdeFormat: "cursor" as any,
+			};
+			vi.mocked(getGeneratePackageConfiguration).mockResolvedValue(mockConfig);
+			vi.mocked(toSlug).mockReturnValue("test-package");
+			vi.mocked(path.resolve).mockReturnValue("/path/to/test-package");
+			vi.mocked(fs.existsSync).mockReturnValue(false);
+			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
+			vi.mocked(createPackageDirectory).mockResolvedValue(
+				"/path/to/test-package",
+			);
+			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
+			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
+			vi.mocked(initGitRepo).mockResolvedValue(undefined);
+			vi.mocked(makeInitialCommit).mockResolvedValue(undefined);
+			vi.mocked(getRequiredGithubSecrets).mockResolvedValue([]);
+			vi.mocked(getInstallScript).mockReturnValue("npm install");
+
+			await generatePackage({});
+
+			expect(addPackageInstructions).toHaveBeenCalledWith(
+				"/path/to/test-package",
+				mockConfig,
 			);
 		});
 

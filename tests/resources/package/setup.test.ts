@@ -85,13 +85,29 @@ import {
 } from "../../../src/core/fs";
 import { resolveTemplatesDir } from "../../../src/core/template-registry";
 import { Language } from "../../../src/resources/package/config";
+vi.mock("../../../src/resources/instructions/config", () => ({
+	getLanguageInstructionForPackageLang: vi.fn(),
+	fetchInstructionContent: vi.fn(),
+	IdeFormat: { CURSOR: "cursor", WINDSURF: "windsurf" },
+}));
+
+vi.mock("../../../src/resources/instructions/ide-formats", () => ({
+	writeInstructionToFile: vi.fn(),
+}));
+
 // Import after mocks
 import {
+	addPackageInstructions,
 	applyTemplateModifications,
 	createPackageDirectory,
 	getRequiredGithubSecrets,
 	writePackageTemplateFiles,
 } from "../../../src/resources/package/setup";
+import {
+	fetchInstructionContent,
+	getLanguageInstructionForPackageLang,
+} from "../../../src/resources/instructions/config";
+import { writeInstructionToFile } from "../../../src/resources/instructions/ide-formats";
 
 describe("resources/package/setup", () => {
 	beforeEach(() => {
@@ -100,6 +116,85 @@ describe("resources/package/setup", () => {
 
 	afterEach(() => {
 		vi.restoreAllMocks();
+	});
+
+	describe("addPackageInstructions", () => {
+		it("should no-op when includeInstructions is false", async () => {
+			await addPackageInstructions("/target", {
+				lang: Language.TYPESCRIPT,
+				name: "pkg",
+				template: "basic",
+				public: false,
+			} as any);
+
+			expect(getLanguageInstructionForPackageLang).not.toHaveBeenCalled();
+			expect(writeInstructionToFile).not.toHaveBeenCalled();
+		});
+
+		it("should no-op when instructionsIdeFormat is missing", async () => {
+			await addPackageInstructions("/target", {
+				lang: Language.TYPESCRIPT,
+				name: "pkg",
+				template: "basic",
+				public: false,
+				includeInstructions: true,
+				instructionsIdeFormat: undefined,
+			} as any);
+
+			expect(getLanguageInstructionForPackageLang).not.toHaveBeenCalled();
+		});
+
+		it("should no-op when language has no instruction", async () => {
+			vi.mocked(getLanguageInstructionForPackageLang).mockResolvedValue(
+				null,
+			);
+
+			await addPackageInstructions("/target", {
+				lang: "python" as any,
+				name: "pkg",
+				template: "basic",
+				public: false,
+				includeInstructions: true,
+				instructionsIdeFormat: "cursor" as any,
+			} as any);
+
+			expect(fetchInstructionContent).not.toHaveBeenCalled();
+			expect(writeInstructionToFile).not.toHaveBeenCalled();
+		});
+
+		it("should write instruction when config is complete", async () => {
+			vi.mocked(getLanguageInstructionForPackageLang).mockResolvedValue(
+				"typescript",
+			);
+			vi.mocked(fetchInstructionContent).mockResolvedValue("# TS rules");
+			vi.mocked(writeInstructionToFile).mockResolvedValue(
+				"/target/.cursor/rules/typescript.mdc",
+			);
+
+			await addPackageInstructions("/target", {
+				lang: Language.TYPESCRIPT,
+				name: "pkg",
+				template: "basic",
+				public: false,
+				includeInstructions: true,
+				instructionsIdeFormat: "cursor" as any,
+			} as any);
+
+			expect(getLanguageInstructionForPackageLang).toHaveBeenCalledWith(
+				"typescript",
+			);
+			expect(fetchInstructionContent).toHaveBeenCalledWith(
+				"languages",
+				"typescript",
+			);
+			expect(writeInstructionToFile).toHaveBeenCalledWith(
+				"/target",
+				"typescript",
+				"# TS rules",
+				"cursor",
+				"languages",
+			);
+		});
 	});
 
 	describe("createPackageDirectory", () => {
