@@ -17,7 +17,7 @@ export async function registerResourcesCli(app: CAC) {
 		.option("--category <type>", INSTRUCTION_CATEGORY_OPTION_DESCRIPTION)
 		.option(
 			"--instruction <name>",
-			"Instruction template name (e.g. react-vite)",
+			`Instruction template name (e.g. "code-quality-standards", "react-component-styles")`,
 		)
 		.option("--ide-format <format>", IDE_FORMAT_OPTION_DESCRIPTION)
 		.action(async (options: Partial<GenerateInstructionsOptions>) => {
