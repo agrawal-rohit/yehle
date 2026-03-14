@@ -7,8 +7,8 @@ import {
 	type InstructionCategory,
 	listAvailableInstructions,
 } from "../../core/instructions-registry";
-import type { InstructionMetadata } from "./ide-formats";
 import { capitalizeFirstLetter } from "../../core/utils";
+import type { InstructionMetadata } from "./ide-formats";
 
 /** Supported IDE formats for agent instructions output. */
 export enum IdeFormat {
@@ -56,7 +56,10 @@ async function promptGlobs(defaultGlobs: string[]): Promise<string[]> {
 		defaultStr,
 	);
 	if (!input.trim()) return defaultGlobs;
-	return input.split(",").map((s) => s.trim()).filter(Boolean);
+	return input
+		.split(",")
+		.map((s) => s.trim())
+		.filter(Boolean);
 }
 
 /**
@@ -77,16 +80,10 @@ async function getMetadataWithPrompts(
 	category: InstructionCategory,
 	name: string,
 ): Promise<InstructionMetadata> {
-	const { frontmatter } = await getInstructionWithFrontmatter(
-		category,
-		name,
-	);
-	const defaultGlobs = frontmatter.globs?.length
-		? frontmatter.globs
-		: ["**/*"];
+	const { frontmatter } = await getInstructionWithFrontmatter(category, name);
+	const defaultGlobs = frontmatter.globs?.length ? frontmatter.globs : ["**/*"];
 	const defaultAlways = frontmatter.alwaysApply ?? true;
-	const description =
-		frontmatter.description ?? name.replaceAll("-", " ");
+	const description = frontmatter.description ?? name.replaceAll("-", " ");
 
 	const globs = await promptGlobs(defaultGlobs);
 	const alwaysApply = await promptAlwaysApply(defaultAlways);
@@ -106,8 +103,7 @@ export async function getGenerateInstructionsConfiguration(
 	const ideFormat = await getIdeFormatSelection(cliFlags);
 
 	const metadata =
-		cliFlags.metadata ??
-		(await getMetadataWithPrompts(category, instruction));
+		cliFlags.metadata ?? (await getMetadataWithPrompts(category, instruction));
 
 	return { category, instruction, ideFormat, metadata };
 }
@@ -229,8 +225,7 @@ export async function getLanguageInstructionMetadata(
 	if (!available.includes(lang)) return null;
 
 	const { frontmatter } = await getInstructionWithFrontmatter("language", lang);
-	const description =
-		frontmatter.description ?? `${lang} coding standards`;
+	const description = frontmatter.description ?? `${lang} coding standards`;
 	const globs =
 		frontmatter.globs && frontmatter.globs.length > 0
 			? frontmatter.globs

@@ -141,7 +141,9 @@ function getTransformForIde(
 		return (content, _meta) => copilotRepoWide(_meta) + content;
 	if (
 		ideFormat === IdeFormat.COPILOT &&
-		(category === "language" || category === "use-case" || category === "template")
+		(category === "language" ||
+			category === "use-case" ||
+			category === "template")
 	)
 		return (content, meta) => copilotFrontmatter(meta) + content;
 	if (ideFormat === IdeFormat.CURSOR)

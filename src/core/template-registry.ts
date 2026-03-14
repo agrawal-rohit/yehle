@@ -21,8 +21,6 @@ const GITHUB_HEADERS = {
 	Accept: "application/vnd.github.v3+json",
 } as const;
 
-export type TemplateSource = "local" | "remote";
-
 /**
  * Resolve the absolute path to the local templates root directory.
  * @returns The absolute path if the directory exists at `./templates`; otherwise null.

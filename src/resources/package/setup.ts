@@ -109,9 +109,7 @@ export async function addPackageInstructions(
 	);
 	if (!instructionName) return;
 
-	const metadata = await getLanguageInstructionMetadata(
-		generateConfig.lang,
-	);
+	const metadata = await getLanguageInstructionMetadata(generateConfig.lang);
 	if (!metadata) return;
 
 	const content = await fetchInstructionContent("language", instructionName);

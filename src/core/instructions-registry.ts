@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import YAML from "yaml";
 import { downloadTemplate } from "giget";
 import { IS_LOCAL_MODE } from "./constants";
 import { isDirAsync } from "./fs";
@@ -117,7 +116,10 @@ function parseFrontmatter(raw: string): InstructionWithFrontmatter {
 				currentArray.push(arrayItem[1]?.trim() ?? "");
 				continue;
 			}
-			if (currentKey && (frontmatter as Record<string, unknown>)[currentKey] === undefined) {
+			if (
+				currentKey &&
+				(frontmatter as Record<string, unknown>)[currentKey] === undefined
+			) {
 				(frontmatter as Record<string, unknown>)[currentKey] =
 					currentArray.length > 0 ? [...currentArray] : true;
 			}
@@ -126,30 +128,37 @@ function parseFrontmatter(raw: string): InstructionWithFrontmatter {
 			if (kv) {
 				currentKey = kv[1] ?? null;
 				const v = (kv[2] ?? "").trim();
-				if (currentKey === "globs" || currentKey === "paths") {
+				const key = currentKey;
+				if (key === "globs" || key === "paths") {
 					// Value might be inline array or start multi-line
 					if (v === "[]" || v === "") currentArray = [];
 					else if (v.startsWith("[")) {
 						const inner = v.slice(1, -1).match(/["']([^"']*)["']/g);
 						currentArray = inner ? inner.map((s) => s.slice(1, -1)) : [];
 					}
-				} else if (v === "true") (frontmatter as Record<string, unknown>)[currentKey!] = true;
-				else if (v === "false") (frontmatter as Record<string, unknown>)[currentKey!] = false;
-				else if (v.startsWith('"') && v.endsWith('"'))
-					(frontmatter as Record<string, unknown>)[currentKey!] = v.slice(1, -1);
-				else if (v.startsWith("'") && v.endsWith("'"))
-					(frontmatter as Record<string, unknown>)[currentKey!] = v.slice(1, -1);
-				else if (v && currentKey !== "globs" && currentKey !== "paths")
-					(frontmatter as Record<string, unknown>)[currentKey!] = v;
+				} else if (key && v === "true")
+					(frontmatter as Record<string, unknown>)[key] = true;
+				else if (key && v === "false")
+					(frontmatter as Record<string, unknown>)[key] = false;
+				else if (key && v.startsWith('"') && v.endsWith('"'))
+					(frontmatter as Record<string, unknown>)[key] = v.slice(1, -1);
+				else if (key && v.startsWith("'") && v.endsWith("'"))
+					(frontmatter as Record<string, unknown>)[key] = v.slice(1, -1);
+				else if (key && v && key !== "globs" && key !== "paths")
+					(frontmatter as Record<string, unknown>)[key] = v;
 			}
 		}
 		if (currentKey && currentArray.length > 0)
-			(frontmatter as Record<string, unknown>)[currentKey!] = [...currentArray];
+			(frontmatter as Record<string, unknown>)[currentKey] = [...currentArray];
 		// Normalize alwaysOn -> alwaysApply
 		if ("alwaysOn" in frontmatter && frontmatter.alwaysOn !== undefined) {
 			frontmatter.alwaysApply = Boolean(frontmatter.alwaysOn);
 		}
-		if (Array.isArray(frontmatter.paths) && frontmatter.paths.length > 0 && !frontmatter.globs) {
+		if (
+			Array.isArray(frontmatter.paths) &&
+			frontmatter.paths.length > 0 &&
+			!frontmatter.globs
+		) {
 			frontmatter.globs = frontmatter.paths;
 		}
 	}
