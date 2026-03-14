@@ -5,19 +5,16 @@ import { downloadTemplate } from "giget";
 import matter from "gray-matter";
 import { IS_LOCAL_MODE } from "./constants";
 import { isDirAsync } from "./fs";
+import {
+	DEFAULT_GITHUB_OWNER,
+	DEFAULT_GITHUB_REPO,
+	GITHUB_HEADERS,
+	getLocalInstructionsRoot,
+	getLocalTemplatesRoot,
+} from "./repo";
 
 /** Path segment for the instructions tree (preferences, use-case, language). */
 const INSTRUCTIONS_PATH = "instructions";
-
-/** Default GitHub owner/repo for remote fetches. */
-const DEFAULT_GITHUB_OWNER = "agrawal-rohit";
-const DEFAULT_GITHUB_REPO = "yehle";
-
-/** HTTP headers for GitHub API. */
-const GITHUB_HEADERS = {
-	"User-Agent": "yehle-cli",
-	Accept: "application/vnd.github.v3+json",
-} as const;
 
 /**
  * Instruction categories:
@@ -55,32 +52,17 @@ export type InstructionWithFrontmatter = {
 	frontmatter: RuleFrontmatter;
 };
 
-/**
- * Resolve the local templates root (process.cwd()/templates).
- */
-async function getLocalTemplatesRoot(): Promise<string | null> {
-	const root = path.resolve(process.cwd(), "templates");
-	if (await isDirAsync(root)) return root;
-	return null;
-}
-
-/**
- * Resolve the local instructions root (process.cwd()/instructions).
- * This is used for shared instructions: preferences and use-case.
- */
-async function getLocalInstructionsRoot(): Promise<string | null> {
-	const root = path.resolve(process.cwd(), INSTRUCTIONS_PATH);
-	if (await isDirAsync(root)) return root;
-	return null;
-}
-
 const INSTRUCTIONS_UNDER_ROOT = new Set<InstructionCategory>([
 	"preferences",
 	"use-case",
 	"language",
 ]);
 
-/** Try instructions root, then optional legacy templates path for a category. */
+/**
+ * Resolve category dir from instructions root, then optional legacy templates/instructions path.
+ * @param category - Instruction category (preferences, use-case, or language).
+ * @returns The directory path if found, null otherwise.
+ */
 async function getInstructionsOrLegacyDir(
 	category: InstructionCategory,
 ): Promise<string | null> {
@@ -97,13 +79,10 @@ async function getInstructionsOrLegacyDir(
 }
 
 /**
- * Resolve the directory for an instruction category (local filesystem).
- *
- * - preferences / use-case / language: ./instructions/<category> (single instructions tree)
- * - template: ./templates/instructions/<category> (template-specific only)
- *
- * For backwards compatibility, preferences/use-case also fall back to
- * ./templates/instructions/<category> if instructions root is missing.
+ * Resolve the directory for an instruction category on the local filesystem.
+ * preferences/use-case/language: ./instructions/<category>; template: ./templates/instructions/<category>.
+ * @param category - Instruction category.
+ * @returns The directory path if found, null otherwise.
  */
 async function getInstructionsCategoryDir(
 	category: InstructionCategory,
@@ -117,8 +96,9 @@ async function getInstructionsCategoryDir(
 }
 
 /**
- * List instruction file basenames (without extension) in a directory.
- * Accepts both .md and .mdc files.
+ * List instruction file basenames (without extension) in a directory. Accepts .md and .mdc.
+ * @param dir - Directory to scan.
+ * @returns Sorted array of instruction names (no extension).
  */
 async function listInstructionFiles(dir: string): Promise<string[]> {
 	if (!(await isDirAsync(dir))) return [];
@@ -138,6 +118,8 @@ async function listInstructionFiles(dir: string): Promise<string[]> {
 
 /**
  * Normalize gray-matter data into RuleFrontmatter (alwaysOn -> alwaysApply, paths -> globs).
+ * @param data - Raw frontmatter object from gray-matter.
+ * @returns Normalized RuleFrontmatter.
  */
 function toRuleFrontmatter(data: Record<string, unknown>): RuleFrontmatter {
 	const frontmatter: RuleFrontmatter = {};
@@ -167,6 +149,8 @@ function toRuleFrontmatter(data: Record<string, unknown>): RuleFrontmatter {
 
 /**
  * Parse optional YAML frontmatter from markdown content using gray-matter.
+ * @param raw - Raw markdown string (may include frontmatter).
+ * @returns Parsed content (trimmed) and normalized frontmatter.
  */
 function parseFrontmatter(raw: string): InstructionWithFrontmatter {
 	const { data, content } = matter(raw);
@@ -178,6 +162,9 @@ function parseFrontmatter(raw: string): InstructionWithFrontmatter {
 
 /**
  * Find the first existing instruction file for a name (.mdc or .md).
+ * @param dir - Directory to look in.
+ * @param name - Instruction basename (no extension).
+ * @returns Full path to the file if found, null otherwise.
  */
 async function findInstructionFilePath(
 	dir: string,
@@ -196,22 +183,28 @@ async function findInstructionFilePath(
 }
 
 /**
- * Build GitHub API Contents URL for the instructions tree (instructions/<category>).
+ * Build GitHub API Contents URL for an instructions category.
+ * @param category - Instruction category.
+ * @returns The GitHub API URL string.
  */
 function buildContentsURL(category: InstructionCategory): string {
 	return `https://api.github.com/repos/${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/contents/${INSTRUCTIONS_PATH}/${category}`;
 }
 
 /**
- * Build giget spec for downloading the instructions category.
+ * Build giget spec for downloading an instructions category.
+ * @param category - Instruction category.
+ * @returns The giget spec string.
  */
 function buildGigetSpec(category: InstructionCategory): string {
 	return `github:${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/${INSTRUCTIONS_PATH}/${category}`;
 }
 
 /**
- * List instruction file basenames from GitHub API.
- * Accepts .md and .mdc files.
+ * List instruction file basenames from GitHub API for a category. Accepts .md and .mdc.
+ * @param category - Instruction category.
+ * @returns Sorted array of instruction names.
+ * @throws Error when the API request fails or response is invalid.
  */
 async function listRemoteInstructionFiles(
 	category: InstructionCategory,
@@ -241,7 +234,9 @@ async function listRemoteInstructionFiles(
 }
 
 /**
- * Download remote instructions category to a temp dir.
+ * Download a remote instructions category to a temp directory.
+ * @param category - Instruction category.
+ * @returns Promise resolving to the path of the downloaded category directory.
  */
 async function downloadRemoteCategory(
 	category: InstructionCategory,
@@ -264,6 +259,9 @@ async function downloadRemoteCategory(
 
 /**
  * Resolve the directory for an instruction category (local or remote).
+ * @param category - Instruction category.
+ * @returns Promise resolving to the absolute path of the category directory.
+ * @throws Error when the category is not found (local) or download fails (remote).
  */
 export async function resolveInstructionsCategoryDir(
 	category: InstructionCategory,
@@ -287,7 +285,10 @@ export async function resolveInstructionsCategoryDir(
 }
 
 /**
- * List available instruction names for a category.
+ * List available instruction names (basenames without extension) for a category.
+ * @param category - Instruction category.
+ * @returns Promise resolving to a sorted array of instruction names.
+ * @throws Error when the GitHub API fails in remote mode.
  */
 export async function listAvailableInstructions(
 	category: InstructionCategory,
@@ -301,8 +302,11 @@ export async function listAvailableInstructions(
 }
 
 /**
- * Read instruction content and parse frontmatter.
- * Tries .mdc first, then .md.
+ * Read an instruction file and parse its content and frontmatter. Tries .mdc first, then .md.
+ * @param category - Instruction category.
+ * @param name - Instruction name (basename without extension).
+ * @returns Promise resolving to content (body) and normalized frontmatter.
+ * @throws Error when the instruction is not found or file read fails.
  */
 export async function getInstructionWithFrontmatter(
 	category: InstructionCategory,
@@ -320,8 +324,11 @@ export async function getInstructionWithFrontmatter(
 }
 
 /**
- * Read instruction content (strips frontmatter, returns body only).
- * For backwards compatibility.
+ * Read instruction body only (strips frontmatter). Delegates to getInstructionWithFrontmatter.
+ * @param category - Instruction category.
+ * @param name - Instruction name (basename without extension).
+ * @returns Promise resolving to the markdown body string.
+ * @throws Error when the instruction is not found or file read fails.
  */
 export async function getInstructionContent(
 	category: InstructionCategory,

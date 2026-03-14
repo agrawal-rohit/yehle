@@ -5,34 +5,18 @@ import { downloadTemplate } from "giget";
 import type { Language } from "../resources/package/config";
 import { IS_LOCAL_MODE } from "./constants";
 import { isDirAsync } from "./fs";
+import {
+	DEFAULT_GITHUB_OWNER,
+	DEFAULT_GITHUB_REPO,
+	GITHUB_HEADERS,
+	getLocalTemplatesRoot,
+} from "./repo";
 
 /** Name of the shared templates directory that may be filtered out from listings. */
 const SHARED_DIR_NAME = "shared";
 
-/** Default GitHub owner to fetch templates from in remote mode.*/
-const DEFAULT_GITHUB_OWNER = "agrawal-rohit";
-
-/** Default GitHub repository to fetch templates from in remote mode. */
-const DEFAULT_GITHUB_REPO = "yehle";
-
-/** HTTP headers used when communicating with the GitHub API. */
-const GITHUB_HEADERS = {
-	"User-Agent": "yehle-cli",
-	Accept: "application/vnd.github.v3+json",
-} as const;
-
 /**
- * Resolve the absolute path to the local templates root directory.
- * @returns The absolute path if the directory exists at `./templates`; otherwise null.
- */
-async function getLocalTemplatesRoot(): Promise<string | null> {
-	const localTemplatesPath = path.resolve(process.cwd(), "templates");
-	if (await isDirAsync(localTemplatesPath)) return localTemplatesPath;
-	return null;
-}
-
-/**
- * Resolves the absolute path to the local templates subdirectory for a given language and resource.
+ * Resolve the absolute path to the local templates subdirectory for a given language and resource.
  * @param language - The programming language for the templates.
  * @param resource - Optional resource within the language.
  * @returns The path to the language subdirectory or resource directory if it exists; otherwise null.
@@ -57,8 +41,9 @@ async function getLocalTemplatesSubdir(
 }
 
 /**
- * @param dir The directory to list child directories from.
- * @returns An array of child directory names, excluding shared if not included.
+ * List immediate child directory names, excluding "shared".
+ * @param dir - The directory to list child directories from.
+ * @returns An array of child directory names.
  */
 async function listChildDirs(dir: string): Promise<string[]> {
 	if (!(await isDirAsync(dir))) return [];
@@ -230,9 +215,11 @@ async function listRemoteChildDirsViaAPI(
 
 /**
  * Resolve the on-disk directory that contains templates for a given language and resource.
+ * In local mode uses ./templates; in remote mode downloads from GitHub to a temp dir.
  * @param language - The programming language for the templates.
- * @param resource - Optional resource within the language.
- * @returns An object with the path and source of the templates directory.
+ * @param resource - Optional resource within the language (e.g. "package").
+ * @returns Promise resolving to the absolute path of the templates directory.
+ * @throws Error when the path is not found (local) or download fails (remote).
  */
 export async function resolveTemplatesDir(
 	language: string,
@@ -262,8 +249,9 @@ export async function resolveTemplatesDir(
 /**
  * List available template names (subdirectories) for a given language and resource.
  * @param language - The programming language for the templates.
- * @param resource - The resource type
- * @returns An array of available template names.
+ * @param resource - The resource type (e.g. "package").
+ * @returns Promise resolving to an array of available template names.
+ * @throws Error when the GitHub API fails in remote mode.
  */
 export async function listAvailableTemplates(
 	language: Language,

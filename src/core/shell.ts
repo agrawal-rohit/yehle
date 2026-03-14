@@ -93,8 +93,8 @@ export function runAsync(cmd: string, opts: RunOptions = {}): Promise<string> {
 }
 
 /**
- * Checks asynchronously if a command exists on the system's PATH.
- * Uses 'where' on Windows and 'command -v' on other platforms.
+ * Check asynchronously if a command exists on the system's PATH.
+ * Uses "where" on Windows and "which" on other platforms.
  * @param command - The command name to check.
  * @returns Promise resolving to true if the command exists, false otherwise.
  */

@@ -164,17 +164,6 @@ describe("instructions/ide-formats", () => {
 			);
 			expect(result).toBe(content);
 		});
-
-		it("passes through for Gemini (no frontmatter)", () => {
-			const content = "# Rule";
-			const result = transformContentForIde(
-				content,
-				"general",
-				IdeFormat.GEMINI,
-				"preferences",
-			);
-			expect(result).toBe(content);
-		});
 	});
 
 	describe("writeInstructionToFile", () => {

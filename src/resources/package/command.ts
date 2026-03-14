@@ -23,6 +23,12 @@ import {
 	writePackageTemplateFiles,
 } from "./setup";
 
+/**
+ * Generate a new package: gather config (or use options), run preflight checks, create directory, write templates, apply modifications, optionally add instructions, init git, and print next steps.
+ * @param options - Optional CLI-style options (lang, name, template, public, etc.); when omitted, the user is prompted.
+ * @returns Promise that resolves when the package has been generated and next steps have been printed.
+ * @throws Error when the target directory is not empty, the package manager is missing, or template/config steps fail.
+ */
 export async function generatePackage(
 	options: Partial<GeneratePackageConfiguration> = {},
 ): Promise<void> {

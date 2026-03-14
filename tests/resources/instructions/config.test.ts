@@ -86,25 +86,23 @@ describe("instructions/config", () => {
 	});
 
 	describe("getGenerateInstructionsConfiguration", () => {
-		it("should return single selection when instruction (and optional category) provided", async () => {
-			const metadata = {
-				description: "react vite",
-				globs: ["**/*"],
-				alwaysApply: true,
-			};
+		it("should return single selection with metadata from frontmatter when instruction provided", async () => {
 			const result = await getGenerateInstructionsConfiguration({
 				instruction: "react-vite",
 				ideFormat: IdeFormat.CURSOR,
-				metadata,
 			});
 			expect(result.selections).toHaveLength(1);
 			expect(result.selections[0].category).toBe("preferences");
 			expect(result.selections[0].instruction).toBe("react-vite");
-			expect(result.selections[0].metadata).toEqual(metadata);
+			expect(result.selections[0].metadata).toEqual({
+				description: "react vite",
+				globs: ["**/*"],
+				alwaysApply: true,
+			});
 			expect(result.ideFormat).toBe(IdeFormat.CURSOR);
 		});
 
-		it("should default category to preferences when only instruction provided", async () => {
+		it("should resolve instruction in any category when only --instruction provided", async () => {
 			const result = await getGenerateInstructionsConfiguration({
 				instruction: "react-vite",
 				ideFormat: IdeFormat.CURSOR,
@@ -112,10 +110,30 @@ describe("instructions/config", () => {
 			expect(result.selections[0].category).toBe("preferences");
 		});
 
-		it("should throw when instruction is not in available list for category", async () => {
+		it("should use given category when both --instruction and --category provided", async () => {
+			const result = await getGenerateInstructionsConfiguration({
+				instruction: "typescript",
+				category: "language",
+				ideFormat: IdeFormat.CURSOR,
+			});
+			expect(result.selections[0].category).toBe("language");
+			expect(result.selections[0].instruction).toBe("typescript");
+		});
+
+		it("should throw when instruction not found in any category", async () => {
 			await expect(
 				getGenerateInstructionsConfiguration({
 					instruction: "invalid",
+					ideFormat: IdeFormat.CURSOR,
+				}),
+			).rejects.toThrow("Instruction \"invalid\" not found in any category");
+		});
+
+		it("should throw when instruction is not in given category", async () => {
+			await expect(
+				getGenerateInstructionsConfiguration({
+					instruction: "invalid",
+					category: "preferences",
 					ideFormat: IdeFormat.CURSOR,
 				}),
 			).rejects.toThrow("Unsupported instruction");

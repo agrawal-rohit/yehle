@@ -17,7 +17,6 @@ export enum IdeFormat {
 	CLINE = "cline",
 	CLAUDE = "claude",
 	COPILOT = "copilot",
-	GEMINI = "gemini",
 }
 
 /** A single (category, instruction) choice with metadata for writing to disk. */
@@ -56,7 +55,6 @@ export const IDE_FORMAT_LABELS: Record<IdeFormat, string> = {
 	[IdeFormat.CLINE]: "Cline",
 	[IdeFormat.CLAUDE]: "Claude Code",
 	[IdeFormat.COPILOT]: "GitHub Copilot",
-	[IdeFormat.GEMINI]: "Gemini",
 };
 
 /** Default category when --instruction is provided without --category. */
@@ -90,7 +88,12 @@ export const INSTRUCTION_CATEGORY_OPTION_DESCRIPTION = `Instruction type (${INST
 /** CLI option description for --ide-format (single source of truth for format list). */
 export const IDE_FORMAT_OPTION_DESCRIPTION = `Target IDE format (${Object.values(IdeFormat).join(", ")})`;
 
-/** Build metadata from rule frontmatter only (no prompts). Used for multi-select flow. */
+/**
+ * Build metadata from rule frontmatter only (no prompts). Used for multi-select and single-selection flows.
+ * @param category - Instruction category.
+ * @param name - Instruction name (basename without extension).
+ * @returns Promise resolving to metadata (description, globs, alwaysApply).
+ */
 async function getMetadataFromFrontmatter(
 	category: InstructionCategory,
 	name: string,
@@ -107,65 +110,58 @@ async function getMetadataFromFrontmatter(
 	return { description, globs, alwaysApply };
 }
 
-/** Prompts for globs (comma-separated) with default from rule file. */
-async function promptGlobs(defaultGlobs: string[]): Promise<string[]> {
-	const defaultStr = defaultGlobs.join(", ");
-	const input = await prompts.textInput(
-		"Glob patterns for when this rule applies (comma-separated)",
-		undefined,
-		defaultStr,
+/**
+ * Resolve an instruction name to (category, instruction) by searching all categories.
+ * Used when only --instruction is provided (category unknown).
+ * @param instructionName - Instruction name to find (e.g. "react-vite", "typescript").
+ * @returns The category and instruction name when found.
+ * @throws When the instruction is not found in any category.
+ */
+async function resolveInstructionInAnyCategory(
+	instructionName: string,
+): Promise<{ category: InstructionCategory; instruction: string }> {
+	if (!IS_LOCAL_MODE) {
+		await tasks.runWithTasks("Checking available instructions", async () => {
+			for (const cat of INSTRUCTION_CATEGORIES) {
+				await listAvailableInstructions(cat);
+			}
+		});
+	}
+	for (const category of INSTRUCTION_CATEGORIES) {
+		const names = await listAvailableInstructions(category);
+		if (names.includes(instructionName))
+			return { category, instruction: instructionName };
+	}
+	throw new Error(
+		`Instruction "${instructionName}" not found in any category (checked: ${INSTRUCTION_CATEGORIES.join(", ")})`,
 	);
-	if (!input.trim()) return defaultGlobs;
-	return input
-		.split(",")
-		.map((s) => s.trim())
-		.filter(Boolean);
 }
 
-/** Prompts for alwaysApply with default from rule file. */
-async function promptAlwaysApply(defaultValue: boolean): Promise<boolean> {
-	return prompts.confirmInput(
-		"Apply this rule to all conversations?",
-		undefined,
-		defaultValue,
-	);
-}
-
-/** Build metadata from frontmatter and user prompts. */
-async function getMetadataWithPrompts(
-	category: InstructionCategory,
-	name: string,
-): Promise<InstructionMetadata> {
-	const { frontmatter } = await getInstructionWithFrontmatter(category, name);
-	const defaultGlobs = frontmatter.globs?.length ? frontmatter.globs : ["**/*"];
-	const defaultAlways = frontmatter.alwaysApply ?? true;
-	const description = frontmatter.description ?? name.replaceAll("-", " ");
-
-	const globs = await promptGlobs(defaultGlobs);
-	const alwaysApply = await promptAlwaysApply(defaultAlways);
-
-	return { description, globs, alwaysApply };
-}
-
-/** Gather configuration for standalone instructions (add to existing project). Supports single selection via CLI flags or multi-select by category and instruction. */
+/**
+ * Gather configuration for standalone instructions (add to existing project).
+ * Supports single selection via CLI flags or multi-select by category and instruction.
+ * Metadata is always read from instruction frontmatter (no prompts or overrides).
+ * @param cliFlags - Optional CLI options (category, instruction, ideFormat).
+ * @returns Configuration with selections and IDE format.
+ */
 export async function getGenerateInstructionsConfiguration(
-	cliFlags: Partial<
-		GenerateInstructionsOptions & { metadata?: InstructionMetadata }
-	> = {},
+	cliFlags: Partial<GenerateInstructionsOptions> = {},
 ): Promise<GenerateInstructionsConfiguration> {
 	const ideFormat = await getIdeFormatSelection(cliFlags);
 
-	// Single selection from CLI flags (e.g. --instruction react-vite [--category preferences])
+	// Single selection from CLI flags: --instruction with optional --category
 	if (cliFlags.instruction) {
-		const category = cliFlags.category ?? DEFAULT_INSTRUCTION_CATEGORY;
-		const instruction = await resolveInstructionSelection(
-			category,
-			cliFlags.instruction,
-			IS_LOCAL_MODE,
-		);
-		const metadata =
-			cliFlags.metadata ??
-			(await getMetadataWithPrompts(category, instruction));
+		const { category, instruction } = cliFlags.category
+			? {
+					category: cliFlags.category,
+					instruction: await resolveInstructionSelection(
+						cliFlags.category,
+						cliFlags.instruction,
+						IS_LOCAL_MODE,
+					),
+				}
+			: await resolveInstructionInAnyCategory(cliFlags.instruction);
+		const metadata = await getMetadataFromFrontmatter(category, instruction);
 		return {
 			selections: [{ category, instruction, metadata }],
 			ideFormat,
@@ -196,7 +192,11 @@ export async function getGenerateInstructionsConfiguration(
 	return { selections, ideFormat };
 }
 
-/** Load instruction names for the given categories (with optional task UI in remote mode). */
+/**
+ * Load instruction names for the given categories. In remote mode wraps in a task UI.
+ * @param categories - Instruction categories to list.
+ * @returns Promise resolving to a map of category -> instruction names.
+ */
 async function loadAvailableInstructionsByCategory(
 	categories: InstructionCategory[],
 ): Promise<Map<InstructionCategory, string[]>> {
@@ -215,7 +215,10 @@ async function loadAvailableInstructionsByCategory(
 	return map;
 }
 
-/** Prompt to select one or more instruction types (categories). */
+/**
+ * Prompt the user to select one or more instruction types (categories).
+ * @returns Promise resolving to the selected category list.
+ */
 async function promptCategoryMultiSelect(): Promise<InstructionCategory[]> {
 	const options = INSTRUCTION_CATEGORIES.map((cat) => ({
 		label: CATEGORY_LABELS[cat],
@@ -228,7 +231,12 @@ async function promptCategoryMultiSelect(): Promise<InstructionCategory[]> {
 	return values as InstructionCategory[];
 }
 
-/** Prompt to select one or more instructions from a category. */
+/**
+ * Prompt the user to select one or more instructions from a category.
+ * @param category - Instruction category (used for the prompt message).
+ * @param available - List of instruction names to choose from.
+ * @returns Promise resolving to the selected instruction names.
+ */
 async function promptInstructionMultiSelect(
 	category: InstructionCategory,
 	available: string[],
@@ -241,7 +249,14 @@ async function promptInstructionMultiSelect(
 	return prompts.multiselectInput(message, { options });
 }
 
-/** Resolve and validate a single (category, instruction) from flags. */
+/**
+ * Resolve and validate a single instruction name within a given category.
+ * @param category - Instruction category.
+ * @param instruction - Instruction name (e.g. "react-vite").
+ * @param localMode - If false, wraps the check in a task UI for remote mode.
+ * @returns Promise resolving to the validated instruction name.
+ * @throws When the category has no instructions or the instruction is not in the category.
+ */
 async function resolveInstructionSelection(
 	category: InstructionCategory,
 	instruction: string,
@@ -263,7 +278,12 @@ async function resolveInstructionSelection(
 	return instruction;
 }
 
-/** Prompts for or validates the IDE format selection. */
+/**
+ * Prompt for or validate the IDE format selection. Uses CLI flags when provided and valid.
+ * @param cliFlags - Optional flags containing ideFormat.
+ * @returns Promise resolving to the selected IDE format.
+ * @throws When the provided ideFormat is not a valid IdeFormat value.
+ */
 export async function getIdeFormatSelection(
 	cliFlags: Partial<GenerateInstructionsOptions> = {},
 ): Promise<IdeFormat> {
@@ -289,7 +309,11 @@ export async function getIdeFormatSelection(
 	return ideFormat;
 }
 
-/** Prompts for whether to include agent instructions during package creation. */
+/**
+ * Prompt for whether to include agent instructions during package creation, and for IDE format if yes.
+ * @param cliFlags - Optional flags (includeInstructions, ideFormat).
+ * @returns Promise resolving to the package instructions configuration.
+ */
 export async function getPackageInstructionsConfiguration(
 	cliFlags: Partial<PackageInstructionsConfiguration> = {},
 ): Promise<PackageInstructionsConfiguration> {
@@ -307,7 +331,12 @@ export async function getPackageInstructionsConfiguration(
 	return { includeInstructions: true, ideFormat };
 }
 
-/** Fetches the instruction content for a given category and name. */
+/**
+ * Fetch the instruction body (markdown content without frontmatter) for a given category and name.
+ * @param category - Instruction category.
+ * @param name - Instruction name (basename without extension).
+ * @returns Promise resolving to the instruction body string.
+ */
 export async function fetchInstructionContent(
 	category: InstructionCategory,
 	name: string,
@@ -315,7 +344,12 @@ export async function fetchInstructionContent(
 	return getInstructionContent(category, name);
 }
 
-/** Default globs per language when rule file has none. Exported for use in ide-formats fallback. */
+/**
+ * Default glob patterns per language when the rule file does not specify globs.
+ * Exported for use in ide-formats fallback metadata.
+ * @param lang - Language key (e.g. "typescript").
+ * @returns Array of glob patterns.
+ */
 export function getDefaultGlobsForLanguage(lang: string): string[] {
 	if (lang === "typescript")
 		return ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"];
@@ -323,8 +357,10 @@ export function getDefaultGlobsForLanguage(lang: string): string[] {
 }
 
 /**
- * Returns metadata for a language instruction (used during package creation).
- * Uses defaults from rule file without prompting (non-interactive context).
+ * Return metadata for a language instruction from its frontmatter (used during package creation).
+ * Non-interactive: no prompts; uses rule file defaults.
+ * @param lang - Language key (e.g. "typescript").
+ * @returns Promise resolving to metadata, or null if the language has no instruction.
  */
 export async function getLanguageInstructionMetadata(
 	lang: string,
@@ -347,7 +383,11 @@ export async function getLanguageInstructionMetadata(
 	return { description, globs, alwaysApply };
 }
 
-/** Returns the language instruction name for a package language (e.g. typescript -> typescript). */
+/**
+ * Return the instruction name for a package language when it exists in the language category.
+ * @param lang - Package language (e.g. "typescript").
+ * @returns Promise resolving to the instruction name when available, null otherwise.
+ */
 export async function getLanguageInstructionForPackageLang(
 	lang: string,
 ): Promise<string | null> {

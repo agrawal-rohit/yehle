@@ -331,7 +331,20 @@ describe("core/template-registry", () => {
 					source: "mock",
 				});
 
-				// Mock isDirAsync to return true for the resource subdir
+				// Mock isDirAsync to return true for the normalized resource subdir
+				const fsModule = await import("../../src/core/fs");
+				const isDirAsyncSpy = vi.spyOn(fsModule, "isDirAsync");
+				isDirAsyncSpy.mockImplementation(
+					async (p: string) =>
+						p === "/tmp/yehle-templates/templates/typescript/package",
+				);
+
+				const dir = await resolveTemplatesDir("typescript", "package");
+				expect(dir).toBe(
+					"/tmp/yehle-templates/templates/typescript/package",
+				);
+
+				isDirAsyncSpy.mockRestore();
 			});
 
 			it("returns a directory path for remote templates without resource", async () => {
@@ -404,7 +417,7 @@ describe("core/template-registry", () => {
 
 			it("handles dir type response from GitHub API", async () => {
 				const { resolveTemplatesDir } = await importTemplateRegistry();
-				// Mock fetch to return {type: "dir"}
+				// Mock fetch to return {type: "dir"} (subtreeExistsRemote treats this as exists)
 				vi.stubGlobal(
 					"fetch",
 					vi.fn().mockResolvedValue(
@@ -422,9 +435,16 @@ describe("core/template-registry", () => {
 					source: "mock",
 				});
 
-				// Mock isDirAsync to return true for downloaded dir
+				// Mock isDirAsync to return true for the normalized dir
 				const fsModule = await import("../../src/core/fs");
 				const isDirAsyncSpy = vi.spyOn(fsModule, "isDirAsync");
+				isDirAsyncSpy.mockImplementation(
+					async (p: string) =>
+						p === "/tmp/yehle-templates/templates/typescript",
+				);
+
+				const dir = await resolveTemplatesDir("typescript");
+				expect(dir).toBe("/tmp/yehle-templates/templates/typescript");
 
 				isDirAsyncSpy.mockRestore();
 			});

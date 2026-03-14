@@ -30,12 +30,12 @@ export async function createPackageDirectory(
 }
 
 /**
- * Create the package.json using the provided answers and package manager version.
+ * Apply template modifications: render mustache templates with config, remove public-only files when not public, and strip "root" from biome.json if present.
  * @param targetDir - Absolute path to the package directory.
  * @param generateConfig - Generate configuration describing the new package.
- * @param packageManagerVersion - A string like "pnpm@9.0.0" to record in package.json's packageManager.
- * @returns The final package.json object that was persisted to disk.
- * @throws If an existing package.json is invalid JSON.
+ * @param packageManagerVersion - Version string (e.g. "pnpm@9.0.0") to record in package.json's packageManager field.
+ * @returns Promise that resolves when modifications are complete.
+ * @throws Error when template resolution fails or (theoretically) when biome.json is invalid JSON.
  */
 export async function applyTemplateModifications(
 	targetDir: string,
@@ -83,8 +83,11 @@ export async function applyTemplateModifications(
 }
 
 /**
- * Add agent instructions to the package when includeInstructions is true.
- * Writes the language-specific instruction (e.g. typescript) for the package language.
+ * Add agent instructions to the package when includeInstructions is true and instructionsIdeFormat is set.
+ * Writes the language-specific instruction (e.g. typescript) for the package language into the target directory.
+ * @param targetDir - Absolute path to the package root directory.
+ * @param generateConfig - Generate configuration (must have includeInstructions, instructionsIdeFormat, and lang).
+ * @returns Promise that resolves when the instruction file has been written, or immediately when instructions are disabled.
  */
 export async function addPackageInstructions(
 	targetDir: string,
@@ -127,6 +130,11 @@ export async function addPackageInstructions(
 	);
 }
 
+/**
+ * Scan GitHub workflow files in the package for secrets.* references and return the list of secret names (excluding GITHUB_TOKEN).
+ * @param targetDir - Absolute path to the package root (e.g. .github/workflows is under here).
+ * @returns Promise resolving to a sorted array of secret names (e.g. ["NPM_TOKEN"]).
+ */
 export async function getRequiredGithubSecrets(
 	targetDir: string,
 ): Promise<string[]> {
@@ -157,11 +165,12 @@ export async function getRequiredGithubSecrets(
 
 	return Array.from(secrets).sort((a, b) => a.localeCompare(b));
 }
+
 /**
- * Write the chosen template files for a resource into the target directory.
+ * Write the chosen template files into the target directory: global shared, language shared, package shared, then the chosen package template. Optionally adds MIT LICENSE for public packages.
  * @param targetDir - Package root directory to write into.
- * @param generateConfig - Generate configuration describing the new package.
- * @returns A promise that resolves when the template files have been written.
+ * @param generateConfig - Generate configuration (lang, template, public, authorName).
+ * @returns Promise that resolves when all template files have been copied and license written (if applicable).
  */
 export async function writePackageTemplateFiles(
 	targetDir: string,

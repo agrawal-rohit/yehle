@@ -9,6 +9,12 @@ import {
 } from "./config";
 import { writeInstructionToFile } from "./ide-formats";
 
+/**
+ * Add agent instructions to the current project (standalone flow).
+ * Resolves configuration via CLI flags or prompts, then fetches and writes each selected instruction.
+ * @param options - Optional CLI-style options (category, instruction, ideFormat).
+ * @returns Promise that resolves when all instructions have been written.
+ */
 export async function generateInstructions(
 	options: Partial<GenerateInstructionsOptions> = {},
 ): Promise<void> {

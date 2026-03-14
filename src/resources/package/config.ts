@@ -52,8 +52,9 @@ export type GeneratePackageConfiguration = {
 };
 
 /**
- * Gather relevant configuration to proceed with the package creation
- * @returns A JSON object with the package configuration
+ * Gather configuration for package creation via CLI flags or prompts (language, name, template, visibility, instructions, author).
+ * @param cliFlags - Optional CLI options (lang, name, template, public, includeInstructions, instructionsIdeFormat, etc.).
+ * @returns Promise resolving to the full package configuration.
  */
 export async function getGeneratePackageConfiguration(
 	cliFlags: Partial<GeneratePackageConfiguration> = {},
@@ -95,9 +96,10 @@ export async function getGeneratePackageConfiguration(
 }
 
 /**
- * Gets the package language based on CLI flags or prompts the user if not provided.
+ * Get the package language from CLI flags or prompt the user if not provided.
  * @param cliFlags - CLI flags that may include a predefined language selection.
- * @returns The selected programming language type.
+ * @returns Promise resolving to the selected language.
+ * @throws Error when the provided language is not in the supported set.
  */
 export async function getPackageLanguage(
 	cliFlags: Partial<GeneratePackageConfiguration> = {},
@@ -129,11 +131,11 @@ export async function getPackageLanguage(
 }
 
 /**
- * Gets the package name based on CLI flags or prompts the user if not provided.
- * Also validates the package name against the selected language.
- * @param language - The selected programming language.
+ * Get the package name from CLI flags or prompt the user if not provided. Validates against the selected language.
+ * @param language - The selected programming language (used for validation rules).
  * @param cliFlags - CLI flags that may include a predefined name.
- * @returns The validated package name.
+ * @returns Promise resolving to the validated package name.
+ * @throws Error when the name fails validation for the language.
  */
 export async function getPackageName(
 	language: Language,
@@ -152,6 +154,13 @@ export async function getPackageName(
 	return name;
 }
 
+/**
+ * Get the package template from CLI flags or prompt the user. In local mode lists templates without a spinner; in remote mode shows a loading task.
+ * @param language - The selected programming language (determines which templates are available).
+ * @param cliFlags - CLI flags that may include a predefined template.
+ * @returns Promise resolving to the chosen template name.
+ * @throws Error when no templates exist for the language or the chosen template is invalid.
+ */
 export async function getPackageTemplate(
 	language: Language,
 	cliFlags: Partial<GeneratePackageConfiguration> = {},
@@ -210,11 +219,10 @@ export async function getPackageTemplate(
 }
 
 /**
- * Gets the package visibility (public or private) based on CLI flags or prompts the user if not provided.
- * Uses the package registry for the selected language in the prompt.
- * @param language - The selected programming language.
- * @param cliFlags - CLI flags that may include a predefined visibility setting.
- * @returns The boolean indicating if the package is public.
+ * Get package visibility (public or private) from CLI flags or prompt the user. Prompt mentions the registry for the language.
+ * @param language - The selected programming language (used for registry name in prompt).
+ * @param cliFlags - CLI flags that may include a predefined visibility (e.g. --public).
+ * @returns Promise resolving to true if the package is public, false otherwise.
  */
 export async function getPackageVisibility(
 	language: Language,
@@ -232,7 +240,10 @@ export async function getPackageVisibility(
 	return isPublic;
 }
 
-/** Prompt for author's full name (defaults to Git config when available). */
+/**
+ * Prompt for the author's full name. Suggests the value from Git user.name when available.
+ * @returns Promise resolving to the entered author name.
+ */
 export async function promptAuthorName(): Promise<string> {
 	const gitName = await getGitUsername();
 	return await prompts.textInput(
@@ -242,7 +253,10 @@ export async function promptAuthorName(): Promise<string> {
 	);
 }
 
-/** Prompt for author's Git email (defaults to Git config when available). */
+/**
+ * Prompt for the author's Git email. Suggests the value from Git user.email when available.
+ * @returns Promise resolving to the entered email.
+ */
 export async function promptAuthorGitEmail(): Promise<string> {
 	const inferredGitEmail = await getGitEmail();
 	return await prompts.textInput(
@@ -252,7 +266,10 @@ export async function promptAuthorGitEmail(): Promise<string> {
 	);
 }
 
-/** Prompt for author's GitHub username (suggests a value based on Git name). */
+/**
+ * Prompt for the author's GitHub username. Suggests a value derived from Git user.name (lowercased, no spaces).
+ * @returns Promise resolving to the entered username, normalized to a slug.
+ */
 export async function promptAuthorGitUsername(): Promise<string> {
 	const gitName = await getGitUsername();
 	const suggestedUsername = gitName

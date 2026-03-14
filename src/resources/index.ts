@@ -44,12 +44,17 @@ export async function registerResourcesCli(app: CAC) {
 		.option("--template <template>", "Starter template for the package")
 		.action(async (options: Partial<GeneratePackageConfiguration>) => {
 			try {
+				const publicFlag = options.public ? Boolean(options.public) : undefined;
+				const includeInstructionsFlag = options.includeInstructions
+					? Boolean(options.includeInstructions)
+					: undefined;
+
 				await generatePackage({
 					lang: options.lang,
 					name: options.name,
 					template: options.template,
-					public: options.public,
-					includeInstructions: options.includeInstructions,
+					public: publicFlag,
+					includeInstructions: includeInstructionsFlag,
 					instructionsIdeFormat: options.instructionsIdeFormat,
 				});
 			} catch (err) {

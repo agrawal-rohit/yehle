@@ -17,8 +17,9 @@ export async function isDirAsync(dirPath: string): Promise<boolean> {
 }
 
 /**
- * Ensure a directory exists (mkdir -p).
+ * Ensure a directory exists (mkdir -p). Creates parent directories as needed.
  * @param dirPath - Directory to create if missing.
+ * @returns Promise that resolves when the directory exists.
  */
 export async function ensureDirAsync(dirPath: string): Promise<void> {
 	await fs.promises.mkdir(dirPath, { recursive: true });
@@ -28,6 +29,7 @@ export async function ensureDirAsync(dirPath: string): Promise<void> {
  * Write data to a file, ensuring parent directories exist.
  * @param filePath - Absolute or relative path to the file.
  * @param data - File contents.
+ * @returns Promise that resolves when the file has been written.
  */
 export async function writeFileAsync(
 	filePath: string,
@@ -43,6 +45,7 @@ export async function writeFileAsync(
  * No-ops when source is missing or is not a regular file.
  * @param src - Source file path.
  * @param dest - Destination file path.
+ * @returns Promise that resolves when the copy is done or when the source is missing.
  */
 export async function copyFileSafeAsync(
 	src: string,
@@ -63,6 +66,7 @@ export async function copyFileSafeAsync(
  * Recursively copy a directory tree. If the source directory does not exist, it no-ops.
  * @param srcDir - Source directory path.
  * @param destDir - Destination directory path.
+ * @returns Promise that resolves when the copy is done or when the source is missing.
  */
 export async function copyDirSafeAsync(
 	srcDir: string,
@@ -93,6 +97,7 @@ export async function copyDirSafeAsync(
  * Directories that match are deleted (recursively); non-matching directories are traversed.
  * @param rootDir - Root directory to traverse.
  * @param predicate - Function returning true when the entry should be removed.
+ * @returns Promise that resolves when the removal pass is complete.
  */
 export async function removeMatchingFilesRecursively(
 	rootDir: string,
@@ -131,6 +136,7 @@ export async function removeMatchingFilesRecursively(
  * regardless of which subfolder they are in.
  * @param rootDir - Root directory to traverse.
  * @param fileNames - Iterable of basenames to remove.
+ * @returns Promise that resolves when the removal pass is complete.
  */
 export async function removeFilesByBasename(
 	rootDir: string,
@@ -146,6 +152,7 @@ export async function removeFilesByBasename(
  * Example: package.mustache.json -> package.json, config.mustache.ts -> config.ts
  * @param targetDir - Root directory to search.
  * @param data - Key/value pairs used for mustache interpolation.
+ * @returns Promise that resolves when all mustache files have been rendered and replaced.
  */
 export async function renderMustacheTemplates(
 	targetDir: string,

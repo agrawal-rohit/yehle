@@ -15,7 +15,11 @@ export type InstructionMetadata = {
 	alwaysApply: boolean;
 };
 
-/** Cursor .mdc: description, globs (YAML array), alwaysApply. */
+/**
+ * Build Cursor .mdc frontmatter: description, globs (YAML array), alwaysApply.
+ * @param meta - Instruction metadata.
+ * @returns YAML frontmatter string (including closing ---).
+ */
 function cursorFrontmatter(meta: InstructionMetadata): string {
 	return `---
 description: "${meta.description}"
@@ -27,7 +31,11 @@ alwaysApply: ${meta.alwaysApply}
 `;
 }
 
-/** Cline .mdc: title, description, glob (single pattern or comma-separated). */
+/**
+ * Build Cline .mdc frontmatter: title, description, glob (single pattern).
+ * @param meta - Instruction metadata.
+ * @returns YAML frontmatter string (including closing ---).
+ */
 function clineFrontmatter(meta: InstructionMetadata): string {
 	const glob = meta.globs[0] ?? "**/*";
 	return `---
@@ -39,7 +47,11 @@ glob: "${glob}"
 `;
 }
 
-/** Claude .claude/rules: globs as comma-separated (per docs). */
+/**
+ * Build Claude .claude/rules frontmatter: globs as comma-separated (per docs).
+ * @param meta - Instruction metadata.
+ * @returns YAML frontmatter string (including closing ---).
+ */
 function claudeFrontmatter(meta: InstructionMetadata): string {
 	const globsStr = meta.globs.join(", ");
 	return `---
@@ -49,7 +61,11 @@ globs: ${globsStr}
 `;
 }
 
-/** Copilot path-specific .instructions.md: applyTo. */
+/**
+ * Build Copilot path-specific .instructions.md frontmatter: applyTo (single glob).
+ * @param meta - Instruction metadata.
+ * @returns YAML frontmatter string (including closing ---).
+ */
 function copilotFrontmatter(meta: InstructionMetadata): string {
 	const applyTo = meta.globs[0] ?? "**/*";
 	return `---
@@ -59,14 +75,21 @@ applyTo: "${applyTo}"
 `;
 }
 
-/** Copilot repo-wide: no frontmatter. */
+/**
+ * Copilot repo-wide (e.g. preferences): no frontmatter, content only.
+ * @param _meta - Unused; kept for signature consistency.
+ * @returns Empty string.
+ */
 function copilotRepoWide(_meta: InstructionMetadata): string {
 	return "";
 }
 
 /**
  * Build default metadata for an instruction based on category and name.
- * Used when metadata is not provided by the caller.
+ * Used when metadata is not provided by the caller (e.g. in transformContentForIde).
+ * @param category - Instruction category.
+ * @param name - Instruction name (basename without extension).
+ * @returns Default metadata (description, globs, alwaysApply).
  */
 export function getInstructionMetadata(
 	category: InstructionCategory,
@@ -132,15 +155,15 @@ const IDE_PATH_TEMPLATES: Record<
 		"use-case": ".github/instructions/{{ruleName}}.instructions.md",
 		template: ".github/instructions/{{ruleName}}.instructions.md",
 	},
-	[IdeFormat.GEMINI]: {
-		preferences: "GEMINI.md",
-		language: "GEMINI.md",
-		"use-case": "GEMINI.md",
-		template: "GEMINI.md",
-	},
 };
 
-/** Transform behavior per IDE. Copilot repo-wide for preferences; path-specific otherwise. */
+/**
+ * Get the transform function for the given IDE and category (adds frontmatter or passes through).
+ * Copilot: repo-wide (no frontmatter) for preferences; path-specific frontmatter otherwise.
+ * @param ideFormat - Target IDE format.
+ * @param category - Instruction category.
+ * @returns A function (content, meta) => transformed string, or undefined when no transform (e.g. Windsurf).
+ */
 function getTransformForIde(
 	ideFormat: IdeFormat,
 	category: InstructionCategory,
@@ -164,7 +187,12 @@ function getTransformForIde(
 }
 
 /**
- * Resolves the output path for an instruction given the IDE format, name, and category.
+ * Resolve the output path for an instruction given the IDE format, name, and category.
+ * @param ideFormat - Target IDE format (determines path template).
+ * @param ruleName - Instruction name (replaces {{ruleName}} in template).
+ * @param cwd - Current working directory (project root).
+ * @param category - Instruction category (some IDEs use different paths per category).
+ * @returns Absolute path where the instruction file should be written.
  */
 export function resolveOutputPath(
 	ideFormat: IdeFormat,
@@ -178,8 +206,14 @@ export function resolveOutputPath(
 }
 
 /**
- * Transforms the raw content for the given IDE format with appropriate frontmatter.
- * Uses provided metadata when given; otherwise derives from category and name.
+ * Transform raw instruction content for the given IDE format (add frontmatter when applicable).
+ * Uses provided metadata when given; otherwise derives from category and name via getInstructionMetadata.
+ * @param content - Raw markdown body (may already include registry comment).
+ * @param ruleName - Instruction name (used when metadata is not provided).
+ * @param ideFormat - Target IDE format.
+ * @param category - Instruction category.
+ * @param metadata - Optional metadata; when omitted, defaults are derived from category and ruleName.
+ * @returns Transformed string (content with optional frontmatter prepended).
  */
 export function transformContentForIde(
 	content: string,
@@ -195,8 +229,15 @@ export function transformContentForIde(
 }
 
 /**
- * Writes the instruction to the appropriate location for the given IDE format.
- * @param metadata - Optional; when provided (e.g. from user prompts), used for frontmatter.
+ * Write the instruction to the appropriate location for the given IDE format.
+ * Prepends the yehle registry comment, then IDE-specific frontmatter (when applicable), then content.
+ * @param cwd - Current working directory (project root).
+ * @param ruleName - Instruction name (used for path and default metadata if metadata omitted).
+ * @param content - Raw instruction body (markdown).
+ * @param ideFormat - Target IDE format.
+ * @param category - Instruction category.
+ * @param metadata - Optional metadata for frontmatter; when omitted, derived from category and ruleName.
+ * @returns Promise resolving to the absolute path of the written file.
  */
 export async function writeInstructionToFile(
 	cwd: string,

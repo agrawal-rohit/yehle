@@ -55,7 +55,7 @@ describe("resources/index", () => {
 			);
 			expect(mockCommand.option).toHaveBeenCalledWith(
 				"--instruction <name>",
-				expect.stringContaining("react-vite"),
+				expect.stringContaining("Instruction template name"),
 			);
 			expect(mockCommand.option).toHaveBeenCalledWith(
 				"--ide-format <format>",
@@ -155,6 +155,8 @@ describe("resources/index", () => {
 				name: undefined,
 				template: undefined,
 				public: true,
+				includeInstructions: undefined,
+				instructionsIdeFormat: undefined,
 			});
 		});
 
