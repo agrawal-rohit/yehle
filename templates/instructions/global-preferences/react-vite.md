@@ -1,3 +1,10 @@
+---
+description: "react vite"
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
 # UI Coding Standards
 
 ## Libraries to use

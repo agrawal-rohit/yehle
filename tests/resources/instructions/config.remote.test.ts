@@ -7,10 +7,10 @@ vi.mock("../../../src/core/constants", () => ({
 	IS_LOCAL_MODE: false,
 }));
 
-vi.mock("../../../src/core/template-registry", () => ({
-	listAvailablePreferenceInstructions: vi.fn(),
-	listAvailableLanguageInstructions: vi.fn(),
+vi.mock("../../../src/core/instructions-registry", () => ({
+	listAvailableInstructions: vi.fn(),
 	getInstructionContent: vi.fn(),
+	getInstructionWithFrontmatter: vi.fn(),
 }));
 
 vi.mock("../../../src/cli/tasks", () => ({
@@ -28,14 +28,14 @@ vi.mock("../../../src/cli/prompts", () => ({
 	},
 }));
 
-import { getPreferenceInstructionSelection } from "../../../src/resources/instructions/config";
-import { listAvailablePreferenceInstructions } from "../../../src/core/template-registry";
+import { getGlobalPreferenceInstructionSelection } from "../../../src/resources/instructions/config";
+import { listAvailableInstructions } from "../../../src/core/instructions-registry";
 import tasks from "../../../src/cli/tasks";
 
 describe("instructions/config (remote mode)", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		vi.mocked(listAvailablePreferenceInstructions).mockResolvedValue([
+		vi.mocked(listAvailableInstructions).mockResolvedValue([
 			"react-vite",
 			"general",
 		]);
@@ -46,7 +46,7 @@ describe("instructions/config (remote mode)", () => {
 	});
 
 	it("should use runWithTasks when fetching templates in remote mode", async () => {
-		const result = await getPreferenceInstructionSelection({
+		const result = await getGlobalPreferenceInstructionSelection({
 			instruction: "react-vite",
 		});
 		expect(result).toBe("react-vite");

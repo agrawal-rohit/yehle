@@ -1,3 +1,13 @@
+---
+description: "TypeScript-specific coding standards"
+globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.mts"
+  - "**/*.cts"
+alwaysApply: false
+---
+
 # TypeScript Library Standards
 
 ## Project setup

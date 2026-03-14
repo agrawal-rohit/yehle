@@ -1,3 +1,10 @@
+---
+description: "codebase management"
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
 # Codebase Management
 
 ## Git and version control

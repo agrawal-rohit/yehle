@@ -20,8 +20,8 @@ vi.mock("../../../src/core/fs", async (importOriginal) => {
 
 describe("instructions/ide-formats", () => {
 	describe("getInstructionMetadata", () => {
-		it("returns preferences metadata with alwaysApply true", () => {
-			const meta = getInstructionMetadata("preferences", "react-vite");
+		it("returns global-preferences metadata with alwaysApply true", () => {
+			const meta = getInstructionMetadata("global-preferences", "react-vite");
 			expect(meta).toEqual({
 				description: "react vite",
 				globs: ["**/*"],
@@ -30,7 +30,7 @@ describe("instructions/ide-formats", () => {
 		});
 
 		it("returns typescript language metadata with file globs", () => {
-			const meta = getInstructionMetadata("languages", "typescript");
+			const meta = getInstructionMetadata("language", "typescript");
 			expect(meta).toEqual({
 				description: "TypeScript-specific coding standards",
 				globs: ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
@@ -39,7 +39,7 @@ describe("instructions/ide-formats", () => {
 		});
 
 		it("returns fallback for unknown language", () => {
-			const meta = getInstructionMetadata("languages", "python");
+			const meta = getInstructionMetadata("language", "python");
 			expect(meta).toEqual({
 				description: "python",
 				globs: ["**/*"],
@@ -49,56 +49,56 @@ describe("instructions/ide-formats", () => {
 	});
 
 	describe("resolveOutputPath", () => {
-		it("resolves Cursor path for preferences", () => {
+		it("resolves Cursor path for global-preferences", () => {
 			const result = resolveOutputPath(
 				IdeFormat.CURSOR,
 				"react-vite",
 				"/project",
-				"preferences",
+				"global-preferences",
 			);
 			expect(result).toBe("/project/.cursor/rules/react-vite.mdc");
 		});
 
-		it("resolves Copilot path for languages (path-specific)", () => {
+		it("resolves Copilot path for language (path-specific)", () => {
 			const result = resolveOutputPath(
 				IdeFormat.COPILOT,
 				"typescript",
 				"/project",
-				"languages",
+				"language",
 			);
 			expect(result).toBe(
 				"/project/.github/instructions/typescript.instructions.md",
 			);
 		});
 
-		it("resolves Copilot path for preferences (repo-wide)", () => {
+		it("resolves Copilot path for global-preferences (repo-wide)", () => {
 			const result = resolveOutputPath(
 				IdeFormat.COPILOT,
 				"general",
 				"/project",
-				"preferences",
+				"global-preferences",
 			);
 			expect(result).toBe("/project/.github/copilot-instructions.md");
 		});
 
 		it("resolves Windsurf and Claude paths", () => {
 			expect(
-				resolveOutputPath(IdeFormat.WINDSURF, "x", "/p", "preferences"),
+				resolveOutputPath(IdeFormat.WINDSURF, "x", "/p", "global-preferences"),
 			).toBe("/p/.windsurf/rules/x.md");
 			expect(
-				resolveOutputPath(IdeFormat.CLAUDE, "x", "/p", "languages"),
+				resolveOutputPath(IdeFormat.CLAUDE, "x", "/p", "language"),
 			).toBe("/p/.claude/rules/x.md");
 		});
 	});
 
 	describe("transformContentForIde", () => {
-		it("adds Cursor frontmatter for preferences", () => {
+		it("adds Cursor frontmatter for global-preferences", () => {
 			const content = "# Rule\n\nContent.";
 			const result = transformContentForIde(
 				content,
 				"react-vite",
 				IdeFormat.CURSOR,
-				"preferences",
+				"global-preferences",
 			);
 			expect(result).toContain("---");
 			expect(result).toContain('description: "react vite"');
@@ -112,43 +112,43 @@ describe("instructions/ide-formats", () => {
 				content,
 				"general",
 				IdeFormat.CLINE,
-				"preferences",
+				"global-preferences",
 			);
 			expect(result).toContain('glob: "**/*"');
 			expect(result).toContain("# Rule");
 		});
 
-		it("adds Claude frontmatter with comma-separated globs", () => {
+		it("adds Claude frontmatter with comma-separated globs for language", () => {
 			const content = "# Rule";
 			const result = transformContentForIde(
 				content,
 				"typescript",
 				IdeFormat.CLAUDE,
-				"languages",
+				"language",
 			);
 			expect(result).toContain(
 				"globs: **/*.ts, **/*.tsx, **/*.mts, **/*.cts",
 			);
 		});
 
-		it("adds Copilot applyTo for languages", () => {
+		it("adds Copilot applyTo for language", () => {
 			const content = "# Rule";
 			const result = transformContentForIde(
 				content,
 				"typescript",
 				IdeFormat.COPILOT,
-				"languages",
+				"language",
 			);
 			expect(result).toContain('applyTo: "**/*.ts"');
 		});
 
-		it("passes through for Copilot preferences (repo-wide, no frontmatter)", () => {
+		it("passes through for Copilot global-preferences (repo-wide, no frontmatter)", () => {
 			const content = "# Repo-wide rules";
 			const result = transformContentForIde(
 				content,
 				"general",
 				IdeFormat.COPILOT,
-				"preferences",
+				"global-preferences",
 			);
 			expect(result).toBe(content);
 			expect(result).not.toContain("---");
@@ -160,7 +160,7 @@ describe("instructions/ide-formats", () => {
 				content,
 				"general",
 				IdeFormat.WINDSURF,
-				"preferences",
+				"global-preferences",
 			);
 			expect(result).toBe(content);
 		});
@@ -171,7 +171,7 @@ describe("instructions/ide-formats", () => {
 				content,
 				"general",
 				IdeFormat.GEMINI,
-				"preferences",
+				"global-preferences",
 			);
 			expect(result).toBe(content);
 		});
@@ -185,7 +185,7 @@ describe("instructions/ide-formats", () => {
 				"react-vite",
 				"# Content",
 				IdeFormat.CURSOR,
-				"preferences",
+				"global-preferences",
 			);
 			expect(result).toBe(
 				path.join(cwd, ".cursor", "rules", "react-vite.mdc"),

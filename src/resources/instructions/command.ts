@@ -36,6 +36,7 @@ export async function generateInstructions(
 					content,
 					config.ideFormat,
 					config.category,
+					config.metadata,
 				);
 			},
 		},

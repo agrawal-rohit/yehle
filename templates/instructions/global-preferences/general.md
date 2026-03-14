@@ -1,3 +1,10 @@
+---
+description: "general"
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
 # General Coding Best Practices
 
 ## Principles

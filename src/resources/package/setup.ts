@@ -95,8 +95,11 @@ export async function addPackageInstructions(
 	)
 		return;
 
-	const { getLanguageInstructionForPackageLang, fetchInstructionContent } =
-		await import("../instructions/config");
+	const {
+		getLanguageInstructionForPackageLang,
+		fetchInstructionContent,
+		getLanguageInstructionMetadata,
+	} = await import("../instructions/config");
 	const { writeInstructionToFile } = await import(
 		"../instructions/ide-formats"
 	);
@@ -106,13 +109,19 @@ export async function addPackageInstructions(
 	);
 	if (!instructionName) return;
 
-	const content = await fetchInstructionContent("languages", instructionName);
+	const metadata = await getLanguageInstructionMetadata(
+		generateConfig.lang,
+	);
+	if (!metadata) return;
+
+	const content = await fetchInstructionContent("language", instructionName);
 	await writeInstructionToFile(
 		targetDir,
 		instructionName,
 		content,
 		generateConfig.instructionsIdeFormat as import("../instructions/config").IdeFormat,
-		"languages",
+		"language",
+		metadata,
 	);
 }
 

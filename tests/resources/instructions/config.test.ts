@@ -4,10 +4,10 @@ vi.mock("../../../src/core/constants", () => ({
 	IS_LOCAL_MODE: true,
 }));
 
-vi.mock("../../../src/core/template-registry", () => ({
-	listAvailablePreferenceInstructions: vi.fn(),
-	listAvailableLanguageInstructions: vi.fn(),
+vi.mock("../../../src/core/instructions-registry", () => ({
+	listAvailableInstructions: vi.fn(),
 	getInstructionContent: vi.fn(),
+	getInstructionWithFrontmatter: vi.fn(),
 }));
 
 vi.mock("../../../src/cli/tasks", () => ({
@@ -29,37 +29,41 @@ import {
 	fetchInstructionContent,
 	getGenerateInstructionsConfiguration,
 	getIdeFormatSelection,
+	getGlobalPreferenceInstructionSelection,
 	getLanguageInstructionForPackageLang,
 	getPackageInstructionsConfiguration,
-	getPreferenceInstructionSelection,
 } from "../../../src/resources/instructions/config";
 import { IdeFormat } from "../../../src/resources/instructions/config";
 import prompts from "../../../src/cli/prompts";
 import {
 	getInstructionContent,
-	listAvailablePreferenceInstructions,
-	listAvailableLanguageInstructions,
-} from "../../../src/core/template-registry";
+	getInstructionWithFrontmatter,
+	listAvailableInstructions,
+} from "../../../src/core/instructions-registry";
 
 describe("instructions/config", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		vi.mocked(listAvailablePreferenceInstructions).mockResolvedValue([
-			"react-vite",
-			"general",
-		]);
-		vi.mocked(listAvailableLanguageInstructions).mockResolvedValue([
-			"typescript",
-		]);
+		vi.mocked(listAvailableInstructions).mockImplementation(
+			async (cat: string) => {
+				if (cat === "global-preferences") return ["react-vite", "general"];
+				if (cat === "language") return ["typescript"];
+				return [];
+			},
+		);
+		vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
+			content: "# Rule",
+			frontmatter: { globs: ["**/*"], alwaysApply: true },
+		});
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	describe("getPreferenceInstructionSelection", () => {
+	describe("getGlobalPreferenceInstructionSelection", () => {
 		it("should return instruction from CLI flags when provided", async () => {
-			const result = await getPreferenceInstructionSelection({
+			const result = await getGlobalPreferenceInstructionSelection({
 				instruction: "react-vite",
 			});
 			expect(result).toBe("react-vite");
@@ -67,20 +71,22 @@ describe("instructions/config", () => {
 
 		it("should throw when instruction is not in available list", async () => {
 			await expect(
-				getPreferenceInstructionSelection({ instruction: "invalid" }),
+				getGlobalPreferenceInstructionSelection({
+					instruction: "invalid",
+				}),
 			).rejects.toThrow("Unsupported instruction");
 		});
 
 		it("should throw when no templates found", async () => {
-			vi.mocked(listAvailablePreferenceInstructions).mockResolvedValue([]);
-			await expect(getPreferenceInstructionSelection({})).rejects.toThrow(
-				"No preference instruction templates found",
-			);
+			vi.mocked(listAvailableInstructions).mockResolvedValue([]);
+			await expect(
+				getGlobalPreferenceInstructionSelection({}),
+			).rejects.toThrow("No global preference instruction templates found");
 		});
 
 		it("should prompt when no instruction in flags", async () => {
 			vi.mocked(prompts.selectInput).mockResolvedValue("general");
-			const result = await getPreferenceInstructionSelection({});
+			const result = await getGlobalPreferenceInstructionSelection({});
 			expect(result).toBe("general");
 			expect(prompts.selectInput).toHaveBeenCalledWith(
 				"Which coding standards would you like to add?",
@@ -112,16 +118,21 @@ describe("instructions/config", () => {
 	});
 
 	describe("getGenerateInstructionsConfiguration", () => {
-		it("should return full config with preferences category", async () => {
+		it("should return full config with global-preferences category when metadata provided", async () => {
+			const metadata = {
+				description: "react vite",
+				globs: ["**/*"],
+				alwaysApply: true,
+			};
 			const result = await getGenerateInstructionsConfiguration({
 				instruction: "react-vite",
 				ideFormat: IdeFormat.CURSOR,
+				metadata,
 			});
-			expect(result).toEqual({
-				category: "preferences",
-				instruction: "react-vite",
-				ideFormat: IdeFormat.CURSOR,
-			});
+			expect(result.category).toBe("global-preferences");
+			expect(result.instruction).toBe("react-vite");
+			expect(result.ideFormat).toBe(IdeFormat.CURSOR);
+			expect(result.metadata).toEqual(metadata);
 		});
 	});
 
@@ -159,12 +170,12 @@ describe("instructions/config", () => {
 		it("should delegate to getInstructionContent", async () => {
 			vi.mocked(getInstructionContent).mockResolvedValue("# Content");
 			const result = await fetchInstructionContent(
-				"preferences",
+				"global-preferences",
 				"react-vite",
 			);
 			expect(result).toBe("# Content");
 			expect(getInstructionContent).toHaveBeenCalledWith(
-				"preferences",
+				"global-preferences",
 				"react-vite",
 			);
 		});

@@ -3,10 +3,11 @@ import tasks from "../../cli/tasks";
 import { IS_LOCAL_MODE } from "../../core/constants";
 import {
 	getInstructionContent,
+	getInstructionWithFrontmatter,
 	type InstructionCategory,
-	listAvailableLanguageInstructions,
-	listAvailablePreferenceInstructions,
-} from "../../core/template-registry";
+	listAvailableInstructions,
+} from "../../core/instructions-registry";
+import type { InstructionMetadata } from "./ide-formats";
 import { capitalizeFirstLetter } from "../../core/utils";
 
 /** Supported IDE formats for agent instructions output. */
@@ -24,6 +25,8 @@ export type GenerateInstructionsConfiguration = {
 	category: InstructionCategory;
 	instruction: string;
 	ideFormat: IdeFormat;
+	/** User-provided metadata (globs, alwaysApply) with defaults from rule file. */
+	metadata: InstructionMetadata;
 };
 
 /** Describes the configuration for adding instructions during package creation. */
@@ -43,39 +46,93 @@ export const IDE_FORMAT_LABELS: Record<IdeFormat, string> = {
 };
 
 /**
+ * Prompts for globs (comma-separated) with default from rule file.
+ */
+async function promptGlobs(defaultGlobs: string[]): Promise<string[]> {
+	const defaultStr = defaultGlobs.join(", ");
+	const input = await prompts.textInput(
+		"Glob patterns for when this rule applies (comma-separated)",
+		undefined,
+		defaultStr,
+	);
+	if (!input.trim()) return defaultGlobs;
+	return input.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * Prompts for alwaysApply with default from rule file.
+ */
+async function promptAlwaysApply(defaultValue: boolean): Promise<boolean> {
+	return prompts.confirmInput(
+		"Apply this rule to all conversations?",
+		undefined,
+		defaultValue,
+	);
+}
+
+/**
+ * Build metadata from frontmatter and user prompts.
+ */
+async function getMetadataWithPrompts(
+	category: InstructionCategory,
+	name: string,
+): Promise<InstructionMetadata> {
+	const { frontmatter } = await getInstructionWithFrontmatter(
+		category,
+		name,
+	);
+	const defaultGlobs = frontmatter.globs?.length
+		? frontmatter.globs
+		: ["**/*"];
+	const defaultAlways = frontmatter.alwaysApply ?? true;
+	const description =
+		frontmatter.description ?? name.replaceAll("-", " ");
+
+	const globs = await promptGlobs(defaultGlobs);
+	const alwaysApply = await promptAlwaysApply(defaultAlways);
+
+	return { description, globs, alwaysApply };
+}
+
+/**
  * Gather configuration for standalone instructions (add to existing project).
- * Standalone flow only offers preference instructions (coding standards).
+ * Uses global-preferences category.
  */
 export async function getGenerateInstructionsConfiguration(
 	cliFlags: Partial<GenerateInstructionsConfiguration> = {},
 ): Promise<GenerateInstructionsConfiguration> {
-	const instruction = await getPreferenceInstructionSelection(cliFlags);
+	const category: InstructionCategory = "global-preferences";
+	const instruction = await getGlobalPreferenceInstructionSelection(cliFlags);
 	const ideFormat = await getIdeFormatSelection(cliFlags);
 
-	return { category: "preferences", instruction, ideFormat };
+	const metadata =
+		cliFlags.metadata ??
+		(await getMetadataWithPrompts(category, instruction));
+
+	return { category, instruction, ideFormat, metadata };
 }
 
 /**
- * Prompts for or validates the preference instruction selection.
+ * Prompts for or validates the global preference instruction selection.
  */
-export async function getPreferenceInstructionSelection(
+export async function getGlobalPreferenceInstructionSelection(
 	cliFlags: Partial<GenerateInstructionsConfiguration> = {},
 ): Promise<string> {
 	let candidates: string[] = [];
 
 	if (IS_LOCAL_MODE) {
-		candidates = await listAvailablePreferenceInstructions();
+		candidates = await listAvailableInstructions("global-preferences");
 	} else {
 		await tasks.runWithTasks(
 			"Checking available instruction templates",
 			async () => {
-				candidates = await listAvailablePreferenceInstructions();
+				candidates = await listAvailableInstructions("global-preferences");
 			},
 		);
 	}
 
 	if (!candidates.length)
-		throw new Error("No preference instruction templates found.");
+		throw new Error("No global preference instruction templates found.");
 
 	const options = candidates.map((r) => ({
 		label: capitalizeFirstLetter(r.replaceAll("-", " ")),
@@ -162,13 +219,36 @@ export async function fetchInstructionContent(
 }
 
 /**
+ * Returns metadata for a language instruction (used during package creation).
+ * Uses defaults from rule file without prompting (non-interactive context).
+ */
+export async function getLanguageInstructionMetadata(
+	lang: string,
+): Promise<InstructionMetadata | null> {
+	const available = await listAvailableInstructions("language");
+	if (!available.includes(lang)) return null;
+
+	const { frontmatter } = await getInstructionWithFrontmatter("language", lang);
+	const description =
+		frontmatter.description ?? `${lang} coding standards`;
+	const globs =
+		frontmatter.globs && frontmatter.globs.length > 0
+			? frontmatter.globs
+			: lang === "typescript"
+				? ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"]
+				: ["**/*"];
+	const alwaysApply = frontmatter.alwaysApply ?? false;
+
+	return { description, globs, alwaysApply };
+}
+
+/**
  * Returns the language instruction name for a package language (e.g. typescript -> typescript).
- * Uses available language instructions from templates.
  */
 export async function getLanguageInstructionForPackageLang(
 	lang: string,
 ): Promise<string | null> {
-	const available = await listAvailableLanguageInstructions();
+	const available = await listAvailableInstructions("language");
 	if (available.includes(lang)) return lang;
 	return null;
 }

@@ -85,11 +85,16 @@ import {
 } from "../../../src/core/fs";
 import { resolveTemplatesDir } from "../../../src/core/template-registry";
 import { Language } from "../../../src/resources/package/config";
-vi.mock("../../../src/resources/instructions/config", () => ({
-	getLanguageInstructionForPackageLang: vi.fn(),
-	fetchInstructionContent: vi.fn(),
-	IdeFormat: { CURSOR: "cursor", WINDSURF: "windsurf" },
-}));
+vi.mock("../../../src/resources/instructions/config", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("../../../src/resources/instructions/config")>();
+	return {
+		...actual,
+		getLanguageInstructionForPackageLang: vi.fn(),
+		getLanguageInstructionMetadata: vi.fn(),
+		fetchInstructionContent: vi.fn(),
+	};
+});
 
 vi.mock("../../../src/resources/instructions/ide-formats", () => ({
 	writeInstructionToFile: vi.fn(),
@@ -106,6 +111,7 @@ import {
 import {
 	fetchInstructionContent,
 	getLanguageInstructionForPackageLang,
+	getLanguageInstructionMetadata,
 } from "../../../src/resources/instructions/config";
 import { writeInstructionToFile } from "../../../src/resources/instructions/ide-formats";
 
@@ -163,9 +169,15 @@ describe("resources/package/setup", () => {
 		});
 
 		it("should write instruction when config is complete", async () => {
+			const metadata = {
+				description: "TypeScript standards",
+				globs: ["**/*.ts", "**/*.tsx"],
+				alwaysApply: false,
+			};
 			vi.mocked(getLanguageInstructionForPackageLang).mockResolvedValue(
 				"typescript",
 			);
+			vi.mocked(getLanguageInstructionMetadata).mockResolvedValue(metadata);
 			vi.mocked(fetchInstructionContent).mockResolvedValue("# TS rules");
 			vi.mocked(writeInstructionToFile).mockResolvedValue(
 				"/target/.cursor/rules/typescript.mdc",
@@ -183,8 +195,11 @@ describe("resources/package/setup", () => {
 			expect(getLanguageInstructionForPackageLang).toHaveBeenCalledWith(
 				"typescript",
 			);
+			expect(getLanguageInstructionMetadata).toHaveBeenCalledWith(
+				"typescript",
+			);
 			expect(fetchInstructionContent).toHaveBeenCalledWith(
-				"languages",
+				"language",
 				"typescript",
 			);
 			expect(writeInstructionToFile).toHaveBeenCalledWith(
@@ -192,7 +207,8 @@ describe("resources/package/setup", () => {
 				"typescript",
 				"# TS rules",
 				"cursor",
-				"languages",
+				"language",
+				metadata,
 			);
 		});
 	});

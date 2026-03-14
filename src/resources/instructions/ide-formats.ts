@@ -1,6 +1,6 @@
 import path from "node:path";
 import { ensureDirAsync, writeFileAsync } from "../../core/fs";
-import type { InstructionCategory } from "../../core/template-registry";
+import type { InstructionCategory } from "../../core/instructions-registry";
 import { IdeFormat } from "./config";
 
 /** Globs and metadata per instruction type for IDE frontmatter. */
@@ -60,23 +60,22 @@ function copilotRepoWide(_meta: InstructionMetadata): string {
 }
 
 /**
- * Build metadata for an instruction based on category and name.
- * Preferences apply to all files; languages apply to relevant file patterns.
+ * Build default metadata for an instruction based on category and name.
+ * Used when metadata is not provided by the caller.
  */
 export function getInstructionMetadata(
 	category: InstructionCategory,
 	name: string,
 ): InstructionMetadata {
 	const humanName = name.replaceAll("-", " ");
-	if (category === "preferences") {
+	if (category === "global-preferences") {
 		return {
 			description: humanName,
 			globs: ["**/*"],
 			alwaysApply: true,
 		};
 	}
-	// Language-specific
-	if (name === "typescript") {
+	if (category === "language" && name === "typescript") {
 		return {
 			description: "TypeScript-specific coding standards",
 			globs: ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
@@ -96,39 +95,54 @@ const IDE_PATH_TEMPLATES: Record<
 	Record<InstructionCategory, string>
 > = {
 	[IdeFormat.CURSOR]: {
-		preferences: ".cursor/rules/{{ruleName}}.mdc",
-		languages: ".cursor/rules/{{ruleName}}.mdc",
+		"global-preferences": ".cursor/rules/{{ruleName}}.mdc",
+		language: ".cursor/rules/{{ruleName}}.mdc",
+		"use-case": ".cursor/rules/{{ruleName}}.mdc",
+		template: ".cursor/rules/{{ruleName}}.mdc",
 	},
 	[IdeFormat.WINDSURF]: {
-		preferences: ".windsurf/rules/{{ruleName}}.md",
-		languages: ".windsurf/rules/{{ruleName}}.md",
+		"global-preferences": ".windsurf/rules/{{ruleName}}.md",
+		language: ".windsurf/rules/{{ruleName}}.md",
+		"use-case": ".windsurf/rules/{{ruleName}}.md",
+		template: ".windsurf/rules/{{ruleName}}.md",
 	},
 	[IdeFormat.CLINE]: {
-		preferences: ".clinerules/{{ruleName}}.mdc",
-		languages: ".clinerules/{{ruleName}}.mdc",
+		"global-preferences": ".clinerules/{{ruleName}}.mdc",
+		language: ".clinerules/{{ruleName}}.mdc",
+		"use-case": ".clinerules/{{ruleName}}.mdc",
+		template: ".clinerules/{{ruleName}}.mdc",
 	},
 	[IdeFormat.CLAUDE]: {
-		preferences: ".claude/rules/{{ruleName}}.md",
-		languages: ".claude/rules/{{ruleName}}.md",
+		"global-preferences": ".claude/rules/{{ruleName}}.md",
+		language: ".claude/rules/{{ruleName}}.md",
+		"use-case": ".claude/rules/{{ruleName}}.md",
+		template: ".claude/rules/{{ruleName}}.md",
 	},
 	[IdeFormat.COPILOT]: {
-		preferences: ".github/copilot-instructions.md",
-		languages: ".github/instructions/{{ruleName}}.instructions.md",
+		"global-preferences": ".github/copilot-instructions.md",
+		language: ".github/instructions/{{ruleName}}.instructions.md",
+		"use-case": ".github/instructions/{{ruleName}}.instructions.md",
+		template: ".github/instructions/{{ruleName}}.instructions.md",
 	},
 	[IdeFormat.GEMINI]: {
-		preferences: "GEMINI.md",
-		languages: "GEMINI.md",
+		"global-preferences": "GEMINI.md",
+		language: "GEMINI.md",
+		"use-case": "GEMINI.md",
+		template: "GEMINI.md",
 	},
 };
 
-/** Transform behavior per IDE. Copilot uses different transform for preferences vs languages. */
+/** Transform behavior per IDE. Copilot repo-wide for global-preferences; path-specific otherwise. */
 function getTransformForIde(
 	ideFormat: IdeFormat,
 	category: InstructionCategory,
 ): ((content: string, meta: InstructionMetadata) => string) | undefined {
-	if (ideFormat === IdeFormat.COPILOT && category === "preferences")
+	if (ideFormat === IdeFormat.COPILOT && category === "global-preferences")
 		return (content, _meta) => copilotRepoWide(_meta) + content;
-	if (ideFormat === IdeFormat.COPILOT && category === "languages")
+	if (
+		ideFormat === IdeFormat.COPILOT &&
+		(category === "language" || category === "use-case" || category === "template")
+	)
 		return (content, meta) => copilotFrontmatter(meta) + content;
 	if (ideFormat === IdeFormat.CURSOR)
 		return (content, meta) => cursorFrontmatter(meta) + content;
@@ -155,21 +169,24 @@ export function resolveOutputPath(
 
 /**
  * Transforms the raw content for the given IDE format with appropriate frontmatter.
+ * Uses provided metadata when given; otherwise derives from category and name.
  */
 export function transformContentForIde(
 	content: string,
 	ruleName: string,
 	ideFormat: IdeFormat,
 	category: InstructionCategory,
+	metadata?: InstructionMetadata,
 ): string {
 	const transform = getTransformForIde(ideFormat, category);
-	const meta = getInstructionMetadata(category, ruleName);
+	const meta = metadata ?? getInstructionMetadata(category, ruleName);
 	if (transform) return transform(content, meta);
 	return content;
 }
 
 /**
  * Writes the instruction to the appropriate location for the given IDE format.
+ * @param metadata - Optional; when provided (e.g. from user prompts), used for frontmatter.
  */
 export async function writeInstructionToFile(
 	cwd: string,
@@ -177,6 +194,7 @@ export async function writeInstructionToFile(
 	content: string,
 	ideFormat: IdeFormat,
 	category: InstructionCategory,
+	metadata?: InstructionMetadata,
 ): Promise<string> {
 	const outputPath = resolveOutputPath(ideFormat, ruleName, cwd, category);
 	const transformedContent = transformContentForIde(
@@ -184,6 +202,7 @@ export async function writeInstructionToFile(
 		ruleName,
 		ideFormat,
 		category,
+		metadata,
 	);
 
 	await ensureDirAsync(path.dirname(outputPath));
