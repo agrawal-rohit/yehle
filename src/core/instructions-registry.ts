@@ -21,13 +21,13 @@ const GITHUB_HEADERS = {
 
 /**
  * Instruction categories:
- * - global-preferences: User-specific preferences applied to all code
- * - language: Coding standards for a particular language
- * - use-case: Instructions for use-cases (e.g. open-source package, UI, API, etc.)
- * - template: Template-specific instructions (folder structure, libraries, recipes)
+ * - preferences: User preferences (coding style, personal quirks)
+ * - language: Language & framework (best practices for a language/framework)
+ * - use-case: Use case & architecture (UI, API, monorepo, OSS, extension, etc.)
+ * - template: Template-specific (folder setup, commands, workflows; lives in templates/*)
  */
 export type InstructionCategory =
-	| "global-preferences"
+	| "preferences"
 	| "language"
 	| "use-case"
 	| "template";

@@ -47,7 +47,7 @@ describe("instructions/config", () => {
 		vi.clearAllMocks();
 		vi.mocked(listAvailableInstructions).mockImplementation(
 			async (cat: string) => {
-				if (cat === "global-preferences") return ["react-vite", "general"];
+				if (cat === "preferences") return ["react-vite", "general"];
 				if (cat === "language") return ["typescript"];
 				return [];
 			},
@@ -98,18 +98,18 @@ describe("instructions/config", () => {
 				metadata,
 			});
 			expect(result.selections).toHaveLength(1);
-			expect(result.selections[0].category).toBe("global-preferences");
+			expect(result.selections[0].category).toBe("preferences");
 			expect(result.selections[0].instruction).toBe("react-vite");
 			expect(result.selections[0].metadata).toEqual(metadata);
 			expect(result.ideFormat).toBe(IdeFormat.CURSOR);
 		});
 
-		it("should default category to global-preferences when only instruction provided", async () => {
+		it("should default category to preferences when only instruction provided", async () => {
 			const result = await getGenerateInstructionsConfiguration({
 				instruction: "react-vite",
 				ideFormat: IdeFormat.CURSOR,
 			});
-			expect(result.selections[0].category).toBe("global-preferences");
+			expect(result.selections[0].category).toBe("preferences");
 		});
 
 		it("should throw when instruction is not in available list for category", async () => {
@@ -156,12 +156,12 @@ describe("instructions/config", () => {
 		it("should delegate to getInstructionContent", async () => {
 			vi.mocked(getInstructionContent).mockResolvedValue("# Content");
 			const result = await fetchInstructionContent(
-				"global-preferences",
+				"preferences",
 				"react-vite",
 			);
 			expect(result).toBe("# Content");
 			expect(getInstructionContent).toHaveBeenCalledWith(
-				"global-preferences",
+				"preferences",
 				"react-vite",
 			);
 		});

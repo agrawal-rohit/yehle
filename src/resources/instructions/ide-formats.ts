@@ -73,7 +73,7 @@ export function getInstructionMetadata(
 	name: string,
 ): InstructionMetadata {
 	const humanName = name.replaceAll("-", " ");
-	if (category === "global-preferences") {
+	if (category === "preferences") {
 		return {
 			description: humanName,
 			globs: ["**/*"],
@@ -100,49 +100,49 @@ const IDE_PATH_TEMPLATES: Record<
 	Record<InstructionCategory, string>
 > = {
 	[IdeFormat.CURSOR]: {
-		"global-preferences": ".cursor/rules/{{ruleName}}.mdc",
+		preferences: ".cursor/rules/{{ruleName}}.mdc",
 		language: ".cursor/rules/{{ruleName}}.mdc",
 		"use-case": ".cursor/rules/{{ruleName}}.mdc",
 		template: ".cursor/rules/{{ruleName}}.mdc",
 	},
 	[IdeFormat.WINDSURF]: {
-		"global-preferences": ".windsurf/rules/{{ruleName}}.md",
+		preferences: ".windsurf/rules/{{ruleName}}.md",
 		language: ".windsurf/rules/{{ruleName}}.md",
 		"use-case": ".windsurf/rules/{{ruleName}}.md",
 		template: ".windsurf/rules/{{ruleName}}.md",
 	},
 	[IdeFormat.CLINE]: {
-		"global-preferences": ".clinerules/{{ruleName}}.mdc",
+		preferences: ".clinerules/{{ruleName}}.mdc",
 		language: ".clinerules/{{ruleName}}.mdc",
 		"use-case": ".clinerules/{{ruleName}}.mdc",
 		template: ".clinerules/{{ruleName}}.mdc",
 	},
 	[IdeFormat.CLAUDE]: {
-		"global-preferences": ".claude/rules/{{ruleName}}.md",
+		preferences: ".claude/rules/{{ruleName}}.md",
 		language: ".claude/rules/{{ruleName}}.md",
 		"use-case": ".claude/rules/{{ruleName}}.md",
 		template: ".claude/rules/{{ruleName}}.md",
 	},
 	[IdeFormat.COPILOT]: {
-		"global-preferences": ".github/copilot-instructions.md",
+		preferences: ".github/copilot-instructions.md",
 		language: ".github/instructions/{{ruleName}}.instructions.md",
 		"use-case": ".github/instructions/{{ruleName}}.instructions.md",
 		template: ".github/instructions/{{ruleName}}.instructions.md",
 	},
 	[IdeFormat.GEMINI]: {
-		"global-preferences": "GEMINI.md",
+		preferences: "GEMINI.md",
 		language: "GEMINI.md",
 		"use-case": "GEMINI.md",
 		template: "GEMINI.md",
 	},
 };
 
-/** Transform behavior per IDE. Copilot repo-wide for global-preferences; path-specific otherwise. */
+/** Transform behavior per IDE. Copilot repo-wide for preferences; path-specific otherwise. */
 function getTransformForIde(
 	ideFormat: IdeFormat,
 	category: InstructionCategory,
 ): ((content: string, meta: InstructionMetadata) => string) | undefined {
-	if (ideFormat === IdeFormat.COPILOT && category === "global-preferences")
+	if (ideFormat === IdeFormat.COPILOT && category === "preferences")
 		return (content, _meta) => copilotRepoWide(_meta) + content;
 	if (
 		ideFormat === IdeFormat.COPILOT &&

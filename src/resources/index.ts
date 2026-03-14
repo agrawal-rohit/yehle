@@ -1,8 +1,7 @@
 import type { CAC } from "cac";
 import logger from "../cli/logger";
-import type { InstructionCategory } from "../core/instructions-registry";
 import generateInstructions from "./instructions/command";
-import type { IdeFormat } from "./instructions/config";
+import type { GenerateInstructionsOptions } from "./instructions/config";
 import generatePackage from "./package/command";
 import type { GeneratePackageConfiguration } from "./package/config";
 
@@ -23,26 +22,18 @@ export async function registerResourcesCli(app: CAC) {
 			"--ide-format <format>",
 			"Target IDE format (cursor, windsurf, cline, claude, copilot)",
 		)
-		.action(
-			async (
-				options: Partial<{
-					category: string;
-					instruction: string;
-					ideFormat: string;
-				}>,
-			) => {
-				try {
-					await generateInstructions({
-						category: options.category as InstructionCategory | undefined,
-						instruction: options.instruction,
-						ideFormat: options.ideFormat as IdeFormat | undefined,
-					});
-				} catch (err) {
-					const msg = err instanceof Error ? err.message : String(err);
-					logger.error(msg);
-				}
-			},
-		);
+		.action(async (options: Partial<GenerateInstructionsOptions>) => {
+			try {
+				await generateInstructions({
+					category: options.category,
+					instruction: options.instruction,
+					ideFormat: options.ideFormat,
+				});
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				logger.error(msg);
+			}
+		});
 
 	app
 		.command("package", "Generate a package")

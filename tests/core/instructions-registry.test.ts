@@ -37,7 +37,7 @@ describe("core/instructions-registry", () => {
 	}
 
 	describe("listAvailableInstructions", () => {
-		it("returns instruction names from .md files in global-preferences/", async () => {
+		it("returns instruction names from .md files in preferences/", async () => {
 			setLocalModeEnv(true);
 			const { listAvailableInstructions } = await importInstructionsRegistry();
 			const projectRoot = makeTempDir("yehle-instructions-");
@@ -45,7 +45,7 @@ describe("core/instructions-registry", () => {
 				projectRoot,
 				"templates",
 				"instructions",
-				"global-preferences",
+				"preferences",
 			);
 			fs.mkdirSync(prefsDir, { recursive: true });
 			fs.writeFileSync(path.join(prefsDir, "react-vite.md"), "# React", "utf8");
@@ -55,7 +55,7 @@ describe("core/instructions-registry", () => {
 			process.chdir(projectRoot);
 
 			try {
-				const rules = await listAvailableInstructions("global-preferences");
+				const rules = await listAvailableInstructions("preferences");
 				expect(rules).toContain("react-vite");
 				expect(rules).toContain("general");
 				expect(rules).toHaveLength(2);
@@ -72,7 +72,7 @@ describe("core/instructions-registry", () => {
 				projectRoot,
 				"templates",
 				"instructions",
-				"global-preferences",
+				"preferences",
 			);
 			fs.mkdirSync(prefsDir, { recursive: true });
 			fs.writeFileSync(path.join(prefsDir, "react-vite.mdc"), "# React", "utf8");
@@ -81,7 +81,7 @@ describe("core/instructions-registry", () => {
 			process.chdir(projectRoot);
 
 			try {
-				const rules = await listAvailableInstructions("global-preferences");
+				const rules = await listAvailableInstructions("preferences");
 				expect(rules).toContain("react-vite");
 				expect(rules).toHaveLength(1);
 			} finally {
@@ -124,7 +124,7 @@ describe("core/instructions-registry", () => {
 				projectRoot,
 				"templates",
 				"instructions",
-				"global-preferences",
+				"preferences",
 			);
 			fs.mkdirSync(prefsDir, { recursive: true });
 			const raw = `---
@@ -143,7 +143,7 @@ Content here.`;
 
 			try {
 				const result = await getInstructionContent(
-					"global-preferences",
+					"preferences",
 					"react-vite",
 				);
 				expect(result).toContain("# My Rule");

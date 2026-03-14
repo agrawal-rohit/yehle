@@ -20,8 +20,8 @@ vi.mock("../../../src/core/fs", async (importOriginal) => {
 
 describe("instructions/ide-formats", () => {
 	describe("getInstructionMetadata", () => {
-		it("returns global-preferences metadata with alwaysApply true", () => {
-			const meta = getInstructionMetadata("global-preferences", "react-vite");
+		it("returns preferences metadata with alwaysApply true", () => {
+			const meta = getInstructionMetadata("preferences", "react-vite");
 			expect(meta).toEqual({
 				description: "react vite",
 				globs: ["**/*"],
@@ -49,12 +49,12 @@ describe("instructions/ide-formats", () => {
 	});
 
 	describe("resolveOutputPath", () => {
-		it("resolves Cursor path for global-preferences", () => {
+		it("resolves Cursor path for preferences", () => {
 			const result = resolveOutputPath(
 				IdeFormat.CURSOR,
 				"react-vite",
 				"/project",
-				"global-preferences",
+				"preferences",
 			);
 			expect(result).toBe("/project/.cursor/rules/react-vite.mdc");
 		});
@@ -71,19 +71,19 @@ describe("instructions/ide-formats", () => {
 			);
 		});
 
-		it("resolves Copilot path for global-preferences (repo-wide)", () => {
+		it("resolves Copilot path for preferences (repo-wide)", () => {
 			const result = resolveOutputPath(
 				IdeFormat.COPILOT,
 				"general",
 				"/project",
-				"global-preferences",
+				"preferences",
 			);
 			expect(result).toBe("/project/.github/copilot-instructions.md");
 		});
 
 		it("resolves Windsurf and Claude paths", () => {
 			expect(
-				resolveOutputPath(IdeFormat.WINDSURF, "x", "/p", "global-preferences"),
+				resolveOutputPath(IdeFormat.WINDSURF, "x", "/p", "preferences"),
 			).toBe("/p/.windsurf/rules/x.md");
 			expect(
 				resolveOutputPath(IdeFormat.CLAUDE, "x", "/p", "language"),
@@ -92,13 +92,13 @@ describe("instructions/ide-formats", () => {
 	});
 
 	describe("transformContentForIde", () => {
-		it("adds Cursor frontmatter for global-preferences", () => {
+		it("adds Cursor frontmatter for preferences", () => {
 			const content = "# Rule\n\nContent.";
 			const result = transformContentForIde(
 				content,
 				"react-vite",
 				IdeFormat.CURSOR,
-				"global-preferences",
+				"preferences",
 			);
 			expect(result).toContain("---");
 			expect(result).toContain('description: "react vite"');
@@ -112,7 +112,7 @@ describe("instructions/ide-formats", () => {
 				content,
 				"general",
 				IdeFormat.CLINE,
-				"global-preferences",
+				"preferences",
 			);
 			expect(result).toContain('glob: "**/*"');
 			expect(result).toContain("# Rule");
@@ -142,13 +142,13 @@ describe("instructions/ide-formats", () => {
 			expect(result).toContain('applyTo: "**/*.ts"');
 		});
 
-		it("passes through for Copilot global-preferences (repo-wide, no frontmatter)", () => {
+		it("passes through for Copilot preferences (repo-wide, no frontmatter)", () => {
 			const content = "# Repo-wide rules";
 			const result = transformContentForIde(
 				content,
 				"general",
 				IdeFormat.COPILOT,
-				"global-preferences",
+				"preferences",
 			);
 			expect(result).toBe(content);
 			expect(result).not.toContain("---");
@@ -160,7 +160,7 @@ describe("instructions/ide-formats", () => {
 				content,
 				"general",
 				IdeFormat.WINDSURF,
-				"global-preferences",
+				"preferences",
 			);
 			expect(result).toBe(content);
 		});
@@ -171,7 +171,7 @@ describe("instructions/ide-formats", () => {
 				content,
 				"general",
 				IdeFormat.GEMINI,
-				"global-preferences",
+				"preferences",
 			);
 			expect(result).toBe(content);
 		});
@@ -185,7 +185,7 @@ describe("instructions/ide-formats", () => {
 				"react-vite",
 				"# Content",
 				IdeFormat.CURSOR,
-				"global-preferences",
+				"preferences",
 			);
 			expect(result).toBe(
 				path.join(cwd, ".cursor", "rules", "react-vite.mdc"),
@@ -201,7 +201,7 @@ describe("instructions/ide-formats", () => {
 			);
 			expect(vi.mocked(fs.writeFileAsync)).toHaveBeenCalledWith(
 				result,
-				expect.stringContaining("yehle instruction registry"),
+				expect.stringContaining("instruction registry"),
 			);
 			expect(vi.mocked(fs.writeFileAsync)).toHaveBeenCalledWith(
 				result,

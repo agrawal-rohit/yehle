@@ -4,25 +4,17 @@ import logger, { primaryText } from "../../cli/logger";
 import tasks from "../../cli/tasks";
 import {
 	fetchInstructionContent,
-	type GenerateInstructionsConfiguration,
+	type GenerateInstructionsOptions,
 	getGenerateInstructionsConfiguration,
 } from "./config";
 import { writeInstructionToFile } from "./ide-formats";
 
 export async function generateInstructions(
-	options: Partial<{
-		category: GenerateInstructionsConfiguration["selections"][0]["category"];
-		instruction: string;
-		ideFormat: GenerateInstructionsConfiguration["ideFormat"];
-	}> = {},
+	options: Partial<GenerateInstructionsOptions> = {},
 ): Promise<void> {
 	await logger.intro("adding agent instructions...");
 
-	const config = await getGenerateInstructionsConfiguration({
-		category: options.category,
-		instruction: options.instruction,
-		ideFormat: options.ideFormat,
-	});
+	const config = await getGenerateInstructionsConfiguration(options);
 
 	const cwd = process.cwd();
 	const outputPaths: string[] = [];

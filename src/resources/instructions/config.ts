@@ -33,6 +33,16 @@ export type GenerateInstructionsConfiguration = {
 	ideFormat: IdeFormat;
 };
 
+/** Options for the instructions command (CLI flags / programmatic input). */
+export type GenerateInstructionsOptions = {
+	/** Instruction type: preferences, language, use-case, template. */
+	category?: InstructionCategory;
+	/** Instruction template name (e.g. react-vite). */
+	instruction?: string;
+	/** Target IDE format for written instructions. */
+	ideFormat?: IdeFormat;
+};
+
 /** Describes the configuration for adding instructions during package creation. */
 export type PackageInstructionsConfiguration = {
 	includeInstructions: boolean;
@@ -51,15 +61,16 @@ export const IDE_FORMAT_LABELS: Record<IdeFormat, string> = {
 
 /** Human-readable labels for instruction categories (for prompts). */
 const CATEGORY_LABELS: Record<InstructionCategory, string> = {
-	"global-preferences": "Global preferences",
-	language: "Language",
-	"use-case": "Use case",
-	template: "Template",
+	preferences: "User preferences (coding style, personal quirks)",
+	language: "Language & framework (best practices for a language/framework)",
+	"use-case":
+		"Use case & architecture (UI, API, monorepo, OSS, extension, etc.)",
+	template: "Template-specific (folder setup, commands, workflows)",
 };
 
 /** All instruction categories in display order. */
 const INSTRUCTION_CATEGORIES: InstructionCategory[] = [
-	"global-preferences",
+	"preferences",
 	"language",
 	"use-case",
 	"template",
@@ -78,8 +89,7 @@ async function getMetadataFromFrontmatter(
 	else
 		globs =
 			category === "language" ? getDefaultGlobsForLanguage(name) : ["**/*"];
-	const alwaysApply =
-		frontmatter.alwaysApply ?? category === "global-preferences";
+	const alwaysApply = frontmatter.alwaysApply ?? category === "preferences";
 	return { description, globs, alwaysApply };
 }
 
@@ -125,18 +135,15 @@ async function getMetadataWithPrompts(
 
 /** Gather configuration for standalone instructions (add to existing project). Supports single selection via CLI flags or multi-select by category and instruction. */
 export async function getGenerateInstructionsConfiguration(
-	cliFlags: Partial<{
-		category: InstructionCategory;
-		instruction: string;
-		ideFormat: IdeFormat;
-		metadata: InstructionMetadata;
-	}> = {},
+	cliFlags: Partial<
+		GenerateInstructionsOptions & { metadata?: InstructionMetadata }
+	> = {},
 ): Promise<GenerateInstructionsConfiguration> {
 	const ideFormat = await getIdeFormatSelection(cliFlags);
 
-	// Single selection from CLI flags (e.g. --instruction react-vite [--category global-preferences])
+	// Single selection from CLI flags (e.g. --instruction react-vite [--category preferences])
 	if (cliFlags.instruction) {
-		const category = cliFlags.category ?? "global-preferences";
+		const category = cliFlags.category ?? "preferences";
 		const instruction = await resolveInstructionSelection(
 			category,
 			cliFlags.instruction,
@@ -244,9 +251,7 @@ async function resolveInstructionSelection(
 
 /** Prompts for or validates the IDE format selection. */
 export async function getIdeFormatSelection(
-	cliFlags: Partial<
-		GenerateInstructionsConfiguration & { ideFormat?: IdeFormat }
-	> = {},
+	cliFlags: Partial<GenerateInstructionsOptions> = {},
 ): Promise<IdeFormat> {
 	const ideOptions = Object.values(IdeFormat).map((format) => ({
 		label: IDE_FORMAT_LABELS[format],
