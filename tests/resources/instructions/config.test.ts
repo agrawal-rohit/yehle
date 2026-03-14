@@ -47,7 +47,7 @@ describe("instructions/config", () => {
 		vi.clearAllMocks();
 		vi.mocked(listAvailableInstructions).mockImplementation(
 			async (cat: string) => {
-				if (cat === "preferences") return ["react-vite", "general"];
+				if (cat === "essential") return ["react-vite", "general"];
 				if (cat === "language") return ["typescript"];
 				return [];
 			},
@@ -92,7 +92,7 @@ describe("instructions/config", () => {
 				ideFormat: IdeFormat.CURSOR,
 			});
 			expect(result.selections).toHaveLength(1);
-			expect(result.selections[0].category).toBe("preferences");
+			expect(result.selections[0].category).toBe("essential");
 			expect(result.selections[0].instruction).toBe("react-vite");
 			expect(result.selections[0].metadata).toEqual({
 				description: "react vite",
@@ -107,7 +107,7 @@ describe("instructions/config", () => {
 				instruction: "react-vite",
 				ideFormat: IdeFormat.CURSOR,
 			});
-			expect(result.selections[0].category).toBe("preferences");
+			expect(result.selections[0].category).toBe("essential");
 		});
 
 		it("should use given category when both --instruction and --category provided", async () => {
@@ -133,7 +133,7 @@ describe("instructions/config", () => {
 			await expect(
 				getGenerateInstructionsConfiguration({
 					instruction: "invalid",
-					category: "preferences",
+					category: "essential",
 					ideFormat: IdeFormat.CURSOR,
 				}),
 			).rejects.toThrow("Unsupported instruction");
@@ -174,13 +174,14 @@ describe("instructions/config", () => {
 		it("should delegate to getInstructionContent", async () => {
 			vi.mocked(getInstructionContent).mockResolvedValue("# Content");
 			const result = await fetchInstructionContent(
-				"preferences",
+				"essential",
 				"react-vite",
 			);
 			expect(result).toBe("# Content");
 			expect(getInstructionContent).toHaveBeenCalledWith(
-				"preferences",
+				"essential",
 				"react-vite",
+				undefined,
 			);
 		});
 	});

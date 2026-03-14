@@ -20,8 +20,8 @@ vi.mock("../../../src/core/fs", async (importOriginal) => {
 
 describe("instructions/ide-formats", () => {
 	describe("getInstructionMetadata", () => {
-		it("returns preferences metadata with alwaysApply true", () => {
-			const meta = getInstructionMetadata("preferences", "react-vite");
+		it("returns essential metadata with alwaysApply true", () => {
+			const meta = getInstructionMetadata("essential", "react-vite");
 			expect(meta).toEqual({
 				description: "react vite",
 				globs: ["**/*"],
@@ -49,12 +49,12 @@ describe("instructions/ide-formats", () => {
 	});
 
 	describe("resolveOutputPath", () => {
-		it("resolves Cursor path for preferences", () => {
+		it("resolves Cursor path for essential", () => {
 			const result = resolveOutputPath(
 				IdeFormat.CURSOR,
 				"react-vite",
 				"/project",
-				"preferences",
+				"essential",
 			);
 			expect(result).toBe("/project/.cursor/rules/react-vite.mdc");
 		});
@@ -71,19 +71,19 @@ describe("instructions/ide-formats", () => {
 			);
 		});
 
-		it("resolves Copilot path for preferences (repo-wide)", () => {
+		it("resolves Copilot path for essential (repo-wide)", () => {
 			const result = resolveOutputPath(
 				IdeFormat.COPILOT,
 				"general",
 				"/project",
-				"preferences",
+				"essential",
 			);
 			expect(result).toBe("/project/.github/copilot-instructions.md");
 		});
 
 		it("resolves Windsurf and Claude paths", () => {
 			expect(
-				resolveOutputPath(IdeFormat.WINDSURF, "x", "/p", "preferences"),
+				resolveOutputPath(IdeFormat.WINDSURF, "x", "/p", "essential"),
 			).toBe("/p/.windsurf/rules/x.md");
 			expect(
 				resolveOutputPath(IdeFormat.CLAUDE, "x", "/p", "language"),
@@ -92,13 +92,13 @@ describe("instructions/ide-formats", () => {
 	});
 
 	describe("transformContentForIde", () => {
-		it("adds Cursor frontmatter for preferences", () => {
+		it("adds Cursor frontmatter for essential", () => {
 			const content = "# Rule\n\nContent.";
 			const result = transformContentForIde(
 				content,
 				"react-vite",
 				IdeFormat.CURSOR,
-				"preferences",
+				"essential",
 			);
 			expect(result).toContain("---");
 			expect(result).toContain('description: "react vite"');
@@ -112,7 +112,7 @@ describe("instructions/ide-formats", () => {
 				content,
 				"general",
 				IdeFormat.CLINE,
-				"preferences",
+				"essential",
 			);
 			expect(result).toContain('glob: "**/*"');
 			expect(result).toContain("# Rule");
@@ -142,13 +142,13 @@ describe("instructions/ide-formats", () => {
 			expect(result).toContain('applyTo: "**/*.ts"');
 		});
 
-		it("passes through for Copilot preferences (repo-wide, no frontmatter)", () => {
+		it("passes through for Copilot essential (repo-wide, no frontmatter)", () => {
 			const content = "# Repo-wide rules";
 			const result = transformContentForIde(
 				content,
 				"general",
 				IdeFormat.COPILOT,
-				"preferences",
+				"essential",
 			);
 			expect(result).toBe(content);
 			expect(result).not.toContain("---");
@@ -160,7 +160,7 @@ describe("instructions/ide-formats", () => {
 				content,
 				"general",
 				IdeFormat.WINDSURF,
-				"preferences",
+				"essential",
 			);
 			expect(result).toBe(content);
 		});
@@ -174,7 +174,7 @@ describe("instructions/ide-formats", () => {
 				"react-vite",
 				"# Content",
 				IdeFormat.CURSOR,
-				"preferences",
+				"essential",
 			);
 			expect(result).toBe(
 				path.join(cwd, ".cursor", "rules", "react-vite.mdc"),

@@ -76,7 +76,7 @@ applyTo: "${applyTo}"
 }
 
 /**
- * Copilot repo-wide (e.g. preferences): no frontmatter, content only.
+ * Copilot repo-wide (e.g. essential): no frontmatter, content only.
  * @param _meta - Unused; kept for signature consistency.
  * @returns Empty string.
  */
@@ -96,7 +96,7 @@ export function getInstructionMetadata(
 	name: string,
 ): InstructionMetadata {
 	const humanName = name.replaceAll("-", " ");
-	if (category === "preferences") {
+	if (category === "essential") {
 		return {
 			description: humanName,
 			globs: ["**/*"],
@@ -126,40 +126,45 @@ const IDE_PATH_TEMPLATES: Record<
 	Record<InstructionCategory, string>
 > = {
 	[IdeFormat.CURSOR]: {
-		preferences: ".cursor/rules/{{ruleName}}.mdc",
+		essential: ".cursor/rules/{{ruleName}}.mdc",
+		optional: ".cursor/rules/{{ruleName}}.mdc",
 		language: ".cursor/rules/{{ruleName}}.mdc",
-		"use-case": ".cursor/rules/{{ruleName}}.mdc",
+		"project-spec": ".cursor/rules/{{ruleName}}.mdc",
 		template: ".cursor/rules/{{ruleName}}.mdc",
 	},
 	[IdeFormat.WINDSURF]: {
-		preferences: ".windsurf/rules/{{ruleName}}.md",
+		essential: ".windsurf/rules/{{ruleName}}.md",
+		optional: ".windsurf/rules/{{ruleName}}.md",
 		language: ".windsurf/rules/{{ruleName}}.md",
-		"use-case": ".windsurf/rules/{{ruleName}}.md",
+		"project-spec": ".windsurf/rules/{{ruleName}}.md",
 		template: ".windsurf/rules/{{ruleName}}.md",
 	},
 	[IdeFormat.CLINE]: {
-		preferences: ".clinerules/{{ruleName}}.mdc",
+		essential: ".clinerules/{{ruleName}}.mdc",
+		optional: ".clinerules/{{ruleName}}.mdc",
 		language: ".clinerules/{{ruleName}}.mdc",
-		"use-case": ".clinerules/{{ruleName}}.mdc",
+		"project-spec": ".clinerules/{{ruleName}}.mdc",
 		template: ".clinerules/{{ruleName}}.mdc",
 	},
 	[IdeFormat.CLAUDE]: {
-		preferences: ".claude/rules/{{ruleName}}.md",
+		essential: ".claude/rules/{{ruleName}}.md",
+		optional: ".claude/rules/{{ruleName}}.md",
 		language: ".claude/rules/{{ruleName}}.md",
-		"use-case": ".claude/rules/{{ruleName}}.md",
+		"project-spec": ".claude/rules/{{ruleName}}.md",
 		template: ".claude/rules/{{ruleName}}.md",
 	},
 	[IdeFormat.COPILOT]: {
-		preferences: ".github/copilot-instructions.md",
+		essential: ".github/copilot-instructions.md",
+		optional: ".github/instructions/{{ruleName}}.instructions.md",
 		language: ".github/instructions/{{ruleName}}.instructions.md",
-		"use-case": ".github/instructions/{{ruleName}}.instructions.md",
+		"project-spec": ".github/instructions/{{ruleName}}.instructions.md",
 		template: ".github/instructions/{{ruleName}}.instructions.md",
 	},
 };
 
 /**
  * Get the transform function for the given IDE and category (adds frontmatter or passes through).
- * Copilot: repo-wide (no frontmatter) for preferences; path-specific frontmatter otherwise.
+ * Copilot: repo-wide (no frontmatter) for essential; path-specific frontmatter otherwise.
  * @param ideFormat - Target IDE format.
  * @param category - Instruction category.
  * @returns A function (content, meta) => transformed string, or undefined when no transform (e.g. Windsurf).
@@ -168,12 +173,13 @@ function getTransformForIde(
 	ideFormat: IdeFormat,
 	category: InstructionCategory,
 ): ((content: string, meta: InstructionMetadata) => string) | undefined {
-	if (ideFormat === IdeFormat.COPILOT && category === "preferences")
+	if (ideFormat === IdeFormat.COPILOT && category === "essential")
 		return (content, _meta) => copilotRepoWide(_meta) + content;
 	if (
 		ideFormat === IdeFormat.COPILOT &&
-		(category === "language" ||
-			category === "use-case" ||
+		(category === "optional" ||
+			category === "language" ||
+			category === "project-spec" ||
 			category === "template")
 	)
 		return (content, meta) => copilotFrontmatter(meta) + content;

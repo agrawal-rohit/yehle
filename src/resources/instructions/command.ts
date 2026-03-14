@@ -34,6 +34,7 @@ export async function generateInstructions(
 				const content = await fetchInstructionContent(
 					sel.category,
 					sel.instruction,
+					sel.context,
 				);
 				const outputPath = await writeInstructionToFile(
 					cwd,

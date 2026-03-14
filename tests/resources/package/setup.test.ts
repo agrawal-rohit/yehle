@@ -53,6 +53,11 @@ vi.mock("../../../src/core/template-registry", () => ({
 	resolveTemplatesDir: vi.fn(),
 }));
 
+vi.mock("../../../src/core/instructions-registry", () => ({
+	listAvailableInstructions: vi.fn(() => Promise.resolve([])),
+	readOptionalInstructionsMapping: vi.fn(() => Promise.resolve([])),
+}));
+
 vi.mock("../../../src/core/utils", () => ({
 	capitalizeFirstLetter: vi.fn(),
 	toSlug: vi.fn(),
@@ -201,6 +206,7 @@ describe("resources/package/setup", () => {
 			expect(fetchInstructionContent).toHaveBeenCalledWith(
 				"language",
 				"typescript",
+				{ lang: "typescript" },
 			);
 			expect(writeInstructionToFile).toHaveBeenCalledWith(
 				"/target",

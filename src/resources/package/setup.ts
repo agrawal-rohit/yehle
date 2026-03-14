@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import mustache from "mustache";
 import mitLicense from "spdx-license-list/licenses/MIT.json";
 import {
 	copyDirSafeAsync,
@@ -9,8 +10,20 @@ import {
 	renderMustacheTemplates,
 	writeFileAsync,
 } from "../../core/fs";
+import {
+	type InstructionContext,
+	listAvailableInstructions,
+	readOptionalInstructionsMapping,
+} from "../../core/instructions-registry";
 import { resolveTemplatesDir } from "../../core/template-registry";
-import { INSTRUCTION_CATEGORY_LANGUAGE } from "../instructions/config";
+import {
+	fetchInstructionContent,
+	getLanguageInstructionForPackageLang,
+	getLanguageInstructionMetadata,
+	getMetadataFromFrontmatter,
+	INSTRUCTION_CATEGORY_LANGUAGE,
+} from "../instructions/config";
+import { writeInstructionToFile } from "../instructions/ide-formats";
 import type { GeneratePackageConfiguration } from "./config";
 import { templatePublicPaths } from "./config";
 
@@ -84,10 +97,10 @@ export async function applyTemplateModifications(
 
 /**
  * Add agent instructions to the package when includeInstructions is true and instructionsIdeFormat is set.
- * Writes the language-specific instruction (e.g. typescript) for the package language into the target directory.
+ * Applies in order: essential (default set) → language → project-spec (package) → template (pre-processed) → mapped optional.
  * @param targetDir - Absolute path to the package root directory.
  * @param generateConfig - Generate configuration (must have includeInstructions, instructionsIdeFormat, and lang).
- * @returns Promise that resolves when the instruction file has been written, or immediately when instructions are disabled.
+ * @returns Promise that resolves when all instruction files have been written, or immediately when instructions are disabled.
  */
 export async function addPackageInstructions(
 	targetDir: string,
@@ -99,35 +112,117 @@ export async function addPackageInstructions(
 	)
 		return;
 
-	const {
-		getLanguageInstructionForPackageLang,
-		fetchInstructionContent,
-		getLanguageInstructionMetadata,
-	} = await import("../instructions/config");
-	const { writeInstructionToFile } = await import(
-		"../instructions/ide-formats"
-	);
+	const ideFormat = generateConfig.instructionsIdeFormat;
+	const projectSpec = "package";
+	const ctx: InstructionContext = {
+		lang: generateConfig.lang,
+		projectSpec,
+		template: generateConfig.template,
+	};
 
-	const instructionName = await getLanguageInstructionForPackageLang(
+	// 1. Essential (all files in essential)
+	const essentialNames = await listAvailableInstructions("essential");
+	for (const name of essentialNames) {
+		const content = await fetchInstructionContent("essential", name);
+		const metadata = await getMetadataFromFrontmatter("essential", name);
+		await writeInstructionToFile(
+			targetDir,
+			name,
+			content,
+			ideFormat,
+			"essential",
+			metadata,
+		);
+	}
+
+	// 2. Language (single instruction for package lang)
+	const languageName = await getLanguageInstructionForPackageLang(
 		generateConfig.lang,
 	);
-	if (!instructionName) return;
+	if (languageName) {
+		const metadata = await getLanguageInstructionMetadata(generateConfig.lang);
+		if (metadata) {
+			const content = await fetchInstructionContent(
+				INSTRUCTION_CATEGORY_LANGUAGE,
+				languageName,
+				{ lang: generateConfig.lang },
+			);
+			await writeInstructionToFile(
+				targetDir,
+				languageName,
+				content,
+				ideFormat,
+				INSTRUCTION_CATEGORY_LANGUAGE,
+				metadata,
+			);
+		}
+	}
 
-	const metadata = await getLanguageInstructionMetadata(generateConfig.lang);
-	if (!metadata) return;
+	// 3. Project-spec (package)
+	const projectSpecNames = await listAvailableInstructions("project-spec", {
+		lang: generateConfig.lang,
+		projectSpec,
+	});
+	for (const name of projectSpecNames) {
+		const content = await fetchInstructionContent("project-spec", name, ctx);
+		const metadata = await getMetadataFromFrontmatter(
+			"project-spec",
+			name,
+			ctx,
+		);
+		await writeInstructionToFile(
+			targetDir,
+			name,
+			content,
+			ideFormat,
+			"project-spec",
+			metadata,
+		);
+	}
 
-	const content = await fetchInstructionContent(
-		INSTRUCTION_CATEGORY_LANGUAGE,
-		instructionName,
+	// 4. Template (from chosen template dir; pre-process with mustache)
+	const templateNames = await listAvailableInstructions("template", ctx);
+	const templateDir = await resolveTemplatesDir(
+		generateConfig.lang,
+		`package/${generateConfig.template}`,
 	);
-	await writeInstructionToFile(
-		targetDir,
-		instructionName,
-		content,
-		generateConfig.instructionsIdeFormat,
-		INSTRUCTION_CATEGORY_LANGUAGE,
-		metadata,
-	);
+	const mustacheView = { ...generateConfig };
+	for (const name of templateNames) {
+		let content = await fetchInstructionContent("template", name, ctx);
+		try {
+			content = mustache.render(content, mustacheView);
+		} catch {
+			// If mustache fails, use raw content
+		}
+		const metadata = await getMetadataFromFrontmatter("template", name, ctx);
+		await writeInstructionToFile(
+			targetDir,
+			name,
+			content,
+			ideFormat,
+			"template",
+			metadata,
+		);
+	}
+
+	// 5. Mapped optional (from yehle-instructions.json in template dir)
+	const optionalNames = await readOptionalInstructionsMapping(templateDir);
+	for (const name of optionalNames) {
+		try {
+			const content = await fetchInstructionContent("optional", name);
+			const metadata = await getMetadataFromFrontmatter("optional", name);
+			await writeInstructionToFile(
+				targetDir,
+				name,
+				content,
+				ideFormat,
+				"optional",
+				metadata,
+			);
+		} catch {
+			// Skip optional instruction if not found or invalid
+		}
+	}
 }
 
 /**

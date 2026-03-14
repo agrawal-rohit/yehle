@@ -6,7 +6,6 @@ import {
 	DEFAULT_GITHUB_OWNER,
 	DEFAULT_GITHUB_REPO,
 	GITHUB_HEADERS,
-	getLocalInstructionsRoot,
 	getLocalRoot,
 	getLocalTemplatesRoot,
 } from "../../src/core/repo";
@@ -133,39 +132,4 @@ describe("core/repo", () => {
 		});
 	});
 
-	describe("getLocalInstructionsRoot", () => {
-		it("returns path to instructions when instructions exists under cwd", async () => {
-			const projectRoot = makeTempDir("yehle-repo-");
-			const instructionsDir = path.join(projectRoot, "instructions");
-			fs.mkdirSync(instructionsDir, { recursive: true });
-
-			const originalCwd = process.cwd();
-			process.chdir(projectRoot);
-
-			try {
-				const result = await getLocalInstructionsRoot();
-				expect(result).not.toBeNull();
-				if (result === null) return;
-				expect(fs.realpathSync(result)).toBe(
-					fs.realpathSync(instructionsDir),
-				);
-			} finally {
-				process.chdir(originalCwd);
-			}
-		});
-
-		it("returns null when instructions does not exist under cwd", async () => {
-			const projectRoot = makeTempDir("yehle-repo-");
-
-			const originalCwd = process.cwd();
-			process.chdir(projectRoot);
-
-			try {
-				const result = await getLocalInstructionsRoot();
-				expect(result).toBeNull();
-			} finally {
-				process.chdir(originalCwd);
-			}
-		});
-	});
 });

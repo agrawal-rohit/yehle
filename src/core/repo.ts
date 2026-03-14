@@ -15,7 +15,7 @@ export const GITHUB_HEADERS = {
 
 /**
  * Resolve a directory under process.cwd() and return its path if it exists.
- * @param dirName - Name of the directory under cwd (e.g. "templates", "instructions").
+ * @param dirName - Name of the directory under cwd (e.g. "templates").
  * @returns The absolute path if the directory exists, null otherwise.
  */
 export async function getLocalRoot(dirName: string): Promise<string | null> {
@@ -30,12 +30,4 @@ export async function getLocalRoot(dirName: string): Promise<string | null> {
  */
 export async function getLocalTemplatesRoot(): Promise<string | null> {
 	return getLocalRoot("templates");
-}
-
-/**
- * Resolve the local instructions root directory (process.cwd()/instructions).
- * @returns The absolute path if it exists, null otherwise.
- */
-export async function getLocalInstructionsRoot(): Promise<string | null> {
-	return getLocalRoot("instructions");
 }

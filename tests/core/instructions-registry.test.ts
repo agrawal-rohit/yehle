@@ -37,20 +37,25 @@ describe("core/instructions-registry", () => {
 	}
 
 	describe("listAvailableInstructions", () => {
-		it("returns instruction names from .md files in instructions/preferences/", async () => {
+		it("returns instruction names from .md files in templates/instructions/essential/", async () => {
 			setLocalModeEnv(true);
 			const { listAvailableInstructions } = await importInstructionsRegistry();
 			const projectRoot = makeTempDir("yehle-instructions-");
-			const prefsDir = path.join(projectRoot, "instructions", "preferences");
-			fs.mkdirSync(prefsDir, { recursive: true });
-			fs.writeFileSync(path.join(prefsDir, "react-vite.md"), "# React", "utf8");
-			fs.writeFileSync(path.join(prefsDir, "general.md"), "# General", "utf8");
+			const essentialDir = path.join(
+				projectRoot,
+				"templates",
+				"instructions",
+				"essential",
+			);
+			fs.mkdirSync(essentialDir, { recursive: true });
+			fs.writeFileSync(path.join(essentialDir, "react-vite.md"), "# React", "utf8");
+			fs.writeFileSync(path.join(essentialDir, "general.md"), "# General", "utf8");
 
 			const originalCwd = process.cwd();
 			process.chdir(projectRoot);
 
 			try {
-				const rules = await listAvailableInstructions("preferences");
+				const rules = await listAvailableInstructions("essential");
 				expect(rules).toContain("react-vite");
 				expect(rules).toContain("general");
 				expect(rules).toHaveLength(2);
@@ -63,15 +68,20 @@ describe("core/instructions-registry", () => {
 			setLocalModeEnv(true);
 			const { listAvailableInstructions } = await importInstructionsRegistry();
 			const projectRoot = makeTempDir("yehle-instructions-");
-			const prefsDir = path.join(projectRoot, "instructions", "preferences");
-			fs.mkdirSync(prefsDir, { recursive: true });
-			fs.writeFileSync(path.join(prefsDir, "react-vite.mdc"), "# React", "utf8");
+			const essentialDir = path.join(
+				projectRoot,
+				"templates",
+				"instructions",
+				"essential",
+			);
+			fs.mkdirSync(essentialDir, { recursive: true });
+			fs.writeFileSync(path.join(essentialDir, "react-vite.mdc"), "# React", "utf8");
 
 			const originalCwd = process.cwd();
 			process.chdir(projectRoot);
 
 			try {
-				const rules = await listAvailableInstructions("preferences");
+				const rules = await listAvailableInstructions("essential");
 				expect(rules).toContain("react-vite");
 				expect(rules).toHaveLength(1);
 			} finally {
@@ -79,11 +89,16 @@ describe("core/instructions-registry", () => {
 			}
 		});
 
-		it("returns instruction names from instructions/language/", async () => {
+		it("returns instruction names from templates/<lang>/instructions/ for language", async () => {
 			setLocalModeEnv(true);
 			const { listAvailableInstructions } = await importInstructionsRegistry();
 			const projectRoot = makeTempDir("yehle-instructions-");
-			const langDir = path.join(projectRoot, "instructions", "language");
+			const langDir = path.join(
+				projectRoot,
+				"templates",
+				"typescript",
+				"instructions",
+			);
 			fs.mkdirSync(langDir, { recursive: true });
 			fs.writeFileSync(
 				path.join(langDir, "typescript.md"),
@@ -95,7 +110,9 @@ describe("core/instructions-registry", () => {
 			process.chdir(projectRoot);
 
 			try {
-				const rules = await listAvailableInstructions("language");
+				const rules = await listAvailableInstructions("language", {
+					lang: "typescript",
+				});
 				expect(rules).toContain("typescript");
 				expect(rules).toHaveLength(1);
 			} finally {
@@ -103,20 +120,20 @@ describe("core/instructions-registry", () => {
 			}
 		});
 
-		it("returns instruction names from legacy path templates/instructions/<category>/ when instructions/ is absent", async () => {
+		it("returns instruction names from templates/instructions/<category>/", async () => {
 			setLocalModeEnv(true);
 			const { listAvailableInstructions } = await importInstructionsRegistry();
 			const projectRoot = makeTempDir("yehle-instructions-");
-			const legacyPrefsDir = path.join(
+			const essentialDir = path.join(
 				projectRoot,
 				"templates",
 				"instructions",
-				"preferences",
+				"essential",
 			);
-			fs.mkdirSync(legacyPrefsDir, { recursive: true });
+			fs.mkdirSync(essentialDir, { recursive: true });
 			fs.writeFileSync(
-				path.join(legacyPrefsDir, "legacy-rule.md"),
-				"# Legacy",
+				path.join(essentialDir, "custom-rule.md"),
+				"# Custom",
 				"utf8",
 			);
 
@@ -124,23 +141,25 @@ describe("core/instructions-registry", () => {
 			process.chdir(projectRoot);
 
 			try {
-				const rules = await listAvailableInstructions("preferences");
-				expect(rules).toContain("legacy-rule");
+				const rules = await listAvailableInstructions("essential");
+				expect(rules).toContain("custom-rule");
 				expect(rules).toHaveLength(1);
 			} finally {
 				process.chdir(originalCwd);
 			}
 		});
 
-		it("returns instruction names from templates/instructions/template/ for template category", async () => {
+		it("returns instruction names from templates/<lang>/<projectSpec>/<template>/instructions/ for template category", async () => {
 			setLocalModeEnv(true);
 			const { listAvailableInstructions } = await importInstructionsRegistry();
 			const projectRoot = makeTempDir("yehle-instructions-");
 			const templateDir = path.join(
 				projectRoot,
 				"templates",
+				"typescript",
+				"package",
+				"basic",
 				"instructions",
-				"template",
 			);
 			fs.mkdirSync(templateDir, { recursive: true });
 			fs.writeFileSync(
@@ -153,7 +172,11 @@ describe("core/instructions-registry", () => {
 			process.chdir(projectRoot);
 
 			try {
-				const rules = await listAvailableInstructions("template");
+				const rules = await listAvailableInstructions("template", {
+					lang: "typescript",
+					projectSpec: "package",
+					template: "basic",
+				});
 				expect(rules).toContain("my-template");
 				expect(rules).toHaveLength(1);
 			} finally {
@@ -165,16 +188,14 @@ describe("core/instructions-registry", () => {
 			setLocalModeEnv(true);
 			const { listAvailableInstructions } = await importInstructionsRegistry();
 			const projectRoot = makeTempDir("yehle-instructions-");
-			fs.mkdirSync(path.join(projectRoot, "instructions"), {
-				recursive: true,
-			});
-			// No preferences/ or use-case/ subdir
+			fs.mkdirSync(path.join(projectRoot, "templates"), { recursive: true });
+			// No templates/instructions/essential/
 
 			const originalCwd = process.cwd();
 			process.chdir(projectRoot);
 
 			try {
-				const rules = await listAvailableInstructions("preferences");
+				const rules = await listAvailableInstructions("essential");
 				expect(rules).toEqual([]);
 			} finally {
 				process.chdir(originalCwd);
@@ -188,20 +209,21 @@ describe("core/instructions-registry", () => {
 			const { resolveInstructionsCategoryDir } =
 				await importInstructionsRegistry();
 			const projectRoot = makeTempDir("yehle-instructions-");
-			fs.mkdirSync(path.join(projectRoot, "instructions"), {
+			fs.mkdirSync(path.join(projectRoot, "templates"), {
 				recursive: true,
 			});
+			// No templates/instructions/essential/
 
 			const originalCwd = process.cwd();
 			process.chdir(projectRoot);
 
 			try {
 				await expect(
-					resolveInstructionsCategoryDir("preferences"),
-				).rejects.toThrow(/Local instructions not found for category "preferences"/);
+					resolveInstructionsCategoryDir("essential"),
+				).rejects.toThrow(/Local instructions not found for category "essential"/);
 				await expect(
-					resolveInstructionsCategoryDir("preferences"),
-				).rejects.toThrow(/instructions\/preferences/);
+					resolveInstructionsCategoryDir("essential"),
+				).rejects.toThrow(/templates\/instructions\/essential/);
 			} finally {
 				process.chdir(originalCwd);
 			}
@@ -214,8 +236,13 @@ describe("core/instructions-registry", () => {
 			const { getInstructionWithFrontmatter } =
 				await importInstructionsRegistry();
 			const projectRoot = makeTempDir("yehle-instructions-");
-			const prefsDir = path.join(projectRoot, "instructions", "preferences");
-			fs.mkdirSync(prefsDir, { recursive: true });
+			const essentialDir = path.join(
+				projectRoot,
+				"templates",
+				"instructions",
+				"essential",
+			);
+			fs.mkdirSync(essentialDir, { recursive: true });
 			const raw = `---
 description: "My rule"
 globs: ["**/*.ts"]
@@ -223,14 +250,14 @@ alwaysOn: true
 ---
 
 # Body`;
-			fs.writeFileSync(path.join(prefsDir, "rule.md"), raw, "utf8");
+			fs.writeFileSync(path.join(essentialDir, "rule.md"), raw, "utf8");
 
 			const originalCwd = process.cwd();
 			process.chdir(projectRoot);
 
 			try {
 				const { content, frontmatter } =
-					await getInstructionWithFrontmatter("preferences", "rule");
+					await getInstructionWithFrontmatter("essential", "rule");
 				expect(content).toContain("# Body");
 				expect(frontmatter.description).toBe("My rule");
 				expect(frontmatter.globs).toEqual(["**/*.ts"]);
@@ -246,8 +273,13 @@ alwaysOn: true
 			setLocalModeEnv(true);
 			const { getInstructionContent } = await importInstructionsRegistry();
 			const projectRoot = makeTempDir("yehle-instructions-");
-			const prefsDir = path.join(projectRoot, "instructions", "preferences");
-			fs.mkdirSync(prefsDir, { recursive: true });
+			const essentialDir = path.join(
+				projectRoot,
+				"templates",
+				"instructions",
+				"essential",
+			);
+			fs.mkdirSync(essentialDir, { recursive: true });
 			const raw = `---
 description: "react vite"
 globs: ["**/*"]
@@ -257,14 +289,14 @@ alwaysApply: true
 # My Rule
 
 Content here.`;
-			fs.writeFileSync(path.join(prefsDir, "react-vite.md"), raw, "utf8");
+			fs.writeFileSync(path.join(essentialDir, "react-vite.md"), raw, "utf8");
 
 			const originalCwd = process.cwd();
 			process.chdir(projectRoot);
 
 			try {
 				const result = await getInstructionContent(
-					"preferences",
+					"essential",
 					"react-vite",
 				);
 				expect(result).toContain("# My Rule");
@@ -279,16 +311,21 @@ Content here.`;
 			setLocalModeEnv(true);
 			const { getInstructionContent } = await importInstructionsRegistry();
 			const projectRoot = makeTempDir("yehle-instructions-");
-			const prefsDir = path.join(projectRoot, "instructions", "preferences");
-			fs.mkdirSync(prefsDir, { recursive: true });
-			fs.writeFileSync(path.join(prefsDir, "other.md"), "# Other", "utf8");
+			const essentialDir = path.join(
+				projectRoot,
+				"templates",
+				"instructions",
+				"essential",
+			);
+			fs.mkdirSync(essentialDir, { recursive: true });
+			fs.writeFileSync(path.join(essentialDir, "other.md"), "# Other", "utf8");
 
 			const originalCwd = process.cwd();
 			process.chdir(projectRoot);
 
 			try {
 				await expect(
-					getInstructionContent("preferences", "nonexistent"),
+					getInstructionContent("essential", "nonexistent"),
 				).rejects.toThrow(/Instruction "nonexistent" not found/);
 			} finally {
 				process.chdir(originalCwd);

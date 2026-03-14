@@ -52,7 +52,7 @@ describe("resources/instructions/command", () => {
 		vi.mocked(getGenerateInstructionsConfiguration).mockResolvedValue({
 			selections: [
 				{
-					category: "preferences",
+					category: "essential",
 					instruction: "react-vite",
 					metadata: {
 						description: "react vite",
@@ -90,15 +90,16 @@ describe("resources/instructions/command", () => {
 				ideFormat: IdeFormat.CURSOR,
 			});
 			expect(fetchInstructionContent).toHaveBeenCalledWith(
-				"preferences",
+				"essential",
 				"react-vite",
+				undefined,
 			);
 			expect(writeInstructionToFile).toHaveBeenCalledWith(
 				process.cwd(),
 				"react-vite",
 				"# Rule content",
 				IdeFormat.CURSOR,
-				"preferences",
+				"essential",
 				expect.objectContaining({
 					description: "react vite",
 					globs: ["**/*"],

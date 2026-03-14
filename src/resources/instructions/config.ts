@@ -5,7 +5,10 @@ import {
 	getInstructionContent,
 	getInstructionWithFrontmatter,
 	type InstructionCategory,
+	type InstructionContext,
 	listAvailableInstructions,
+	listLanguageNames,
+	listProjectSpecNames,
 } from "../../core/instructions-registry";
 import { capitalizeFirstLetter } from "../../core/utils";
 import type { InstructionMetadata } from "./ide-formats";
@@ -24,6 +27,8 @@ export type InstructionSelection = {
 	category: InstructionCategory;
 	instruction: string;
 	metadata: InstructionMetadata;
+	/** Required when fetching content for language, project-spec, or template. */
+	context?: InstructionContext;
 };
 
 /** Configuration for adding instructions to an existing project (supports multiple selections). */
@@ -34,7 +39,7 @@ export type GenerateInstructionsConfiguration = {
 
 /** Options for the instructions command (CLI flags / programmatic input). */
 export type GenerateInstructionsOptions = {
-	/** Instruction type: preferences, language, use-case, template. */
+	/** Instruction type: essential, optional, language, project-spec, template. */
 	category?: InstructionCategory;
 	/** Instruction template name (e.g. react-vite). */
 	instruction?: string;
@@ -59,26 +64,29 @@ export const IDE_FORMAT_LABELS: Record<IdeFormat, string> = {
 
 /** Default category when --instruction is provided without --category. */
 export const DEFAULT_INSTRUCTION_CATEGORY =
-	"preferences" as const satisfies InstructionCategory;
+	"essential" as const satisfies InstructionCategory;
 
-/** Category for language/framework instructions (used by package setup and language helpers). */
+/** Category for language instructions (used by package setup and language helpers). */
 export const INSTRUCTION_CATEGORY_LANGUAGE =
 	"language" as const satisfies InstructionCategory;
 
 /** Human-readable labels for instruction categories (for prompts). */
 const CATEGORY_LABELS: Record<InstructionCategory, string> = {
-	preferences: "User preferences (coding style, personal quirks)",
-	language: "Language & framework (best practices for a language/framework)",
-	"use-case":
-		"Use case & architecture (UI, API, monorepo, OSS, extension, etc.)",
+	essential: "Essential (default coding styles)",
+	optional:
+		"Optional / situational (e.g. react, node; extra based on project setup)",
+	language: "Language (best practices for a language)",
+	"project-spec":
+		"Project spec (use case & architecture: package, app, monorepo, etc.)",
 	template: "Template-specific (folder setup, commands, workflows)",
 };
 
 /** All instruction categories in display order. */
 export const INSTRUCTION_CATEGORIES: InstructionCategory[] = [
-	"preferences",
+	"essential",
+	"optional",
 	"language",
-	"use-case",
+	"project-spec",
 	"template",
 ];
 
@@ -89,16 +97,22 @@ export const INSTRUCTION_CATEGORY_OPTION_DESCRIPTION = `Instruction type (${INST
 export const IDE_FORMAT_OPTION_DESCRIPTION = `Target IDE format (${Object.values(IdeFormat).join(", ")})`;
 
 /**
- * Build metadata from rule frontmatter only (no prompts). Used for multi-select and single-selection flows.
+ * Build metadata from rule frontmatter only (no prompts). Used for multi-select, single-selection, and package-instructions flows.
  * @param category - Instruction category.
  * @param name - Instruction name (basename without extension).
+ * @param context - Required for language, project-spec, template.
  * @returns Promise resolving to metadata (description, globs, alwaysApply).
  */
-async function getMetadataFromFrontmatter(
+export async function getMetadataFromFrontmatter(
 	category: InstructionCategory,
 	name: string,
+	context?: InstructionContext,
 ): Promise<InstructionMetadata> {
-	const { frontmatter } = await getInstructionWithFrontmatter(category, name);
+	const { frontmatter } = await getInstructionWithFrontmatter(
+		category,
+		name,
+		context,
+	);
 	const description = frontmatter.description ?? name.replaceAll("-", " ");
 	const globs =
 		(frontmatter.globs?.length ? frontmatter.globs : undefined) ??
@@ -110,30 +124,33 @@ async function getMetadataFromFrontmatter(
 	return { description, globs, alwaysApply };
 }
 
+/** Global categories that do not require context (can be listed without lang/projectSpec/template). */
+const GLOBAL_CATEGORIES: InstructionCategory[] = ["essential", "optional"];
+
 /**
- * Resolve an instruction name to (category, instruction) by searching all categories.
- * Used when only --instruction is provided (category unknown).
- * @param instructionName - Instruction name to find (e.g. "react-vite", "typescript").
+ * Resolve an instruction name to (category, instruction) by searching global categories only.
+ * Used when only --instruction is provided (category unknown). Scoped categories require context and are not searched.
+ * @param instructionName - Instruction name to find (e.g. "code-style", "react").
  * @returns The category and instruction name when found.
- * @throws When the instruction is not found in any category.
+ * @throws When the instruction is not found in any global category.
  */
 async function resolveInstructionInAnyCategory(
 	instructionName: string,
 ): Promise<{ category: InstructionCategory; instruction: string }> {
 	if (!IS_LOCAL_MODE) {
 		await tasks.runWithTasks("Checking available instructions", async () => {
-			for (const cat of INSTRUCTION_CATEGORIES) {
+			for (const cat of GLOBAL_CATEGORIES) {
 				await listAvailableInstructions(cat);
 			}
 		});
 	}
-	for (const category of INSTRUCTION_CATEGORIES) {
+	for (const category of GLOBAL_CATEGORIES) {
 		const names = await listAvailableInstructions(category);
 		if (names.includes(instructionName))
 			return { category, instruction: instructionName };
 	}
 	throw new Error(
-		`Instruction "${instructionName}" not found in any category (checked: ${INSTRUCTION_CATEGORIES.join(", ")})`,
+		`Instruction "${instructionName}" not found in any category (checked: ${GLOBAL_CATEGORIES.join(", ")})`,
 	);
 }
 
@@ -158,52 +175,186 @@ export async function getGenerateInstructionsConfiguration(
 						cliFlags.category,
 						cliFlags.instruction,
 						IS_LOCAL_MODE,
+						undefined,
 					),
 				}
 			: await resolveInstructionInAnyCategory(cliFlags.instruction);
-		const metadata = await getMetadataFromFrontmatter(category, instruction);
+		const metadata = await getMetadataFromFrontmatter(
+			category,
+			instruction,
+			undefined,
+		);
 		return {
 			selections: [{ category, instruction, metadata }],
 			ideFormat,
 		};
 	}
 
-	// Multi-select: choose instruction type(s), then instruction(s) per type
-	const selectedCategories = await promptCategoryMultiSelect();
-	if (selectedCategories.length === 0)
-		throw new Error("No instruction types selected.");
-
-	const availableByCategory =
-		await loadAvailableInstructionsByCategory(selectedCategories);
-	const selections: InstructionSelection[] = [];
-
-	for (const category of selectedCategories) {
-		const available = availableByCategory.get(category) ?? [];
-		if (available.length === 0) continue;
-		const chosen = await promptInstructionMultiSelect(category, available);
-		for (const instruction of chosen) {
-			const metadata = await getMetadataFromFrontmatter(category, instruction);
-			selections.push({ category, instruction, metadata });
-		}
-	}
-
+	// Granular flow: essential → languages → project-spec → optional (then write in that order)
+	const selections = await getGranularInstructionsSelections();
 	if (selections.length === 0) throw new Error("No instructions selected.");
-
 	return { selections, ideFormat };
 }
 
 /**
+ * Run the granular prompt flow: essential (multi) → languages (multi) → project-spec (single, scoped by first language) → optional (multi).
+ * Returns selections in write order: essential → language → project-spec → optional.
+ */
+async function getGranularInstructionsSelections(): Promise<
+	InstructionSelection[]
+> {
+	const selections: InstructionSelection[] = [];
+
+	// 1. Essential
+	const essentialNames = await listAvailableInstructions("essential");
+	if (essentialNames.length > 0) {
+		const chosen = await prompts.multiselectInput(
+			"Which essential (default) instructions do you want?",
+			{
+				options: essentialNames.map((name) => ({
+					label: capitalizeFirstLetter(name.replaceAll("-", " ")),
+					value: name,
+				})),
+			},
+		);
+		for (const name of chosen as string[]) {
+			const metadata = await getMetadataFromFrontmatter(
+				"essential",
+				name,
+				undefined,
+			);
+			selections.push({
+				category: "essential",
+				instruction: name,
+				metadata,
+			});
+		}
+	}
+
+	// 2. Languages
+	const langOptions = await getAvailableLanguageOptions();
+	let chosenLangs: string[] = [];
+	if (langOptions.length > 0) {
+		chosenLangs = (await prompts.multiselectInput(
+			"Which languages are you using?",
+			{ options: langOptions },
+		)) as string[];
+		for (const lang of chosenLangs) {
+			const names = await listAvailableInstructions("language", {
+				lang,
+			});
+			if (names.length > 0) {
+				for (const name of names) {
+					const metadata = await getMetadataFromFrontmatter("language", name, {
+						lang,
+					});
+					selections.push({
+						category: "language",
+						instruction: name,
+						metadata,
+						context: { lang },
+					});
+				}
+			}
+		}
+	}
+
+	// 3. Project-spec (list from first selected language)
+	const projectSpecLang =
+		chosenLangs.length > 0 ? chosenLangs[0] : langOptions[0]?.value;
+	if (projectSpecLang) {
+		const projectSpecNames = await listProjectSpecNames(projectSpecLang);
+		if (projectSpecNames.length > 0) {
+			const chosenProjectSpec = await prompts.selectInput(
+				"What is the project spec?",
+				{
+					options: projectSpecNames.map((name) => ({
+						label: capitalizeFirstLetter(name.replaceAll("-", " ")),
+						value: name,
+					})),
+				},
+				projectSpecNames[0],
+			);
+			if (chosenProjectSpec) {
+				const names = await listAvailableInstructions("project-spec", {
+					lang: projectSpecLang,
+					projectSpec: chosenProjectSpec,
+				});
+				for (const name of names) {
+					const metadata = await getMetadataFromFrontmatter(
+						"project-spec",
+						name,
+						{ lang: projectSpecLang, projectSpec: chosenProjectSpec },
+					);
+					selections.push({
+						category: "project-spec",
+						instruction: name,
+						metadata,
+						context: {
+							lang: projectSpecLang,
+							projectSpec: chosenProjectSpec,
+						},
+					});
+				}
+			}
+		}
+	}
+
+	// 4. Optional
+	const optionalNames = await listAvailableInstructions("optional");
+	if (optionalNames.length > 0) {
+		const chosen = await prompts.multiselectInput(
+			"Which optional instructions apply to this project?",
+			{
+				options: optionalNames.map((name) => ({
+					label: capitalizeFirstLetter(name.replaceAll("-", " ")),
+					value: name,
+				})),
+			},
+		);
+		for (const name of chosen as string[]) {
+			const metadata = await getMetadataFromFrontmatter(
+				"optional",
+				name,
+				undefined,
+			);
+			selections.push({
+				category: "optional",
+				instruction: name,
+				metadata,
+			});
+		}
+	}
+
+	return selections;
+}
+
+/** Discover available languages by scanning templates/ for subdirs (excluding shared). */
+async function getAvailableLanguageOptions(): Promise<
+	{ label: string; value: string }[]
+> {
+	const names = await listLanguageNames();
+	return names.map((name) => ({
+		label: capitalizeFirstLetter(name.replaceAll("-", " ")),
+		value: name,
+	}));
+}
+
+/**
  * Load instruction names for the given categories. In remote mode wraps in a task UI.
+ * For language, project-spec, template pass context so directories can be resolved.
  * @param categories - Instruction categories to list.
+ * @param context - Required for language, project-spec, template.
  * @returns Promise resolving to a map of category -> instruction names.
  */
-async function loadAvailableInstructionsByCategory(
+async function _loadAvailableInstructionsByCategory(
 	categories: InstructionCategory[],
+	context?: InstructionContext,
 ): Promise<Map<InstructionCategory, string[]>> {
 	const map = new Map<InstructionCategory, string[]>();
 	const run = async () => {
 		for (const cat of categories) {
-			const names = await listAvailableInstructions(cat);
+			const names = await listAvailableInstructions(cat, context);
 			if (names.length > 0) map.set(cat, names);
 		}
 	};
@@ -219,7 +370,7 @@ async function loadAvailableInstructionsByCategory(
  * Prompt the user to select one or more instruction types (categories).
  * @returns Promise resolving to the selected category list.
  */
-async function promptCategoryMultiSelect(): Promise<InstructionCategory[]> {
+async function _promptCategoryMultiSelect(): Promise<InstructionCategory[]> {
 	const options = INSTRUCTION_CATEGORIES.map((cat) => ({
 		label: CATEGORY_LABELS[cat],
 		value: cat,
@@ -237,7 +388,7 @@ async function promptCategoryMultiSelect(): Promise<InstructionCategory[]> {
  * @param available - List of instruction names to choose from.
  * @returns Promise resolving to the selected instruction names.
  */
-async function promptInstructionMultiSelect(
+async function _promptInstructionMultiSelect(
 	category: InstructionCategory,
 	available: string[],
 ): Promise<string[]> {
@@ -261,12 +412,13 @@ async function resolveInstructionSelection(
 	category: InstructionCategory,
 	instruction: string,
 	localMode: boolean,
+	context?: InstructionContext,
 ): Promise<string> {
 	if (!localMode)
 		await tasks.runWithTasks("Checking available instructions", async () => {
-			await listAvailableInstructions(category);
+			await listAvailableInstructions(category, context);
 		});
-	const candidates = await listAvailableInstructions(category);
+	const candidates = await listAvailableInstructions(category, context);
 	if (!candidates.length)
 		throw new Error(
 			`No instructions found for type "${CATEGORY_LABELS[category]}".`,
@@ -295,7 +447,7 @@ export async function getIdeFormatSelection(
 	const ideFormat =
 		cliFlags.ideFormat ??
 		(await prompts.selectInput<IdeFormat>(
-			"Which IDE format should the instructions be formatted for?",
+			"Which IDE should the instructions be written for?",
 			{ options: ideOptions },
 			IdeFormat.CURSOR,
 		));
@@ -333,15 +485,18 @@ export async function getPackageInstructionsConfiguration(
 
 /**
  * Fetch the instruction body (markdown content without frontmatter) for a given category and name.
+ * For language, project-spec, template pass context.
  * @param category - Instruction category.
  * @param name - Instruction name (basename without extension).
+ * @param context - Required for language, project-spec, template.
  * @returns Promise resolving to the instruction body string.
  */
 export async function fetchInstructionContent(
 	category: InstructionCategory,
 	name: string,
+	context?: InstructionContext,
 ): Promise<string> {
-	return getInstructionContent(category, name);
+	return getInstructionContent(category, name, context);
 }
 
 /**
@@ -365,14 +520,17 @@ export function getDefaultGlobsForLanguage(lang: string): string[] {
 export async function getLanguageInstructionMetadata(
 	lang: string,
 ): Promise<InstructionMetadata | null> {
+	const context: InstructionContext = { lang };
 	const available = await listAvailableInstructions(
 		INSTRUCTION_CATEGORY_LANGUAGE,
+		context,
 	);
 	if (!available.includes(lang)) return null;
 
 	const { frontmatter } = await getInstructionWithFrontmatter(
 		INSTRUCTION_CATEGORY_LANGUAGE,
 		lang,
+		context,
 	);
 	const description = frontmatter.description ?? `${lang} coding standards`;
 	const globs =
@@ -391,8 +549,10 @@ export async function getLanguageInstructionMetadata(
 export async function getLanguageInstructionForPackageLang(
 	lang: string,
 ): Promise<string | null> {
+	const context: InstructionContext = { lang };
 	const available = await listAvailableInstructions(
 		INSTRUCTION_CATEGORY_LANGUAGE,
+		context,
 	);
 	if (available.includes(lang)) return lang;
 	return null;
