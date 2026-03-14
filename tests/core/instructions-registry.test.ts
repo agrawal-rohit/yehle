@@ -89,18 +89,22 @@ describe("core/instructions-registry", () => {
 			}
 		});
 
-		it("returns instruction names from language/", async () => {
+		it("returns instruction names from language/ discovered under templates/<lang>/instructions", async () => {
 			setLocalModeEnv(true);
 			const { listAvailableInstructions } = await importInstructionsRegistry();
 			const projectRoot = makeTempDir("yehle-instructions-");
-			const langsDir = path.join(
+			const langInstrDir = path.join(
 				projectRoot,
 				"templates",
+				"typescript",
 				"instructions",
-				"language",
 			);
-			fs.mkdirSync(langsDir, { recursive: true });
-			fs.writeFileSync(path.join(langsDir, "typescript.md"), "# TS", "utf8");
+			fs.mkdirSync(langInstrDir, { recursive: true });
+			fs.writeFileSync(
+				path.join(langInstrDir, "language.md"),
+				"# TS",
+				"utf8",
+			);
 
 			const originalCwd = process.cwd();
 			process.chdir(projectRoot);
