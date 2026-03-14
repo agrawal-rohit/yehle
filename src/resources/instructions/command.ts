@@ -10,44 +10,51 @@ import {
 import { writeInstructionToFile } from "./ide-formats";
 
 export async function generateInstructions(
-	options: Partial<GenerateInstructionsConfiguration> = {},
+	options: Partial<{
+		category: GenerateInstructionsConfiguration["selections"][0]["category"];
+		instruction: string;
+		ideFormat: GenerateInstructionsConfiguration["ideFormat"];
+	}> = {},
 ): Promise<void> {
 	await logger.intro("adding agent instructions...");
 
 	const config = await getGenerateInstructionsConfiguration({
+		category: options.category,
 		instruction: options.instruction,
 		ideFormat: options.ideFormat,
 	});
 
 	const cwd = process.cwd();
-	let outputPath = "";
+	const outputPaths: string[] = [];
 
-	await tasks.runWithTasks("Adding instructions", undefined, [
-		{
-			title: "Fetch and write instruction",
+	await tasks.runWithTasks(
+		"Adding instructions",
+		undefined,
+		config.selections.map((sel) => ({
+			title: `Fetch and write ${sel.category}/${sel.instruction}`,
 			task: async () => {
 				const content = await fetchInstructionContent(
-					config.category,
-					config.instruction,
+					sel.category,
+					sel.instruction,
 				);
-				outputPath = await writeInstructionToFile(
+				const outputPath = await writeInstructionToFile(
 					cwd,
-					config.instruction,
+					sel.instruction,
 					content,
 					config.ideFormat,
-					config.category,
-					config.metadata,
+					sel.category,
+					sel.metadata,
 				);
+				outputPaths.push(outputPath);
 			},
-		},
-	]);
+		})),
+	);
 
 	console.log();
 	console.log(chalk.bold("Agent instructions added successfully!"));
 	console.log();
-	console.log(
-		`  Instructions written to ${primaryText(path.relative(cwd, outputPath))}`,
-	);
+	for (const p of outputPaths)
+		console.log(`  ${primaryText(path.relative(cwd, p))}`);
 	console.log();
 }
 

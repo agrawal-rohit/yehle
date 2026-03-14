@@ -50,14 +50,18 @@ describe("resources/instructions/command", () => {
 		vi.clearAllMocks();
 		vi.spyOn(console, "log").mockImplementation(() => {});
 		vi.mocked(getGenerateInstructionsConfiguration).mockResolvedValue({
-			category: "global-preferences",
-			instruction: "react-vite",
+			selections: [
+				{
+					category: "global-preferences",
+					instruction: "react-vite",
+					metadata: {
+						description: "react vite",
+						globs: ["**/*"],
+						alwaysApply: true,
+					},
+				},
+			],
 			ideFormat: IdeFormat.CURSOR,
-			metadata: {
-				description: "react vite",
-				globs: ["**/*"],
-				alwaysApply: true,
-			},
 		});
 		vi.mocked(fetchInstructionContent).mockResolvedValue("# Rule content");
 		vi.mocked(writeInstructionToFile).mockResolvedValue(

@@ -21,7 +21,9 @@ vi.mock("../../../src/cli/tasks", () => ({
 vi.mock("../../../src/cli/prompts", () => ({
 	default: {
 		selectInput: vi.fn(),
+		textInput: vi.fn(),
 		confirmInput: vi.fn(),
+		multiselectInput: vi.fn(),
 	},
 }));
 
@@ -29,7 +31,6 @@ import {
 	fetchInstructionContent,
 	getGenerateInstructionsConfiguration,
 	getIdeFormatSelection,
-	getGlobalPreferenceInstructionSelection,
 	getLanguageInstructionForPackageLang,
 	getPackageInstructionsConfiguration,
 	IdeFormat,
@@ -55,45 +56,12 @@ describe("instructions/config", () => {
 			content: "# Rule",
 			frontmatter: { globs: ["**/*"], alwaysApply: true },
 		});
+		vi.mocked(prompts.textInput).mockResolvedValue("**/*");
+		vi.mocked(prompts.confirmInput).mockResolvedValue(true);
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
-	});
-
-	describe("getGlobalPreferenceInstructionSelection", () => {
-		it("should return instruction from CLI flags when provided", async () => {
-			const result = await getGlobalPreferenceInstructionSelection({
-				instruction: "react-vite",
-			});
-			expect(result).toBe("react-vite");
-		});
-
-		it("should throw when instruction is not in available list", async () => {
-			await expect(
-				getGlobalPreferenceInstructionSelection({
-					instruction: "invalid",
-				}),
-			).rejects.toThrow("Unsupported instruction");
-		});
-
-		it("should throw when no templates found", async () => {
-			vi.mocked(listAvailableInstructions).mockResolvedValue([]);
-			await expect(
-				getGlobalPreferenceInstructionSelection({}),
-			).rejects.toThrow("No global preference instruction templates found");
-		});
-
-		it("should prompt when no instruction in flags", async () => {
-			vi.mocked(prompts.selectInput).mockResolvedValue("general");
-			const result = await getGlobalPreferenceInstructionSelection({});
-			expect(result).toBe("general");
-			expect(prompts.selectInput).toHaveBeenCalledWith(
-				"Which coding standards would you like to add?",
-				{ options: expect.any(Array) },
-				"react-vite",
-			);
-		});
 	});
 
 	describe("getIdeFormatSelection", () => {
@@ -118,7 +86,7 @@ describe("instructions/config", () => {
 	});
 
 	describe("getGenerateInstructionsConfiguration", () => {
-		it("should return full config with global-preferences category when metadata provided", async () => {
+		it("should return single selection when instruction (and optional category) provided", async () => {
 			const metadata = {
 				description: "react vite",
 				globs: ["**/*"],
@@ -129,10 +97,28 @@ describe("instructions/config", () => {
 				ideFormat: IdeFormat.CURSOR,
 				metadata,
 			});
-			expect(result.category).toBe("global-preferences");
-			expect(result.instruction).toBe("react-vite");
+			expect(result.selections).toHaveLength(1);
+			expect(result.selections[0].category).toBe("global-preferences");
+			expect(result.selections[0].instruction).toBe("react-vite");
+			expect(result.selections[0].metadata).toEqual(metadata);
 			expect(result.ideFormat).toBe(IdeFormat.CURSOR);
-			expect(result.metadata).toEqual(metadata);
+		});
+
+		it("should default category to global-preferences when only instruction provided", async () => {
+			const result = await getGenerateInstructionsConfiguration({
+				instruction: "react-vite",
+				ideFormat: IdeFormat.CURSOR,
+			});
+			expect(result.selections[0].category).toBe("global-preferences");
+		});
+
+		it("should throw when instruction is not in available list for category", async () => {
+			await expect(
+				getGenerateInstructionsConfiguration({
+					instruction: "invalid",
+					ideFormat: IdeFormat.CURSOR,
+				}),
+			).rejects.toThrow("Unsupported instruction");
 		});
 	});
 

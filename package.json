@@ -2,7 +2,7 @@
 	"version": "0.2.1",
 	"name": "yehle",
 	"description": "An opinionated scaffolding CLI for the modern developer",
-	"bin": "./bin/cli.js",
+	"bin": "./bin/cli.mjs",
 	"files": [
 		"dist",
 		"bin",

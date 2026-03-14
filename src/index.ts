@@ -4,13 +4,12 @@ import { registerResourcesCli } from "./resources";
 export default function run(): void {
 	const app = cac("yehle");
 
-	// Register commands
+	// Register all commands defined in resources
 	registerResourcesCli(app);
 
-	// Register the help command
 	app.help();
 
-	// Parse argv and, on parse errors, re-run with contextual --help
+	// Slice off 'node' and the script path, then filter out null/empty args (e.g. from extra spaces).
 	const args = process.argv.slice(2).filter(Boolean);
 
 	// Show global help when just the root command is called
@@ -19,8 +18,8 @@ export default function run(): void {
 		return;
 	}
 
-	// Attempt to run the command
 	try {
+		// Run the command
 		app.parse(process.argv);
 	} catch {
 		// If the command failed (due to incorrect arguments, missing commands, etc)

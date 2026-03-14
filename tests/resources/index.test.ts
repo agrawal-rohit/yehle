@@ -50,6 +50,10 @@ describe("resources/index", () => {
 				"Add agent instructions to an existing project",
 			);
 			expect(mockCommand.option).toHaveBeenCalledWith(
+				"--category <type>",
+				expect.any(String),
+			);
+			expect(mockCommand.option).toHaveBeenCalledWith(
 				"--instruction <name>",
 				expect.stringContaining("react-vite"),
 			);

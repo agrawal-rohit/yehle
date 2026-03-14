@@ -20,13 +20,17 @@ export enum IdeFormat {
 	GEMINI = "gemini",
 }
 
-/** Describes the configuration for adding instructions (standalone flow). */
-export type GenerateInstructionsConfiguration = {
+/** A single (category, instruction) choice with metadata for writing to disk. */
+export type InstructionSelection = {
 	category: InstructionCategory;
 	instruction: string;
-	ideFormat: IdeFormat;
-	/** User-provided metadata (globs, alwaysApply) with defaults from rule file. */
 	metadata: InstructionMetadata;
+};
+
+/** Configuration for adding instructions to an existing project (supports multiple selections). */
+export type GenerateInstructionsConfiguration = {
+	selections: InstructionSelection[];
+	ideFormat: IdeFormat;
 };
 
 /** Describes the configuration for adding instructions during package creation. */
@@ -45,9 +49,41 @@ export const IDE_FORMAT_LABELS: Record<IdeFormat, string> = {
 	[IdeFormat.GEMINI]: "Gemini",
 };
 
-/**
- * Prompts for globs (comma-separated) with default from rule file.
- */
+/** Human-readable labels for instruction categories (for prompts). */
+const CATEGORY_LABELS: Record<InstructionCategory, string> = {
+	"global-preferences": "Global preferences",
+	language: "Language",
+	"use-case": "Use case",
+	template: "Template",
+};
+
+/** All instruction categories in display order. */
+const INSTRUCTION_CATEGORIES: InstructionCategory[] = [
+	"global-preferences",
+	"language",
+	"use-case",
+	"template",
+];
+
+/** Build metadata from rule frontmatter only (no prompts). Used for multi-select flow. */
+async function getMetadataFromFrontmatter(
+	category: InstructionCategory,
+	name: string,
+): Promise<InstructionMetadata> {
+	const { frontmatter } = await getInstructionWithFrontmatter(category, name);
+	const description = frontmatter.description ?? name.replaceAll("-", " ");
+	const hasGlobs = frontmatter.globs && frontmatter.globs.length > 0;
+	let globs: string[];
+	if (hasGlobs && frontmatter.globs) globs = frontmatter.globs;
+	else
+		globs =
+			category === "language" ? getDefaultGlobsForLanguage(name) : ["**/*"];
+	const alwaysApply =
+		frontmatter.alwaysApply ?? category === "global-preferences";
+	return { description, globs, alwaysApply };
+}
+
+/** Prompts for globs (comma-separated) with default from rule file. */
 async function promptGlobs(defaultGlobs: string[]): Promise<string[]> {
 	const defaultStr = defaultGlobs.join(", ");
 	const input = await prompts.textInput(
@@ -62,9 +98,7 @@ async function promptGlobs(defaultGlobs: string[]): Promise<string[]> {
 		.filter(Boolean);
 }
 
-/**
- * Prompts for alwaysApply with default from rule file.
- */
+/** Prompts for alwaysApply with default from rule file. */
 async function promptAlwaysApply(defaultValue: boolean): Promise<boolean> {
 	return prompts.confirmInput(
 		"Apply this rule to all conversations?",
@@ -73,9 +107,7 @@ async function promptAlwaysApply(defaultValue: boolean): Promise<boolean> {
 	);
 }
 
-/**
- * Build metadata from frontmatter and user prompts.
- */
+/** Build metadata from frontmatter and user prompts. */
 async function getMetadataWithPrompts(
 	category: InstructionCategory,
 	name: string,
@@ -91,72 +123,126 @@ async function getMetadataWithPrompts(
 	return { description, globs, alwaysApply };
 }
 
-/**
- * Gather configuration for standalone instructions (add to existing project).
- * Uses global-preferences category.
- */
+/** Gather configuration for standalone instructions (add to existing project). Supports single selection via CLI flags or multi-select by category and instruction. */
 export async function getGenerateInstructionsConfiguration(
-	cliFlags: Partial<GenerateInstructionsConfiguration> = {},
+	cliFlags: Partial<{
+		category: InstructionCategory;
+		instruction: string;
+		ideFormat: IdeFormat;
+		metadata: InstructionMetadata;
+	}> = {},
 ): Promise<GenerateInstructionsConfiguration> {
-	const category: InstructionCategory = "global-preferences";
-	const instruction = await getGlobalPreferenceInstructionSelection(cliFlags);
 	const ideFormat = await getIdeFormatSelection(cliFlags);
 
-	const metadata =
-		cliFlags.metadata ?? (await getMetadataWithPrompts(category, instruction));
-
-	return { category, instruction, ideFormat, metadata };
-}
-
-/**
- * Prompts for or validates the global preference instruction selection.
- */
-export async function getGlobalPreferenceInstructionSelection(
-	cliFlags: Partial<GenerateInstructionsConfiguration> = {},
-): Promise<string> {
-	let candidates: string[] = [];
-
-	if (IS_LOCAL_MODE) {
-		candidates = await listAvailableInstructions("global-preferences");
-	} else {
-		await tasks.runWithTasks(
-			"Checking available instruction templates",
-			async () => {
-				candidates = await listAvailableInstructions("global-preferences");
-			},
+	// Single selection from CLI flags (e.g. --instruction react-vite [--category global-preferences])
+	if (cliFlags.instruction) {
+		const category = cliFlags.category ?? "global-preferences";
+		const instruction = await resolveInstructionSelection(
+			category,
+			cliFlags.instruction,
+			IS_LOCAL_MODE,
 		);
+		const metadata =
+			cliFlags.metadata ??
+			(await getMetadataWithPrompts(category, instruction));
+		return {
+			selections: [{ category, instruction, metadata }],
+			ideFormat,
+		};
 	}
 
-	if (!candidates.length)
-		throw new Error("No global preference instruction templates found.");
+	// Multi-select: choose instruction type(s), then instruction(s) per type
+	const selectedCategories = await promptCategoryMultiSelect();
+	if (selectedCategories.length === 0)
+		throw new Error("No instruction types selected.");
 
-	const options = candidates.map((r) => ({
-		label: capitalizeFirstLetter(r.replaceAll("-", " ")),
-		value: r,
+	const availableByCategory =
+		await loadAvailableInstructionsByCategory(selectedCategories);
+	const selections: InstructionSelection[] = [];
+
+	for (const category of selectedCategories) {
+		const available = availableByCategory.get(category) ?? [];
+		if (available.length === 0) continue;
+		const chosen = await promptInstructionMultiSelect(category, available);
+		for (const instruction of chosen) {
+			const metadata = await getMetadataFromFrontmatter(category, instruction);
+			selections.push({ category, instruction, metadata });
+		}
+	}
+
+	if (selections.length === 0) throw new Error("No instructions selected.");
+
+	return { selections, ideFormat };
+}
+
+/** Load instruction names for the given categories (with optional task UI in remote mode). */
+async function loadAvailableInstructionsByCategory(
+	categories: InstructionCategory[],
+): Promise<Map<InstructionCategory, string[]>> {
+	const map = new Map<InstructionCategory, string[]>();
+	const run = async () => {
+		for (const cat of categories) {
+			const names = await listAvailableInstructions(cat);
+			if (names.length > 0) map.set(cat, names);
+		}
+	};
+	if (IS_LOCAL_MODE) {
+		await run();
+		return map;
+	}
+	await tasks.runWithTasks("Loading available instructions", run);
+	return map;
+}
+
+/** Prompt to select one or more instruction types (categories). */
+async function promptCategoryMultiSelect(): Promise<InstructionCategory[]> {
+	const options = INSTRUCTION_CATEGORIES.map((cat) => ({
+		label: CATEGORY_LABELS[cat],
+		value: cat,
 	}));
+	const values = await prompts.multiselectInput(
+		"Which instruction type(s) do you want to add?",
+		{ options },
+	);
+	return values as InstructionCategory[];
+}
 
-	let instruction = cliFlags.instruction;
+/** Prompt to select one or more instructions from a category. */
+async function promptInstructionMultiSelect(
+	category: InstructionCategory,
+	available: string[],
+): Promise<string[]> {
+	const options = available.map((name) => ({
+		label: capitalizeFirstLetter(name.replaceAll("-", " ")),
+		value: name,
+	}));
+	const message = `Which ${CATEGORY_LABELS[category].toLowerCase()} instruction(s)?`;
+	return prompts.multiselectInput(message, { options });
+}
 
-	if (options.length === 1) instruction = options[0].value;
-
-	if (!instruction)
-		instruction = await prompts.selectInput<string>(
-			"Which coding standards would you like to add?",
-			{ options },
-			candidates[0],
+/** Resolve and validate a single (category, instruction) from flags. */
+async function resolveInstructionSelection(
+	category: InstructionCategory,
+	instruction: string,
+	localMode: boolean,
+): Promise<string> {
+	if (!localMode)
+		await tasks.runWithTasks("Checking available instructions", async () => {
+			await listAvailableInstructions(category);
+		});
+	const candidates = await listAvailableInstructions(category);
+	if (!candidates.length)
+		throw new Error(
+			`No instructions found for type "${CATEGORY_LABELS[category]}".`,
 		);
-
 	if (!candidates.includes(instruction))
 		throw new Error(
-			`Unsupported instruction: ${instruction} (valid: ${candidates.join(", ")})`,
+			`Unsupported instruction "${instruction}" for ${category} (valid: ${candidates.join(", ")})`,
 		);
-
 	return instruction;
 }
 
-/**
- * Prompts for or validates the IDE format selection.
- */
+/** Prompts for or validates the IDE format selection. */
 export async function getIdeFormatSelection(
 	cliFlags: Partial<
 		GenerateInstructionsConfiguration & { ideFormat?: IdeFormat }
@@ -184,9 +270,7 @@ export async function getIdeFormatSelection(
 	return ideFormat;
 }
 
-/**
- * Prompts for whether to include agent instructions during package creation.
- */
+/** Prompts for whether to include agent instructions during package creation. */
 export async function getPackageInstructionsConfiguration(
 	cliFlags: Partial<PackageInstructionsConfiguration> = {},
 ): Promise<PackageInstructionsConfiguration> {
@@ -204,9 +288,7 @@ export async function getPackageInstructionsConfiguration(
 	return { includeInstructions: true, ideFormat };
 }
 
-/**
- * Fetches the instruction content for a given category and name.
- */
+/** Fetches the instruction content for a given category and name. */
 export async function fetchInstructionContent(
 	category: InstructionCategory,
 	name: string,
@@ -242,9 +324,7 @@ export async function getLanguageInstructionMetadata(
 	return { description, globs, alwaysApply };
 }
 
-/**
- * Returns the language instruction name for a package language (e.g. typescript -> typescript).
- */
+/** Returns the language instruction name for a package language (e.g. typescript -> typescript). */
 export async function getLanguageInstructionForPackageLang(
 	lang: string,
 ): Promise<string | null> {
