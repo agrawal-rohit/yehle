@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { downloadTemplate } from "giget";
+import matter from "gray-matter";
 import { IS_LOCAL_MODE } from "./constants";
 import { isDirAsync } from "./fs";
 
@@ -93,75 +94,46 @@ async function listInstructionFiles(dir: string): Promise<string[]> {
 			}
 		}
 	}
-	return Array.from(names).sort();
+	return Array.from(names).sort((a, b) => a.localeCompare(b));
 }
 
 /**
- * Parse optional YAML frontmatter from markdown content.
- * Handles description, globs/paths (arrays), alwaysApply/alwaysOn.
+ * Normalize gray-matter data into RuleFrontmatter (alwaysOn -> alwaysApply, paths -> globs).
+ */
+function toRuleFrontmatter(data: Record<string, unknown>): RuleFrontmatter {
+	const frontmatter: RuleFrontmatter = {};
+	if (typeof data.description === "string")
+		frontmatter.description = data.description;
+	if (Array.isArray(data.globs))
+		frontmatter.globs = data.globs.filter(
+			(x): x is string => typeof x === "string",
+		);
+	if (Array.isArray(data.paths))
+		frontmatter.paths = data.paths.filter(
+			(x): x is string => typeof x === "string",
+		);
+	// Normalize alwaysOn -> alwaysApply; prefer explicit alwaysApply
+	if (data.alwaysApply === true || data.alwaysApply === false)
+		frontmatter.alwaysApply = data.alwaysApply;
+	else if (data.alwaysOn === true || data.alwaysOn === false)
+		frontmatter.alwaysApply = data.alwaysOn;
+	if (
+		Array.isArray(frontmatter.paths) &&
+		frontmatter.paths.length > 0 &&
+		!frontmatter.globs
+	)
+		frontmatter.globs = frontmatter.paths;
+	return frontmatter;
+}
+
+/**
+ * Parse optional YAML frontmatter from markdown content using gray-matter.
  */
 function parseFrontmatter(raw: string): InstructionWithFrontmatter {
-	const frontmatter: RuleFrontmatter = {};
-	let content = raw;
-	const match = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
-	if (match) {
-		content = match[2] ?? raw;
-		const fm = (match[1] ?? "").trim();
-		const lines = fm.split("\n");
-		let currentKey: string | null = null;
-		let currentArray: string[] = [];
-		for (const line of lines) {
-			const arrayItem = line.match(/^\s*-\s*["']?([^"']*)["']?\s*$/);
-			if (arrayItem && currentKey) {
-				currentArray.push(arrayItem[1]?.trim() ?? "");
-				continue;
-			}
-			if (
-				currentKey &&
-				(frontmatter as Record<string, unknown>)[currentKey] === undefined
-			) {
-				(frontmatter as Record<string, unknown>)[currentKey] =
-					currentArray.length > 0 ? [...currentArray] : true;
-			}
-			currentArray = [];
-			const kv = line.match(/^(\w+):\s*(.*)$/);
-			if (kv) {
-				currentKey = kv[1] ?? null;
-				const v = (kv[2] ?? "").trim();
-				const key = currentKey;
-				if (key === "globs" || key === "paths") {
-					// Value might be inline array or start multi-line
-					if (v === "[]" || v === "") currentArray = [];
-					else if (v.startsWith("[")) {
-						const inner = v.slice(1, -1).match(/["']([^"']*)["']/g);
-						currentArray = inner ? inner.map((s) => s.slice(1, -1)) : [];
-					}
-				} else if (key && v === "true")
-					(frontmatter as Record<string, unknown>)[key] = true;
-				else if (key && v === "false")
-					(frontmatter as Record<string, unknown>)[key] = false;
-				else if (key && v.startsWith('"') && v.endsWith('"'))
-					(frontmatter as Record<string, unknown>)[key] = v.slice(1, -1);
-				else if (key && v.startsWith("'") && v.endsWith("'"))
-					(frontmatter as Record<string, unknown>)[key] = v.slice(1, -1);
-				else if (key && v && key !== "globs" && key !== "paths")
-					(frontmatter as Record<string, unknown>)[key] = v;
-			}
-		}
-		if (currentKey && currentArray.length > 0)
-			(frontmatter as Record<string, unknown>)[currentKey] = [...currentArray];
-		// Normalize alwaysOn -> alwaysApply
-		if ("alwaysOn" in frontmatter && frontmatter.alwaysOn !== undefined) {
-			frontmatter.alwaysApply = Boolean(frontmatter.alwaysOn);
-		}
-		if (
-			Array.isArray(frontmatter.paths) &&
-			frontmatter.paths.length > 0 &&
-			!frontmatter.globs
-		) {
-			frontmatter.globs = frontmatter.paths;
-		}
-	}
+	const { data, content } = matter(raw);
+	const frontmatter = toRuleFrontmatter(
+		(data ?? {}) as Record<string, unknown>,
+	);
 	return { content: content.trim(), frontmatter };
 }
 
@@ -226,7 +198,7 @@ async function listRemoteInstructionFiles(
 			}
 		}
 	}
-	return Array.from(names).sort();
+	return Array.from(names).sort((a, b) => a.localeCompare(b));
 }
 
 /**

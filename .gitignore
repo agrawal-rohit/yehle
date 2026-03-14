@@ -18,7 +18,7 @@ coverage/
 .stryker-tmp
 reports/
 
-# Generated agent rules (from local testing)
+# Generated agent rules
 .cursor/
 .windsurf/
 .clinerules/
