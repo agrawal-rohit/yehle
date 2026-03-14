@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isDirAsync } from "../../../src/core/fs";
 
 // Mock node modules and internal modules
 vi.mock("node:fs", () => ({
@@ -79,6 +78,7 @@ import fs from "node:fs";
 import {
 	copyDirSafeAsync,
 	ensureDirAsync,
+	isDirAsync,
 	removeFilesByBasename,
 	renderMustacheTemplates,
 	writeFileAsync,
@@ -512,7 +512,7 @@ describe("resources/package/setup", () => {
 
 			// Mock Date
 			const mockDate = new Date(2023, 0, 1);
-			vi.spyOn(global, "Date").mockImplementation(() => mockDate as any);
+			vi.spyOn(globalThis, "Date").mockImplementation(() => mockDate as any);
 
 			await writePackageTemplateFiles(targetDir, generateConfig);
 

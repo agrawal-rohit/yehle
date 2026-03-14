@@ -41,9 +41,9 @@ import { generateInstructions } from "../../../src/resources/instructions/comman
 import {
 	fetchInstructionContent,
 	getGenerateInstructionsConfiguration,
+	IdeFormat,
 } from "../../../src/resources/instructions/config";
 import { writeInstructionToFile } from "../../../src/resources/instructions/ide-formats";
-import { IdeFormat } from "../../../src/resources/instructions/config";
 
 describe("resources/instructions/command", () => {
 	beforeEach(() => {
@@ -73,7 +73,7 @@ describe("resources/instructions/command", () => {
 		it("should call logger.intro to start the process", async () => {
 			await generateInstructions({
 				instruction: "react-vite",
-				ideFormat: "cursor",
+				ideFormat: IdeFormat.CURSOR,
 			});
 			expect(logger.intro).toHaveBeenCalledWith(
 				"adding agent instructions...",
@@ -83,7 +83,7 @@ describe("resources/instructions/command", () => {
 		it("should fetch and write instruction with correct category", async () => {
 			await generateInstructions({
 				instruction: "react-vite",
-				ideFormat: "cursor",
+				ideFormat: IdeFormat.CURSOR,
 			});
 			expect(fetchInstructionContent).toHaveBeenCalledWith(
 				"global-preferences",
@@ -106,7 +106,7 @@ describe("resources/instructions/command", () => {
 		it("should print success message with output path", async () => {
 			await generateInstructions({
 				instruction: "react-vite",
-				ideFormat: "cursor",
+				ideFormat: IdeFormat.CURSOR,
 			});
 			expect(console.log).toHaveBeenCalledWith(
 				expect.stringContaining("Agent instructions added successfully!"),

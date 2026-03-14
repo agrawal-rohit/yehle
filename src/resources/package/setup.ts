@@ -117,7 +117,7 @@ export async function addPackageInstructions(
 		targetDir,
 		instructionName,
 		content,
-		generateConfig.instructionsIdeFormat as import("../instructions/config").IdeFormat,
+		generateConfig.instructionsIdeFormat,
 		"language",
 		metadata,
 	);

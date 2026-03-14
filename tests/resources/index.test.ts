@@ -24,15 +24,11 @@ import generatePackage from "../../src/resources/package/command";
 describe("resources/index", () => {
 	let mockApp: any;
 	let mockCommand: any;
-	let capturedAction: any;
-
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockCommand = {
 			option: vi.fn().mockReturnThis(),
-			action: vi.fn((fn: any) => {
-				capturedAction = fn;
-			}),
+			action: vi.fn(),
 		};
 		mockApp = {
 			usage: vi.fn(),

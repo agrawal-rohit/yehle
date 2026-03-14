@@ -214,6 +214,13 @@ export async function fetchInstructionContent(
 	return getInstructionContent(category, name);
 }
 
+/** Default globs per language when rule file has none. */
+function getDefaultGlobsForLanguage(lang: string): string[] {
+	if (lang === "typescript")
+		return ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"];
+	return ["**/*"];
+}
+
 /**
  * Returns metadata for a language instruction (used during package creation).
  * Uses defaults from rule file without prompting (non-interactive context).
@@ -226,12 +233,10 @@ export async function getLanguageInstructionMetadata(
 
 	const { frontmatter } = await getInstructionWithFrontmatter("language", lang);
 	const description = frontmatter.description ?? `${lang} coding standards`;
-	const globs =
-		frontmatter.globs && frontmatter.globs.length > 0
-			? frontmatter.globs
-			: lang === "typescript"
-				? ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"]
-				: ["**/*"];
+	const hasGlobs = frontmatter.globs && frontmatter.globs.length > 0;
+	const globs: string[] = hasGlobs
+		? (frontmatter.globs ?? getDefaultGlobsForLanguage(lang))
+		: getDefaultGlobsForLanguage(lang);
 	const alwaysApply = frontmatter.alwaysApply ?? false;
 
 	return { description, globs, alwaysApply };

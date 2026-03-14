@@ -32,8 +32,8 @@ import {
 	getGlobalPreferenceInstructionSelection,
 	getLanguageInstructionForPackageLang,
 	getPackageInstructionsConfiguration,
+	IdeFormat,
 } from "../../../src/resources/instructions/config";
-import { IdeFormat } from "../../../src/resources/instructions/config";
 import prompts from "../../../src/cli/prompts";
 import {
 	getInstructionContent,
