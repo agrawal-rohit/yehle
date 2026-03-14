@@ -199,6 +199,14 @@ describe("instructions/ide-formats", () => {
 				result,
 				expect.stringContaining("# Content"),
 			);
+			expect(vi.mocked(fs.writeFileAsync)).toHaveBeenCalledWith(
+				result,
+				expect.stringContaining("yehle instruction registry"),
+			);
+			expect(vi.mocked(fs.writeFileAsync)).toHaveBeenCalledWith(
+				result,
+				expect.stringContaining("https://github.com/agrawal-rohit/yehle"),
+			);
 		});
 	});
 });

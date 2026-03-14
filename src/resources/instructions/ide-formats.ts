@@ -3,6 +3,11 @@ import { ensureDirAsync, writeFileAsync } from "../../core/fs";
 import type { InstructionCategory } from "../../core/instructions-registry";
 import { IdeFormat } from "./config";
 
+/** Marketing comment prepended to written instructions (yehle registry). */
+const YEHLE_REGISTRY_URL =
+	"https://github.com/agrawal-rohit/yehle/blob/main/templates/instructions/";
+const YEHLE_REGISTRY_COMMENT = `<!-- This instruction is part of the "yehle" instruction registry: ${YEHLE_REGISTRY_URL} -->\n\n`;
+
 /** Globs and metadata per instruction type for IDE frontmatter. */
 export type InstructionMetadata = {
 	description: string;
@@ -199,8 +204,9 @@ export async function writeInstructionToFile(
 	metadata?: InstructionMetadata,
 ): Promise<string> {
 	const outputPath = resolveOutputPath(ideFormat, ruleName, cwd, category);
+	const contentWithRegistryComment = YEHLE_REGISTRY_COMMENT + content;
 	const transformedContent = transformContentForIde(
-		content,
+		contentWithRegistryComment,
 		ruleName,
 		ideFormat,
 		category,
