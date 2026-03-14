@@ -6,7 +6,7 @@ import matter from "gray-matter";
 import { IS_LOCAL_MODE } from "./constants";
 import { isDirAsync } from "./fs";
 
-/** Path segment for shared instructions (preferences, use-case). */
+/** Path segment for the instructions tree (preferences, use-case, language). */
 const INSTRUCTIONS_PATH = "instructions";
 
 /** Default GitHub owner/repo for remote fetches. */
@@ -74,42 +74,46 @@ async function getLocalInstructionsRoot(): Promise<string | null> {
 	return null;
 }
 
+const INSTRUCTIONS_UNDER_ROOT = new Set<InstructionCategory>([
+	"preferences",
+	"use-case",
+	"language",
+]);
+
+/** Try instructions root, then optional legacy templates path for a category. */
+async function getInstructionsOrLegacyDir(
+	category: InstructionCategory,
+): Promise<string | null> {
+	const instructionsRoot = await getLocalInstructionsRoot();
+	if (instructionsRoot) {
+		const dir = path.join(instructionsRoot, category);
+		if (await isDirAsync(dir)) return dir;
+	}
+	if (category === "language") return null;
+	const templatesRoot = await getLocalTemplatesRoot();
+	if (!templatesRoot) return null;
+	const legacyDir = path.join(templatesRoot, INSTRUCTIONS_PATH, category);
+	return (await isDirAsync(legacyDir)) ? legacyDir : null;
+}
+
 /**
  * Resolve the directory for an instruction category (local filesystem).
  *
- * - preferences / use-case:   ./instructions/<category> (separate from templates)
- * - language / template:      currently resolved from ./templates/instructions/<category>
+ * - preferences / use-case / language: ./instructions/<category> (single instructions tree)
+ * - template: ./templates/instructions/<category> (template-specific only)
  *
- * For backwards compatibility, preferences/use-case also fall back to the old
- * ./templates/instructions/<category> layout if the new root is missing.
+ * For backwards compatibility, preferences/use-case also fall back to
+ * ./templates/instructions/<category> if instructions root is missing.
  */
 async function getInstructionsCategoryDir(
 	category: InstructionCategory,
 ): Promise<string | null> {
-	// Shared, template-agnostic instructions
-	if (category === "preferences" || category === "use-case") {
-		const instructionsRoot = await getLocalInstructionsRoot();
-		if (instructionsRoot) {
-			const dir = path.join(instructionsRoot, category);
-			if (await isDirAsync(dir)) return dir;
-		}
-		// Backwards compatibility: legacy location under templates/instructions
-		const templatesRoot = await getLocalTemplatesRoot();
-		if (templatesRoot) {
-			const legacyDir = path.join(templatesRoot, INSTRUCTIONS_PATH, category);
-			if (await isDirAsync(legacyDir)) return legacyDir;
-		}
-		return null;
-	}
-
-	// Language / template instructions are colocated with templates. For now they
-	// are resolved from templates/instructions/<category>, which keeps compatibility
-	// with the existing registry layout.
+	if (INSTRUCTIONS_UNDER_ROOT.has(category))
+		return getInstructionsOrLegacyDir(category);
 	const templatesRoot = await getLocalTemplatesRoot();
 	if (!templatesRoot) return null;
 	const dir = path.join(templatesRoot, INSTRUCTIONS_PATH, category);
-	if (await isDirAsync(dir)) return dir;
-	return null;
+	return (await isDirAsync(dir)) ? dir : null;
 }
 
 /**
@@ -130,56 +134,6 @@ async function listInstructionFiles(dir: string): Promise<string[]> {
 		}
 	}
 	return Array.from(names).sort((a, b) => a.localeCompare(b));
-}
-
-/**
- * Resolve the language instruction file path for a given language key.
- * Expects files like: templates/<lang>/instructions/language.{md,mdc}
- * Falls back to legacy templates/instructions/language/<lang>.{md,mdc}.
- */
-async function getLocalLanguageInstructionPath(
-	lang: string,
-): Promise<string | null> {
-	const templatesRoot = await getLocalTemplatesRoot();
-	if (!templatesRoot) return null;
-
-	// Preferred location: templates/<lang>/instructions/language.{md,mdc}
-	const preferredDir = path.join(templatesRoot, lang, "instructions");
-	if (await isDirAsync(preferredDir)) {
-		const fp = await findInstructionFilePath(preferredDir, "language");
-		if (fp) return fp;
-	}
-
-	// Legacy fallback: templates/instructions/language/<lang>.{md,mdc}
-	const legacyDir = path.join(templatesRoot, INSTRUCTIONS_PATH, "language");
-	if (await isDirAsync(legacyDir)) {
-		const fp = await findInstructionFilePath(legacyDir, lang);
-		if (fp) return fp;
-	}
-
-	return null;
-}
-
-/**
- * List available language instructions by scanning templates/<lang>/instructions/language.{md,mdc}
- * and falling back to legacy templates/instructions/language/<lang>.{md,mdc}.
- */
-async function listLocalLanguageInstructions(): Promise<string[]> {
-	const templatesRoot = await getLocalTemplatesRoot();
-	if (!templatesRoot) return [];
-	const entries = await fs.promises.readdir(templatesRoot, {
-		withFileTypes: true,
-	});
-	const langs: string[] = [];
-	for (const e of entries) {
-		if (!e.isDirectory()) continue;
-		const name = e.name;
-		// Skip non-language folders
-		if (name === "instructions" || name === "shared") continue;
-		const fp = await getLocalLanguageInstructionPath(name);
-		if (fp) langs.push(name);
-	}
-	return langs.sort((a, b) => a.localeCompare(b));
 }
 
 /**
@@ -242,19 +196,17 @@ async function findInstructionFilePath(
 }
 
 /**
- * Build GitHub API Contents URL.
- * Note: Remote layout still uses templates/instructions/<category> for now
- * to remain compatible with the published registry.
+ * Build GitHub API Contents URL for the instructions tree (instructions/<category>).
  */
 function buildContentsURL(category: InstructionCategory): string {
-	return `https://api.github.com/repos/${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/contents/templates/${INSTRUCTIONS_PATH}/${category}`;
+	return `https://api.github.com/repos/${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/contents/${INSTRUCTIONS_PATH}/${category}`;
 }
 
 /**
- * Build giget spec for downloading.
+ * Build giget spec for downloading the instructions category.
  */
 function buildGigetSpec(category: InstructionCategory): string {
-	return `github:${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/templates/${INSTRUCTIONS_PATH}/${category}`;
+	return `github:${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/${INSTRUCTIONS_PATH}/${category}`;
 }
 
 /**
@@ -300,7 +252,6 @@ async function downloadRemoteCategory(
 	);
 	const res = await downloadTemplate(spec, { dir: tmpRoot, force: true });
 	const candidates = [
-		path.join(res.dir, "templates", INSTRUCTIONS_PATH, category),
 		path.join(res.dir, INSTRUCTIONS_PATH, category),
 		path.join(res.dir, category),
 		res.dir,
@@ -321,14 +272,15 @@ export async function resolveInstructionsCategoryDir(
 		const dir = await getInstructionsCategoryDir(category);
 		if (dir) return dir;
 
-		// Provide a helpful error that reflects the new local layout while still
-		// mentioning the legacy templates path.
+		// Provide a helpful error that reflects the instructions/ layout (and legacy for template).
 		const instructionsRoot =
 			(await getLocalInstructionsRoot()) || "<no instructions root>";
-		const templatesRoot =
-			(await getLocalTemplatesRoot()) || "<no templates root>";
+		const extra =
+			category === "template"
+				? ` and ${(await getLocalTemplatesRoot()) || "<no templates root>"}/${INSTRUCTIONS_PATH}/${category}`
+				: "";
 		throw new Error(
-			`Local instructions not found for category "${category}". Checked ${instructionsRoot}/${category} and ${templatesRoot}/${INSTRUCTIONS_PATH}/${category}.`,
+			`Local instructions not found for category "${category}". Checked ${instructionsRoot}/${category}${extra}.`,
 		);
 	}
 	return downloadRemoteCategory(category);
@@ -341,7 +293,6 @@ export async function listAvailableInstructions(
 	category: InstructionCategory,
 ): Promise<string[]> {
 	if (IS_LOCAL_MODE) {
-		if (category === "language") return listLocalLanguageInstructions();
 		const dir = await getInstructionsCategoryDir(category);
 		if (!dir) return [];
 		return listInstructionFiles(dir);
@@ -357,14 +308,8 @@ export async function getInstructionWithFrontmatter(
 	category: InstructionCategory,
 	name: string,
 ): Promise<InstructionWithFrontmatter> {
-	let filePath: string | null = null;
-
-	if (IS_LOCAL_MODE && category === "language") {
-		filePath = await getLocalLanguageInstructionPath(name);
-	} else {
-		const dir = await resolveInstructionsCategoryDir(category);
-		filePath = await findInstructionFilePath(dir, name);
-	}
+	const dir = await resolveInstructionsCategoryDir(category);
+	const filePath = await findInstructionFilePath(dir, name);
 
 	if (!filePath)
 		throw new Error(

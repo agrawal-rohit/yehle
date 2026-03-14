@@ -37,16 +37,11 @@ describe("core/instructions-registry", () => {
 	}
 
 	describe("listAvailableInstructions", () => {
-		it("returns instruction names from .md files in preferences/", async () => {
+		it("returns instruction names from .md files in instructions/preferences/", async () => {
 			setLocalModeEnv(true);
 			const { listAvailableInstructions } = await importInstructionsRegistry();
 			const projectRoot = makeTempDir("yehle-instructions-");
-			const prefsDir = path.join(
-				projectRoot,
-				"templates",
-				"instructions",
-				"preferences",
-			);
+			const prefsDir = path.join(projectRoot, "instructions", "preferences");
 			fs.mkdirSync(prefsDir, { recursive: true });
 			fs.writeFileSync(path.join(prefsDir, "react-vite.md"), "# React", "utf8");
 			fs.writeFileSync(path.join(prefsDir, "general.md"), "# General", "utf8");
@@ -68,12 +63,7 @@ describe("core/instructions-registry", () => {
 			setLocalModeEnv(true);
 			const { listAvailableInstructions } = await importInstructionsRegistry();
 			const projectRoot = makeTempDir("yehle-instructions-");
-			const prefsDir = path.join(
-				projectRoot,
-				"templates",
-				"instructions",
-				"preferences",
-			);
+			const prefsDir = path.join(projectRoot, "instructions", "preferences");
 			fs.mkdirSync(prefsDir, { recursive: true });
 			fs.writeFileSync(path.join(prefsDir, "react-vite.mdc"), "# React", "utf8");
 
@@ -89,19 +79,14 @@ describe("core/instructions-registry", () => {
 			}
 		});
 
-		it("returns instruction names from language/ discovered under templates/<lang>/instructions", async () => {
+		it("returns instruction names from instructions/language/", async () => {
 			setLocalModeEnv(true);
 			const { listAvailableInstructions } = await importInstructionsRegistry();
 			const projectRoot = makeTempDir("yehle-instructions-");
-			const langInstrDir = path.join(
-				projectRoot,
-				"templates",
-				"typescript",
-				"instructions",
-			);
-			fs.mkdirSync(langInstrDir, { recursive: true });
+			const langDir = path.join(projectRoot, "instructions", "language");
+			fs.mkdirSync(langDir, { recursive: true });
 			fs.writeFileSync(
-				path.join(langInstrDir, "language.md"),
+				path.join(langDir, "typescript.md"),
 				"# TS",
 				"utf8",
 			);
@@ -124,12 +109,7 @@ describe("core/instructions-registry", () => {
 			setLocalModeEnv(true);
 			const { getInstructionContent } = await importInstructionsRegistry();
 			const projectRoot = makeTempDir("yehle-instructions-");
-			const prefsDir = path.join(
-				projectRoot,
-				"templates",
-				"instructions",
-				"preferences",
-			);
+			const prefsDir = path.join(projectRoot, "instructions", "preferences");
 			fs.mkdirSync(prefsDir, { recursive: true });
 			const raw = `---
 description: "react vite"

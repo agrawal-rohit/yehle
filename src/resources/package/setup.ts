@@ -10,6 +10,7 @@ import {
 	writeFileAsync,
 } from "../../core/fs";
 import { resolveTemplatesDir } from "../../core/template-registry";
+import { INSTRUCTION_CATEGORY_LANGUAGE } from "../instructions/config";
 import type { GeneratePackageConfiguration } from "./config";
 import { templatePublicPaths } from "./config";
 
@@ -112,13 +113,16 @@ export async function addPackageInstructions(
 	const metadata = await getLanguageInstructionMetadata(generateConfig.lang);
 	if (!metadata) return;
 
-	const content = await fetchInstructionContent("language", instructionName);
+	const content = await fetchInstructionContent(
+		INSTRUCTION_CATEGORY_LANGUAGE,
+		instructionName,
+	);
 	await writeInstructionToFile(
 		targetDir,
 		instructionName,
 		content,
 		generateConfig.instructionsIdeFormat,
-		"language",
+		INSTRUCTION_CATEGORY_LANGUAGE,
 		metadata,
 	);
 }

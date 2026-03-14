@@ -59,6 +59,14 @@ export const IDE_FORMAT_LABELS: Record<IdeFormat, string> = {
 	[IdeFormat.GEMINI]: "Gemini",
 };
 
+/** Default category when --instruction is provided without --category. */
+export const DEFAULT_INSTRUCTION_CATEGORY =
+	"preferences" as const satisfies InstructionCategory;
+
+/** Category for language/framework instructions (used by package setup and language helpers). */
+export const INSTRUCTION_CATEGORY_LANGUAGE =
+	"language" as const satisfies InstructionCategory;
+
 /** Human-readable labels for instruction categories (for prompts). */
 const CATEGORY_LABELS: Record<InstructionCategory, string> = {
 	preferences: "User preferences (coding style, personal quirks)",
@@ -69,12 +77,18 @@ const CATEGORY_LABELS: Record<InstructionCategory, string> = {
 };
 
 /** All instruction categories in display order. */
-const INSTRUCTION_CATEGORIES: InstructionCategory[] = [
+export const INSTRUCTION_CATEGORIES: InstructionCategory[] = [
 	"preferences",
 	"language",
 	"use-case",
 	"template",
 ];
+
+/** CLI option description for --category (single source of truth for category list). */
+export const INSTRUCTION_CATEGORY_OPTION_DESCRIPTION = `Instruction type (${INSTRUCTION_CATEGORIES.join(", ")})`;
+
+/** CLI option description for --ide-format (single source of truth for format list). */
+export const IDE_FORMAT_OPTION_DESCRIPTION = `Target IDE format (${Object.values(IdeFormat).join(", ")})`;
 
 /** Build metadata from rule frontmatter only (no prompts). Used for multi-select flow. */
 async function getMetadataFromFrontmatter(
@@ -83,13 +97,13 @@ async function getMetadataFromFrontmatter(
 ): Promise<InstructionMetadata> {
 	const { frontmatter } = await getInstructionWithFrontmatter(category, name);
 	const description = frontmatter.description ?? name.replaceAll("-", " ");
-	const hasGlobs = frontmatter.globs && frontmatter.globs.length > 0;
-	let globs: string[];
-	if (hasGlobs && frontmatter.globs) globs = frontmatter.globs;
-	else
-		globs =
-			category === "language" ? getDefaultGlobsForLanguage(name) : ["**/*"];
-	const alwaysApply = frontmatter.alwaysApply ?? category === "preferences";
+	const globs =
+		(frontmatter.globs?.length ? frontmatter.globs : undefined) ??
+		(category === INSTRUCTION_CATEGORY_LANGUAGE
+			? getDefaultGlobsForLanguage(name)
+			: ["**/*"]);
+	const alwaysApply =
+		frontmatter.alwaysApply ?? category === DEFAULT_INSTRUCTION_CATEGORY;
 	return { description, globs, alwaysApply };
 }
 
@@ -143,7 +157,7 @@ export async function getGenerateInstructionsConfiguration(
 
 	// Single selection from CLI flags (e.g. --instruction react-vite [--category preferences])
 	if (cliFlags.instruction) {
-		const category = cliFlags.category ?? "preferences";
+		const category = cliFlags.category ?? DEFAULT_INSTRUCTION_CATEGORY;
 		const instruction = await resolveInstructionSelection(
 			category,
 			cliFlags.instruction,
@@ -301,8 +315,8 @@ export async function fetchInstructionContent(
 	return getInstructionContent(category, name);
 }
 
-/** Default globs per language when rule file has none. */
-function getDefaultGlobsForLanguage(lang: string): string[] {
+/** Default globs per language when rule file has none. Exported for use in ide-formats fallback. */
+export function getDefaultGlobsForLanguage(lang: string): string[] {
 	if (lang === "typescript")
 		return ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"];
 	return ["**/*"];
@@ -315,15 +329,19 @@ function getDefaultGlobsForLanguage(lang: string): string[] {
 export async function getLanguageInstructionMetadata(
 	lang: string,
 ): Promise<InstructionMetadata | null> {
-	const available = await listAvailableInstructions("language");
+	const available = await listAvailableInstructions(
+		INSTRUCTION_CATEGORY_LANGUAGE,
+	);
 	if (!available.includes(lang)) return null;
 
-	const { frontmatter } = await getInstructionWithFrontmatter("language", lang);
+	const { frontmatter } = await getInstructionWithFrontmatter(
+		INSTRUCTION_CATEGORY_LANGUAGE,
+		lang,
+	);
 	const description = frontmatter.description ?? `${lang} coding standards`;
-	const hasGlobs = frontmatter.globs && frontmatter.globs.length > 0;
-	const globs: string[] = hasGlobs
-		? (frontmatter.globs ?? getDefaultGlobsForLanguage(lang))
-		: getDefaultGlobsForLanguage(lang);
+	const globs =
+		(frontmatter.globs?.length ? frontmatter.globs : undefined) ??
+		getDefaultGlobsForLanguage(lang);
 	const alwaysApply = frontmatter.alwaysApply ?? false;
 
 	return { description, globs, alwaysApply };
@@ -333,7 +351,9 @@ export async function getLanguageInstructionMetadata(
 export async function getLanguageInstructionForPackageLang(
 	lang: string,
 ): Promise<string | null> {
-	const available = await listAvailableInstructions("language");
+	const available = await listAvailableInstructions(
+		INSTRUCTION_CATEGORY_LANGUAGE,
+	);
 	if (available.includes(lang)) return lang;
 	return null;
 }

@@ -1,11 +1,11 @@
 import path from "node:path";
 import { ensureDirAsync, writeFileAsync } from "../../core/fs";
 import type { InstructionCategory } from "../../core/instructions-registry";
-import { IdeFormat } from "./config";
+import { getDefaultGlobsForLanguage, IdeFormat } from "./config";
 
 /** Marketing comment prepended to written instructions (yehle registry). */
 const YEHLE_REGISTRY_URL =
-	"https://github.com/agrawal-rohit/yehle/blob/main/templates/instructions/";
+	"https://github.com/agrawal-rohit/yehle/blob/main/instructions/";
 const YEHLE_REGISTRY_COMMENT = `<!-- This instruction is part of the "yehle" instruction registry: ${YEHLE_REGISTRY_URL} -->\n\n`;
 
 /** Globs and metadata per instruction type for IDE frontmatter. */
@@ -80,10 +80,13 @@ export function getInstructionMetadata(
 			alwaysApply: true,
 		};
 	}
-	if (category === "language" && name === "typescript") {
+	if (category === "language") {
 		return {
-			description: "TypeScript-specific coding standards",
-			globs: ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
+			description:
+				name === "typescript"
+					? "TypeScript-specific coding standards"
+					: humanName,
+			globs: getDefaultGlobsForLanguage(name),
 			alwaysApply: false,
 		};
 	}

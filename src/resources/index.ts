@@ -1,7 +1,11 @@
 import type { CAC } from "cac";
 import logger from "../cli/logger";
 import generateInstructions from "./instructions/command";
-import type { GenerateInstructionsOptions } from "./instructions/config";
+import {
+	type GenerateInstructionsOptions,
+	IDE_FORMAT_OPTION_DESCRIPTION,
+	INSTRUCTION_CATEGORY_OPTION_DESCRIPTION,
+} from "./instructions/config";
 import generatePackage from "./package/command";
 import type { GeneratePackageConfiguration } from "./package/config";
 
@@ -10,18 +14,12 @@ export async function registerResourcesCli(app: CAC) {
 
 	app
 		.command("instructions", "Add agent instructions to an existing project")
-		.option(
-			"--category <type>",
-			"Instruction type (preferences, language, use-case, template)",
-		)
+		.option("--category <type>", INSTRUCTION_CATEGORY_OPTION_DESCRIPTION)
 		.option(
 			"--instruction <name>",
 			"Instruction template name (e.g. react-vite)",
 		)
-		.option(
-			"--ide-format <format>",
-			"Target IDE format (cursor, windsurf, cline, claude, copilot)",
-		)
+		.option("--ide-format <format>", IDE_FORMAT_OPTION_DESCRIPTION)
 		.action(async (options: Partial<GenerateInstructionsOptions>) => {
 			try {
 				await generateInstructions({
