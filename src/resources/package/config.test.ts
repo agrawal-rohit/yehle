@@ -49,17 +49,21 @@ vi.mock("../../core/templates", () => ({
 	listLanguageNames: vi.fn().mockResolvedValue(["typescript"]),
 }));
 
-vi.mock("../../resources/instructions/config", () => ({
-	getPackageInstructionsConfiguration: vi.fn().mockResolvedValue({
-		includeInstructions: false,
-		ideFormat: undefined,
-	}),
-}));
-
 vi.mock("../../core/utils", () => ({
 	capitalizeFirstLetter: vi.fn(),
 	toSlug: vi.fn(),
 }));
+
+vi.mock("../../resources/instructions/config", async (importOriginal) => {
+	const actual =
+		await importOriginal<
+			typeof import("../../resources/instructions/config")
+		>();
+	return {
+		...actual,
+		getIdeFormatSelection: vi.fn().mockResolvedValue("cursor"),
+	};
+});
 
 import prompts from "../../cli/prompts";
 import tasks from "../../cli/tasks";
@@ -86,6 +90,13 @@ import {
 describe("resources/package/config", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		// Reset prompt mocks so mockResolvedValueOnce from one test doesn't leak into another.
+		vi.mocked(prompts.selectInput).mockReset();
+		vi.mocked(prompts.textInput).mockReset();
+		vi.mocked(prompts.confirmInput).mockReset();
+		vi.mocked(prompts.confirmInput).mockImplementation(() =>
+			Promise.resolve(false),
+		);
 		vi.spyOn(console, "log").mockImplementation(() => {});
 	});
 
@@ -122,14 +133,6 @@ describe("resources/package/config", () => {
 		});
 
 		it("should prompt for author info when package is public", async () => {
-			const { getPackageInstructionsConfiguration } = await import(
-				"../instructions/config"
-			);
-			vi.mocked(getPackageInstructionsConfiguration).mockResolvedValueOnce({
-				includeInstructions: false,
-				ideFormat: undefined,
-			});
-
 			vi.mocked(prompts.selectInput).mockResolvedValueOnce(Language.TYPESCRIPT);
 			vi.mocked(validatePackageName).mockImplementation(() => {});
 			vi.mocked(prompts.textInput).mockResolvedValueOnce("my-package");
@@ -138,7 +141,10 @@ describe("resources/package/config", () => {
 				"advanced",
 			]);
 			vi.mocked(prompts.selectInput).mockResolvedValueOnce("basic");
-			vi.mocked(prompts.confirmInput).mockResolvedValueOnce(true);
+			// First confirm: visibility (public). Second: include instructions (false so we don't call getIdeFormatSelection).
+			vi.mocked(prompts.confirmInput)
+				.mockResolvedValueOnce(true)
+				.mockResolvedValueOnce(false);
 			vi.mocked(getGitUsername).mockResolvedValue("John");
 			vi.mocked(prompts.textInput).mockResolvedValueOnce("John Doe");
 			vi.mocked(getGitEmail).mockResolvedValue("john@example.com");

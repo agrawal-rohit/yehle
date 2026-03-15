@@ -117,7 +117,6 @@ import {
 	InstructionCategory,
 	listAvailableInstructions,
 } from "../../core/instructions";
-import { IdeFormat } from "../instructions/config";
 import { writeInstructionToFile } from "../instructions/ide-formats";
 // Import after mocks
 import {
@@ -173,7 +172,7 @@ describe("resources/package/setup", () => {
 				template: "basic",
 				public: false,
 				includeInstructions: true,
-				instructionsIdeFormat: IdeFormat.CURSOR,
+				instructionsIdeFormat: "cursor",
 			});
 
 			expect(getInstructionWithFrontmatter).not.toHaveBeenCalled();
@@ -211,7 +210,7 @@ describe("resources/package/setup", () => {
 				template: "basic",
 				public: false,
 				includeInstructions: true,
-				instructionsIdeFormat: IdeFormat.CURSOR,
+				instructionsIdeFormat: "cursor",
 			});
 
 			expect(listAvailableInstructions).toHaveBeenCalledWith(

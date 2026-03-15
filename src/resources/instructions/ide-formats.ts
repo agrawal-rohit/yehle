@@ -4,59 +4,66 @@ import {
 	InstructionCategory,
 	type RuleFrontmatter,
 } from "../../core/instructions";
-import { IdeFormat } from "./config";
 
-/** Marketing comment prepended to written instructions (yehle registry). */
+/** IDE format options. */
+export const IDE_FORMATS = [
+	{ label: "Cursor", value: "cursor" },
+	{ label: "Windsurf", value: "windsurf" },
+	{ label: "Cline", value: "cline" },
+	{ label: "Claude Code", value: "claude" },
+	{ label: "GitHub Copilot", value: "copilot" },
+] as const;
+
+export type IdeFormat = (typeof IDE_FORMATS)[number]["value"];
+
+/** Comment prepended to written instructions (yehle registry). */
 const YEHLE_REGISTRY_URL =
 	"https://github.com/agrawal-rohit/yehle/blob/main/instructions/";
+
 const YEHLE_REGISTRY_COMMENT = `<!-- This instruction is part of the "yehle" instruction registry: ${YEHLE_REGISTRY_URL} -->\n\n`;
 
-/**
- * Build Cursor .mdc frontmatter: description, globs (YAML array), alwaysApply.
- * Cursor uses "globs"; we write frontmatter.paths as globs.
- */
+/** Paths array for frontmatter. */
+function getPathsArray(frontmatter: RuleFrontmatter): string[] {
+	return frontmatter.paths?.length ? frontmatter.paths : ["**/*"];
+}
+
+/** Build frontmatter block with a YAML `paths:` array. */
+function frontmatterWithPathsArray(paths: string[]): string {
+	return `---
+paths:
+${paths.map((p) => `  - "${p}"`).join("\n")}
+---
+
+`;
+}
+
+/** Build Cursor .mdc frontmatter: description, globs (YAML array), alwaysApply. */
 function cursorFrontmatter(frontmatter: RuleFrontmatter): string {
+	const paths = getPathsArray(frontmatter);
 	return `---
 description: "${frontmatter.description}"
-globs:
-${frontmatter.paths?.map((g) => `  - "${g}"`).join("\n")}
 alwaysApply: ${frontmatter.alwaysApply}
+globs:
+${paths.map((p) => `  - "${p}"`).join("\n")}
 ---
 
 `;
 }
 
-/**
- * Build Cline .mdc frontmatter: title, description, glob (single pattern).
- */
+/** Build Cline .mdc frontmatter: paths (array of glob patterns). */
 function clineFrontmatter(frontmatter: RuleFrontmatter): string {
-	const glob = frontmatter.paths?.[0] ?? "**/*";
-	return `---
-title: "${frontmatter.description}"
-description: "${frontmatter.description}"
-glob: "${glob}"
----
-
-`;
+	return frontmatterWithPathsArray(getPathsArray(frontmatter));
 }
 
-/**
- * Build Claude .claude/rules frontmatter: globs as comma-separated (per docs).
- */
+/** Build Claude .claude/rules frontmatter: paths (array of glob patterns). */
 function claudeFrontmatter(frontmatter: RuleFrontmatter): string {
-	const globsStr = frontmatter.paths?.join(", ") ?? "";
-	return `---
-globs: ${globsStr}
----
-
-`;
+	return frontmatterWithPathsArray(getPathsArray(frontmatter));
 }
 
-/**
- * Build Copilot path-specific .instructions.md frontmatter: applyTo (single glob).
- */
+/** Build Copilot path-specific .instructions.md frontmatter. */
 function copilotFrontmatter(frontmatter: RuleFrontmatter): string {
-	const applyTo = frontmatter.paths?.[0] ?? "**/*";
+	const paths = getPathsArray(frontmatter);
+	const applyTo = paths.join(", ");
 	return `---
 applyTo: "${applyTo}"
 ---
@@ -64,22 +71,21 @@ applyTo: "${applyTo}"
 `;
 }
 
-/** Copilot repo-wide (e.g. essential): no frontmatter, content only. */
+/** Copilot repo-wide. */
 function copilotRepoWide(_frontmatter: RuleFrontmatter): string {
 	return "";
 }
 
-/** Path templates per IDE; some vary by category (e.g. Copilot). */
-/** Path template per IDE ({{ruleName}} replaced with instruction name). Same for all categories except Copilot essential. */
+/** Path templates per IDE. */
 const IDE_PATH_TEMPLATES: Record<IdeFormat, string> = {
-	[IdeFormat.CURSOR]: ".cursor/rules/{{ruleName}}.mdc",
-	[IdeFormat.WINDSURF]: ".windsurf/rules/{{ruleName}}.md",
-	[IdeFormat.CLINE]: ".clinerules/{{ruleName}}.mdc",
-	[IdeFormat.CLAUDE]: ".claude/rules/{{ruleName}}.md",
-	[IdeFormat.COPILOT]: ".github/instructions/{{ruleName}}.instructions.md",
+	cursor: ".cursor/rules/{{ruleName}}.mdc",
+	windsurf: ".windsurf/rules/{{ruleName}}.md",
+	cline: ".clinerules/{{ruleName}}.mdc",
+	claude: ".claude/rules/{{ruleName}}.md",
+	copilot: ".github/instructions/{{ruleName}}.instructions.md",
 };
 
-/** Copilot repo-wide single file for essential (no {{ruleName}}). */
+/** Copilot repo-wide single file. */
 const COPILOT_REPO_WIDE_PATH = ".github/copilot-instructions.md";
 
 /**
@@ -93,25 +99,32 @@ function getTransformForIde(
 	ideFormat: IdeFormat,
 	category: InstructionCategory,
 ): ((content: string, frontmatter: RuleFrontmatter) => string) | undefined {
-	if (
-		ideFormat === IdeFormat.COPILOT &&
-		category === InstructionCategory.ESSENTIAL
-	)
+	// Copilot repo-wide.
+	if (ideFormat === "copilot" && category === InstructionCategory.ESSENTIAL)
 		return (content, fm) => copilotRepoWide(fm) + content;
+
+	// Copilot path-specific.
 	if (
-		ideFormat === IdeFormat.COPILOT &&
+		ideFormat === "copilot" &&
 		(category === InstructionCategory.SITUATIONAL ||
 			category === InstructionCategory.LANGUAGE ||
 			category === InstructionCategory.PROJECT_SPEC ||
 			category === InstructionCategory.TEMPLATE)
 	)
 		return (content, fm) => copilotFrontmatter(fm) + content;
-	if (ideFormat === IdeFormat.CURSOR)
+
+	// Cursor
+	if (ideFormat === "cursor")
 		return (content, fm) => cursorFrontmatter(fm) + content;
-	if (ideFormat === IdeFormat.CLINE)
+
+	// Cline
+	if (ideFormat === "cline")
 		return (content, fm) => clineFrontmatter(fm) + content;
-	if (ideFormat === IdeFormat.CLAUDE)
+
+	// Claude
+	if (ideFormat === "claude")
 		return (content, fm) => claudeFrontmatter(fm) + content;
+
 	return undefined;
 }
 
@@ -129,12 +142,11 @@ export function resolveOutputPath(
 	cwd: string,
 	category: InstructionCategory,
 ): string {
-	if (
-		ideFormat === IdeFormat.COPILOT &&
-		category === InstructionCategory.ESSENTIAL
-	) {
+	// Copilot repo-wide.
+	if (ideFormat === "copilot" && category === InstructionCategory.ESSENTIAL)
 		return path.resolve(cwd, COPILOT_REPO_WIDE_PATH);
-	}
+
+	// Path-specific.
 	const relPath = IDE_PATH_TEMPLATES[ideFormat].replaceAll(
 		"{{ruleName}}",
 		ruleName,
@@ -143,7 +155,7 @@ export function resolveOutputPath(
 }
 
 /**
- * Transform raw instruction content for the given IDE format (add frontmatter when applicable).
+ * Transform raw instruction content for the given IDE format.
  * @param content - Raw markdown body (may already include registry comment).
  * @param ideFormat - Target IDE format.
  * @param category - Instruction category.

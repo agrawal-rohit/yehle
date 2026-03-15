@@ -58,14 +58,6 @@ describe("resources/index", () => {
 				"Add agent instructions to an existing project",
 			);
 			expect(mockCommand.option).toHaveBeenCalledWith(
-				"--category <type>",
-				expect.any(String),
-			);
-			expect(mockCommand.option).toHaveBeenCalledWith(
-				"--instruction <name>",
-				expect.stringContaining("Instruction template name"),
-			);
-			expect(mockCommand.option).toHaveBeenCalledWith(
 				"--ide-format <format>",
 				expect.stringContaining("cursor"),
 			);
@@ -104,13 +96,11 @@ describe("resources/index", () => {
 			const instructionsAction = mockCommand.action.mock.calls[0]?.[0];
 			if (instructionsAction) {
 				await instructionsAction({
-					instruction: "react-vite",
 					ideFormat: "cursor",
 				});
 			}
 
 			expect(generateInstructions).toHaveBeenCalledWith({
-				instruction: "react-vite",
 				ideFormat: "cursor",
 			});
 		});

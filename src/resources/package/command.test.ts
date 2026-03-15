@@ -95,7 +95,7 @@ import { Language } from "../../core/constants";
 import { initGitRepo, makeInitialCommit } from "../../core/git";
 import { ensurePackageManager, getInstallScript } from "../../core/pkg-manager";
 import { toSlug } from "../../core/utils";
-import { IdeFormat } from "../instructions/config";
+
 // Import after mocks
 import { generatePackage } from "./command";
 import {
@@ -422,7 +422,7 @@ describe("resources/package/command", () => {
 				template: "basic",
 				public: false,
 				includeInstructions: true,
-				instructionsIdeFormat: IdeFormat.CURSOR,
+				instructionsIdeFormat: "cursor",
 			};
 			vi.mocked(getGeneratePackageConfiguration).mockResolvedValue(mockConfig);
 			vi.mocked(toSlug).mockReturnValue("test-package");

@@ -1,11 +1,8 @@
 import type { CAC } from "cac";
 import logger from "../cli/logger";
 import generateInstructions from "./instructions/command";
-import {
-	type GenerateInstructionsOptions,
-	IDE_FORMAT_OPTION_DESCRIPTION,
-	INSTRUCTION_CATEGORY_OPTION_DESCRIPTION,
-} from "./instructions/config";
+import type { GenerateInstructionsOptions } from "./instructions/config";
+import { IDE_FORMATS } from "./instructions/ide-formats";
 import generatePackage from "./package/command";
 import type { GeneratePackageConfiguration } from "./package/config";
 
@@ -14,17 +11,13 @@ export async function registerResourcesCli(app: CAC) {
 
 	app
 		.command("instructions", "Add agent instructions to an existing project")
-		.option("--category <type>", INSTRUCTION_CATEGORY_OPTION_DESCRIPTION)
 		.option(
-			"--instruction <name>",
-			`Instruction template name (e.g. "code-quality-standards", "react-component-styles")`,
+			"--ide-format <format>",
+			`Target IDE format (${IDE_FORMATS.map((f) => f.value).join(", ")})`,
 		)
-		.option("--ide-format <format>", IDE_FORMAT_OPTION_DESCRIPTION)
 		.action(async (options: Partial<GenerateInstructionsOptions>) => {
 			try {
 				await generateInstructions({
-					category: options.category,
-					instruction: options.instruction,
 					ideFormat: options.ideFormat,
 				});
 			} catch (err) {

@@ -17,7 +17,6 @@ import {
 	readSituationalInstructionsMapping,
 } from "../../core/instructions";
 import { resolveTemplatesDir } from "../../core/templates";
-import { INSTRUCTION_CATEGORY_LANGUAGE } from "../instructions/config";
 import { writeInstructionToFile } from "../instructions/ide-formats";
 import type { GeneratePackageConfiguration } from "./config";
 import { templatePublicPaths } from "./config";
@@ -137,12 +136,12 @@ export async function addPackageInstructions(
 	// Add all language instructions for the package's language (e.g. templates/typescript/instructions/*.md)
 	const languageContext = { lang: generateConfig.lang };
 	const languageNames = await listAvailableInstructions(
-		INSTRUCTION_CATEGORY_LANGUAGE,
+		InstructionCategory.LANGUAGE,
 		languageContext,
 	);
 	for (const name of languageNames) {
 		const { content, frontmatter } = await getInstructionWithFrontmatter(
-			INSTRUCTION_CATEGORY_LANGUAGE,
+			InstructionCategory.LANGUAGE,
 			name,
 			languageContext,
 		);
@@ -151,7 +150,7 @@ export async function addPackageInstructions(
 			name,
 			content,
 			ideFormat,
-			INSTRUCTION_CATEGORY_LANGUAGE,
+			InstructionCategory.LANGUAGE,
 			frontmatter,
 		);
 	}

@@ -12,10 +12,8 @@ import {
 	listLanguageNames,
 } from "../../core/templates";
 import { capitalizeFirstLetter, toSlug } from "../../core/utils";
-import {
-	getPackageInstructionsConfiguration,
-	type IdeFormat,
-} from "../instructions/config";
+import { getIdeFormatSelection } from "../instructions/config";
+import type { IdeFormat } from "../instructions/ide-formats";
 
 /** Public files for the template. */
 export const templatePublicPaths: Record<Language | "shared", string[]> = {
@@ -50,6 +48,12 @@ export type GeneratePackageConfiguration = {
 	authorGitEmail?: string;
 };
 
+/** Describes the configuration for adding instructions during package creation. */
+export type GeneratePackageInstructionsConfiguration = {
+	includeInstructions: boolean;
+	ideFormat?: IdeFormat;
+};
+
 /**
  * Gather configuration for package creation via CLI flags or prompts (language, name, template, visibility, instructions, author).
  * @param cliFlags - Optional CLI options (lang, name, template, public, includeInstructions, instructionsIdeFormat, etc.).
@@ -63,7 +67,7 @@ export async function getGeneratePackageConfiguration(
 	const template = await getPackageTemplate(lang, cliFlags);
 	const isPublic = await getPackageVisibility(lang, cliFlags);
 
-	const instructionsResult = await getPackageInstructionsConfiguration({
+	const instructionsResult = await getGeneratePackageInstructionsConfiguration({
 		includeInstructions: cliFlags.includeInstructions,
 		ideFormat: cliFlags.instructionsIdeFormat,
 	});
@@ -238,6 +242,28 @@ export async function getPackageVisibility(
 		));
 
 	return isPublic;
+}
+
+/**
+ * Prompt for whether to include agent instructions during package creation, and for IDE format if yes.
+ * @param cliFlags - Optional flags (includeInstructions, ideFormat).
+ * @returns Promise resolving to the package instructions configuration.
+ */
+export async function getGeneratePackageInstructionsConfiguration(
+	cliFlags: Partial<GeneratePackageInstructionsConfiguration> = {},
+): Promise<GeneratePackageInstructionsConfiguration> {
+	const includeInstructions =
+		cliFlags.includeInstructions ??
+		(await prompts.confirmInput(
+			"Would you like to include appropriate agent instructions?",
+			undefined,
+			false,
+		));
+
+	if (!includeInstructions) return { includeInstructions: false };
+
+	const ideFormat = await getIdeFormatSelection(cliFlags.ideFormat);
+	return { includeInstructions: true, ideFormat: ideFormat };
 }
 
 /**
