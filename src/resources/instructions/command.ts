@@ -2,7 +2,7 @@ import path from "node:path";
 import chalk from "chalk";
 import logger, { primaryText } from "../../cli/logger";
 import tasks from "../../cli/tasks";
-import { getInstructionWithFrontmatter } from "../../core/instructions-registry";
+import { getInstructionWithFrontmatter } from "../../core/instructions";
 import {
 	type GenerateInstructionsOptions,
 	getGenerateInstructionsConfiguration,

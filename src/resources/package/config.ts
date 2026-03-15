@@ -1,23 +1,18 @@
 import { primaryText } from "../../cli/logger";
 import prompts from "../../cli/prompts";
 import tasks from "../../cli/tasks";
-import { IS_LOCAL_MODE } from "../../core/constants";
+import { IS_LOCAL_MODE, Language } from "../../core/constants";
 import { getGitEmail, getGitUsername } from "../../core/git";
 import {
 	LANGUAGE_PACKAGE_REGISTRY,
 	validatePackageName,
 } from "../../core/pkg-manager";
-import { listAvailableTemplates } from "../../core/template-registry";
+import { listAvailableTemplates } from "../../core/templates";
 import { capitalizeFirstLetter, toSlug } from "../../core/utils";
 import {
 	getPackageInstructionsConfiguration,
 	type IdeFormat,
 } from "../instructions/config";
-
-/** Supported programming languages for the package. */
-export enum Language {
-	TYPESCRIPT = "typescript",
-}
 
 /** Public files for the template. */
 export const templatePublicPaths: Record<Language | "shared", string[]> = {

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Language } from "./constants";
 import {
 	ensurePackageManager,
 	getInstallScript,
@@ -6,9 +7,8 @@ import {
 	LANGUAGE_PACKAGE_REGISTRY,
 	type PackageManager,
 	validatePackageName,
-} from "../../src/core/pkg-manager";
-import * as shell from "../../src/core/shell";
-import { Language } from "../../src/resources/package/config";
+} from "./pkg-manager";
+import * as shell from "./shell";
 
 describe("core/pkg-manager", () => {
 	describe("LANGUAGE_PACKAGE_MANAGER", () => {
@@ -24,16 +24,14 @@ describe("core/pkg-manager", () => {
 	});
 
 	describe("validatePackageName", () => {
-		let validateTsSpy: any;
+		let validateTsSpy: ReturnType<typeof vi.fn>;
 
 		beforeEach(async () => {
-			const tsModule: any = await import(
-				"../../src/resources/package/typescript"
-			);
+			const tsModule = await import("../resources/package/typescript");
 			validateTsSpy = vi.spyOn(
 				tsModule,
 				"validateTypescriptPackageName",
-			) as any;
+			) as unknown as ReturnType<typeof vi.fn>;
 		});
 
 		afterEach(() => {
@@ -41,7 +39,7 @@ describe("core/pkg-manager", () => {
 		});
 
 		it("does not throw for a valid TypeScript package name", () => {
-			(validateTsSpy as any).mockReturnValue(true);
+			validateTsSpy.mockReturnValue(true as never);
 
 			expect(() =>
 				validatePackageName("valid-pkg", Language.TYPESCRIPT),
@@ -51,7 +49,7 @@ describe("core/pkg-manager", () => {
 		});
 
 		it("throws with provided string message for invalid TypeScript name", () => {
-			(validateTsSpy as any).mockReturnValue("name is invalid");
+			validateTsSpy.mockReturnValue("name is invalid" as never);
 
 			expect(() =>
 				validatePackageName("invalid-pkg", Language.TYPESCRIPT),
@@ -59,7 +57,7 @@ describe("core/pkg-manager", () => {
 		});
 
 		it('throws generic "Invalid package name" when validator returns non-true non-string', () => {
-			(validateTsSpy as any).mockReturnValue({ reason: "bad" } as any);
+			validateTsSpy.mockReturnValue({ reason: "bad" } as never);
 
 			expect(() =>
 				validatePackageName("invalid-pkg", Language.TYPESCRIPT),
@@ -77,12 +75,17 @@ describe("core/pkg-manager", () => {
 	});
 
 	describe("ensurePackageManager", () => {
-		let commandExistsSpy: any;
-		let runAsyncSpy: any;
+		let commandExistsSpy: ReturnType<typeof vi.fn>;
+		let runAsyncSpy: ReturnType<typeof vi.fn>;
 
 		beforeEach(() => {
-			commandExistsSpy = vi.spyOn(shell as any, "commandExistsAsync") as any;
-			runAsyncSpy = vi.spyOn(shell as any, "runAsync") as any;
+			commandExistsSpy = vi.spyOn(
+				shell,
+				"commandExistsAsync",
+			) as unknown as ReturnType<typeof vi.fn>;
+			runAsyncSpy = vi.spyOn(shell, "runAsync") as unknown as ReturnType<
+				typeof vi.fn
+			>;
 		});
 
 		afterEach(() => {
@@ -90,7 +93,7 @@ describe("core/pkg-manager", () => {
 		});
 
 		it("throws if pnpm is not installed", async () => {
-			(commandExistsSpy as any).mockResolvedValue(false);
+			vi.mocked(commandExistsSpy).mockResolvedValue(false);
 
 			await expect(
 				ensurePackageManager("pnpm" as PackageManager),
@@ -103,8 +106,8 @@ describe("core/pkg-manager", () => {
 		});
 
 		it("returns pnpm with version when pnpm is installed", async () => {
-			(commandExistsSpy as any).mockResolvedValue(true);
-			(runAsyncSpy as any).mockResolvedValue("9.1.0");
+			vi.mocked(commandExistsSpy).mockResolvedValue(true);
+			vi.mocked(runAsyncSpy).mockResolvedValue("9.1.0");
 
 			const result = await ensurePackageManager("pnpm" as PackageManager);
 

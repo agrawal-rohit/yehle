@@ -4,10 +4,13 @@ import matter from "gray-matter";
 import { parse as parseYaml } from "yaml";
 import { IS_LOCAL_MODE } from "./constants";
 import { isDirAsync } from "./fs";
-import { getLocalTemplatesRoot, listRemoteFilesViaAPI } from "./registry";
-import { listLocalChildDirs, resolveLocalSubpath } from "./registry-local";
-import { resolveRemoteSubpath } from "./registry-remote";
-import { NON_TEMPLATE_DIR_NAMES } from "./template-registry";
+import {
+	getLocalTemplatesRoot,
+	listLocalChildDirs,
+	resolveLocalSubpath,
+} from "./registry.local";
+import { listRemoteFilesViaAPI, resolveRemoteSubpath } from "./registry.remote";
+import { NON_TEMPLATE_DIR_NAMES } from "./templates";
 
 /** Path segment for the instructions tree under templates. */
 const INSTRUCTIONS_PATH = "instructions";

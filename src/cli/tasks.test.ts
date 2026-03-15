@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-// Create mock for newListr
-const mockNewListr = vi.fn(() => ({}));
-
 // Mock listr2 before imports - create mock functions inside factory
 vi.mock("listr2", () => ({
 	Listr: vi.fn((tasks) => {
@@ -10,11 +7,12 @@ vi.mock("listr2", () => ({
 		return {
 			run: vi.fn(async () => {
 				// Execute the task function to improve coverage
-				if (tasks && tasks[0] && tasks[0].task) {
+				const firstTask = Array.isArray(tasks) ? tasks[0] : undefined;
+				if (firstTask?.task) {
 					const mockTask = {
 						newListr: vi.fn(() => ({})),
 					};
-					await tasks[0].task({}, mockTask);
+					await firstTask.task({}, mockTask);
 				}
 			}),
 			_tasks: tasks,
@@ -33,11 +31,7 @@ vi.mock("chalk", () => ({
 
 import chalk from "chalk";
 import { Listr } from "listr2";
-import tasks, {
-	conditionalTask,
-	runWithTasks,
-	task,
-} from "../../src/cli/tasks";
+import tasks, { conditionalTask, runWithTasks, task } from "./tasks";
 
 describe("cli/tasks", () => {
 	beforeEach(() => {
@@ -128,7 +122,10 @@ describe("cli/tasks", () => {
 			await runWithTasks(goalTitle);
 
 			expect(chalk.hex).toHaveBeenCalledWith("#FEA624");
-			const colorFn = (chalk.hex as any).mock.results[0].value;
+			const mockedHex = vi.mocked(chalk.hex);
+			const colorFn = mockedHex.mock.results[0]?.value as ReturnType<
+				typeof mockedHex
+			>;
 			expect(colorFn).toHaveBeenCalledWith(goalTitle);
 		});
 
@@ -192,7 +189,7 @@ describe("cli/tasks", () => {
 				() =>
 					({
 						run: vi.fn(() => Promise.reject(error)),
-					}) as any,
+					}) as unknown as InstanceType<typeof Listr>,
 			);
 
 			await expect(runWithTasks("Test Goal")).rejects.toThrow("Task failed");
@@ -204,7 +201,8 @@ describe("cli/tasks", () => {
 			await runWithTasks(goalTitle);
 
 			const listrArgs = vi.mocked(Listr).mock.calls[0];
-			expect(listrArgs[0][0].title).toBe(goalTitle);
+			const taskConfigs = listrArgs[0] as Array<{ title: string }>;
+			expect(taskConfigs[0]?.title).toBe(goalTitle);
 		});
 
 		test("should map subtasks and format titles with grey", async () => {
@@ -232,27 +230,32 @@ describe("cli/tasks", () => {
 			];
 
 			// Mock Listr to actually execute subtasks
-			vi.mocked(Listr).mockImplementationOnce(
-				(tasks) =>
-					({
-						run: vi.fn(async () => {
-							if (tasks && tasks[0] && tasks[0].task) {
-								const mockTaskWrapper = {
-									newListr: vi.fn((subTasks) => {
-										// Execute each subtask to cover lines 63-64
-										subTasks.forEach(async (subTask: any) => {
-											if (subTask.task) {
-												await subTask.task();
-											}
-										});
-										return {};
-									}),
-								};
-								await tasks[0].task({}, mockTaskWrapper);
-							}
-						}),
-					}) as any,
-			);
+			vi.mocked(Listr).mockImplementationOnce((tasksArg) => {
+				const run = vi.fn(async () => {
+					type TaskFn = (ctx: unknown, wrapper: unknown) => Promise<void>;
+					const firstTask = (
+						Array.isArray(tasksArg) ? tasksArg[0] : undefined
+					) as { task?: TaskFn } | undefined;
+
+					if (firstTask?.task) {
+						const mockTaskWrapper = {
+							newListr: vi.fn(
+								(subTasks: Array<{ task?: () => Promise<void> }>) => {
+									// Execute each subtask to cover lines 63-64
+									subTasks.forEach(async (subTask) => {
+										if (subTask.task) {
+											await subTask.task();
+										}
+									});
+									return {};
+								},
+							),
+						};
+						await firstTask.task({}, mockTaskWrapper);
+					}
+				});
+				return { run } as unknown as InstanceType<typeof Listr>;
+			});
 
 			await runWithTasks("Test Goal", undefined, subtasks);
 
@@ -271,7 +274,11 @@ describe("cli/tasks", () => {
 
 			// Get the task function that was passed to Listr
 			const listrArgs = vi.mocked(Listr).mock.calls[0];
-			const taskConfig = listrArgs[0][0];
+			const taskConfig = (
+				listrArgs[0] as Array<{
+					task: (ctx: unknown, wrapper: unknown) => Promise<void>;
+				}>
+			)[0];
 
 			// Execute the task function to trigger newListr
 			const mockTaskWrapper = {

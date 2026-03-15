@@ -11,19 +11,26 @@ vi.mock("../../../src/cli/prompts", () => ({
 
 vi.mock("../../../src/cli/tasks", () => ({
 	default: {
-		runWithTasks: vi.fn(async (goal, task) => {
+		runWithTasks: vi.fn(async (_, task) => {
 			if (task) await task();
 		}),
 	},
 }));
 
-globalThis.mockIsLocalMode = false;
+(
+	globalThis as typeof globalThis & { mockIsLocalMode: boolean }
+).mockIsLocalMode = false;
 
-vi.mock("../../../src/core/constants", () => ({
-	get IS_LOCAL_MODE() {
-		return globalThis.mockIsLocalMode;
-	},
-}));
+vi.mock("../../../src/core/constants", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../core/constants")>();
+	return {
+		...actual,
+		get IS_LOCAL_MODE() {
+			return (globalThis as typeof globalThis & { mockIsLocalMode: boolean })
+				.mockIsLocalMode;
+		},
+	};
+});
 
 vi.mock("../../../src/core/git", () => ({
 	getGitEmail: vi.fn(),
@@ -37,7 +44,7 @@ vi.mock("../../../src/core/pkg-manager", () => ({
 	validatePackageName: vi.fn(),
 }));
 
-vi.mock("../../../src/core/template-registry", () => ({
+vi.mock("../../../src/core/templates", () => ({
 	listAvailableTemplates: vi.fn(),
 }));
 
@@ -53,12 +60,13 @@ vi.mock("../../../src/core/utils", () => ({
 	toSlug: vi.fn(),
 }));
 
-import prompts from "../../../src/cli/prompts";
-import tasks from "../../../src/cli/tasks";
-import { getGitEmail, getGitUsername } from "../../../src/core/git";
-import { validatePackageName } from "../../../src/core/pkg-manager";
-import { listAvailableTemplates } from "../../../src/core/template-registry";
-import { capitalizeFirstLetter, toSlug } from "../../../src/core/utils";
+import { listAvailableTemplates } from "../../../src/core/templates";
+import prompts from "../../cli/prompts";
+import tasks from "../../cli/tasks";
+import { Language } from "../../core/constants";
+import { getGitEmail, getGitUsername } from "../../core/git";
+import { validatePackageName } from "../../core/pkg-manager";
+import { capitalizeFirstLetter, toSlug } from "../../core/utils";
 // Import after mocks
 import {
 	getGeneratePackageConfiguration,
@@ -66,11 +74,10 @@ import {
 	getPackageName,
 	getPackageTemplate,
 	getPackageVisibility,
-	Language,
 	promptAuthorGitEmail,
 	promptAuthorGitUsername,
 	promptAuthorName,
-} from "../../../src/resources/package/config";
+} from "./config";
 
 describe("resources/package/config", () => {
 	beforeEach(() => {
@@ -80,7 +87,9 @@ describe("resources/package/config", () => {
 
 	afterEach(() => {
 		vi.clearAllMocks();
-		globalThis.mockIsLocalMode = false;
+		(
+			globalThis as typeof globalThis & { mockIsLocalMode: boolean }
+		).mockIsLocalMode = false;
 	});
 
 	describe("getGeneratePackageConfiguration", () => {
@@ -110,7 +119,7 @@ describe("resources/package/config", () => {
 
 		it("should prompt for author info when package is public", async () => {
 			const { getPackageInstructionsConfiguration } = await import(
-				"../../../src/resources/instructions/config"
+				"../instructions/config"
 			);
 			vi.mocked(getPackageInstructionsConfiguration).mockResolvedValueOnce({
 				includeInstructions: false,
@@ -260,7 +269,9 @@ describe("resources/package/config", () => {
 		});
 
 		it("should fetch templates directly when in local mode", async () => {
-			globalThis.mockIsLocalMode = true;
+			(
+				globalThis as typeof globalThis & { mockIsLocalMode: boolean }
+			).mockIsLocalMode = true;
 			vi.mocked(listAvailableTemplates).mockResolvedValue(["basic"]);
 
 			const result = await getPackageTemplate(Language.TYPESCRIPT, {});

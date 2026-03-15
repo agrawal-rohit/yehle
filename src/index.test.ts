@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock node modules and internal modules
+// Mock CLI dependencies used by the top-level entrypoint
 const mockApp = {
 	help: vi.fn(),
 	outputHelp: vi.fn(),
@@ -11,14 +11,14 @@ vi.mock("cac", () => ({
 	default: vi.fn(() => mockApp),
 }));
 
-vi.mock("../src/resources", () => ({
+vi.mock("./resources", () => ({
 	registerResourcesCli: vi.fn(),
 }));
 
 import cac from "cac";
-// Import after mocks
-import run from "../src/index";
-import { registerResourcesCli } from "../src/resources";
+import run from "./index";
+
+import { registerResourcesCli } from "./resources";
 
 describe("index", () => {
 	beforeEach(() => {

@@ -1,12 +1,12 @@
 import consola from "consola";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import logger from "../../src/cli/logger";
+import logger from "./logger";
 import prompts, {
 	confirmInput,
 	multiselectInput,
 	selectInput,
 	textInput,
-} from "../../src/cli/prompts";
+} from "./prompts";
 
 // Mock consola
 vi.mock("consola", () => ({
@@ -15,24 +15,21 @@ vi.mock("consola", () => ({
 	},
 }));
 
-// Mock logger
-vi.mock("../../src/cli/logger", () => ({
+// Mock logger used by prompts helpers
+vi.mock("./logger", () => ({
 	default: {
-		error: vi.fn(() => process.exit(1)),
-		end: vi.fn(() => process.exit(0)),
+		error: vi.fn((message: string) => {
+			throw new Error(`process.exit called with code 1: ${message}`);
+		}),
+		end: vi.fn((message: string) => {
+			throw new Error(`process.exit called with code 0: ${message}`);
+		}),
 	},
 }));
 
 describe("cli/prompts", () => {
-	let processExitSpy: any;
-
 	beforeEach(() => {
 		vi.clearAllMocks();
-		processExitSpy = vi.spyOn(process, "exit").mockImplementation(((
-			code?: number,
-		) => {
-			throw new Error(`process.exit called with code ${code}`);
-		}) as any);
 	});
 
 	afterEach(() => {
@@ -105,9 +102,11 @@ describe("cli/prompts", () => {
 		});
 
 		test("should call logger.end when operation is canceled", async () => {
-			const mockPrompt = vi.mocked(consola.prompt);
+			const mockPrompt = vi.mocked(consola.prompt) as unknown as {
+				mockResolvedValue: (value: unknown) => void;
+			};
 			const cancelSymbol = Symbol.for("cancel");
-			mockPrompt.mockResolvedValue(cancelSymbol as any);
+			mockPrompt.mockResolvedValue(cancelSymbol);
 
 			await expect(() => textInput("Enter text")).rejects.toThrow(
 				"process.exit called with code 0",
@@ -161,9 +160,11 @@ describe("cli/prompts", () => {
 		});
 
 		test("should call logger.end when operation is canceled", async () => {
-			const mockPrompt = vi.mocked(consola.prompt);
+			const mockPrompt = vi.mocked(consola.prompt) as unknown as {
+				mockResolvedValue: (value: unknown) => void;
+			};
 			const cancelSymbol = Symbol.for("cancel");
-			mockPrompt.mockResolvedValue(cancelSymbol as any);
+			mockPrompt.mockResolvedValue(cancelSymbol);
 
 			await expect(() =>
 				selectInput("Select", { options: [] }),
@@ -237,9 +238,11 @@ describe("cli/prompts", () => {
 		});
 
 		test("should call logger.end when operation is canceled", async () => {
-			const mockPrompt = vi.mocked(consola.prompt);
+			const mockPrompt = vi.mocked(consola.prompt) as unknown as {
+				mockResolvedValue: (value: unknown) => void;
+			};
 			const cancelSymbol = Symbol.for("cancel");
-			mockPrompt.mockResolvedValue(cancelSymbol as any);
+			mockPrompt.mockResolvedValue(cancelSymbol);
 
 			await expect(() =>
 				multiselectInput("Select multiple", { options: [] }),
@@ -316,9 +319,11 @@ describe("cli/prompts", () => {
 		});
 
 		test("should call logger.end when operation is canceled", async () => {
-			const mockPrompt = vi.mocked(consola.prompt);
+			const mockPrompt = vi.mocked(consola.prompt) as unknown as {
+				mockResolvedValue: (value: unknown) => void;
+			};
 			const cancelSymbol = Symbol.for("cancel");
-			mockPrompt.mockResolvedValue(cancelSymbol as any);
+			mockPrompt.mockResolvedValue(cancelSymbol);
 
 			await expect(() => confirmInput("Confirm?")).rejects.toThrow(
 				"process.exit called with code 0",
@@ -338,8 +343,10 @@ describe("cli/prompts", () => {
 		});
 
 		test("should convert falsy values to boolean", async () => {
-			const mockPrompt = vi.mocked(consola.prompt);
-			mockPrompt.mockResolvedValue(null as any);
+			const mockPrompt = vi.mocked(consola.prompt) as unknown as {
+				mockResolvedValue: (value: unknown) => void;
+			};
+			mockPrompt.mockResolvedValue(null);
 
 			const result = await confirmInput("Confirm?");
 

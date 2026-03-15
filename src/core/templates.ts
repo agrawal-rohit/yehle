@@ -1,15 +1,20 @@
 import path from "node:path";
-import type { Language } from "../resources/package/config";
-import { IS_LOCAL_MODE } from "./constants";
-import { isDirAsync } from "./fs";
+import type { Language } from "./constants";
 import {
 	DEFAULT_GITHUB_OWNER,
 	DEFAULT_GITHUB_REPO,
+	IS_LOCAL_MODE,
+} from "./constants";
+import { isDirAsync } from "./fs";
+import {
 	getLocalTemplatesRoot,
+	listLocalChildDirs,
+	resolveLocalSubpath,
+} from "./registry.local";
+import {
 	listRemoteChildDirsViaAPI,
-} from "./registry";
-import { listLocalChildDirs, resolveLocalSubpath } from "./registry-local";
-import { resolveRemoteSubpath } from "./registry-remote";
+	resolveRemoteSubpath,
+} from "./registry.remote";
 
 /** Directory names to exclude when listing template/language children (e.g. shared, instructions). */
 export const NON_TEMPLATE_DIR_NAMES = new Set(

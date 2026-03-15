@@ -1,5 +1,5 @@
-import { Language } from "../resources/package/config";
 import { validateTypescriptPackageName } from "../resources/package/typescript";
+import { Language } from "./constants";
 import { commandExistsAsync, runAsync } from "./shell";
 
 /** Type representing the possible package managers. */

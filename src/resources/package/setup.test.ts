@@ -19,9 +19,13 @@ vi.mock("spdx-license-list/licenses/MIT.json", () => ({
 	},
 }));
 
-vi.mock("../../../src/core/constants", () => ({
-	IS_LOCAL_MODE: false,
-}));
+vi.mock("../../../src/core/constants", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../core/constants")>();
+	return {
+		...actual,
+		IS_LOCAL_MODE: false,
+	};
+});
 
 vi.mock("../../../src/core/fs", () => ({
 	copyDirSafeAsync: vi.fn(),
@@ -30,10 +34,6 @@ vi.mock("../../../src/core/fs", () => ({
 	removeFilesByBasename: vi.fn(),
 	renderMustacheTemplates: vi.fn(),
 	writeFileAsync: vi.fn(),
-}));
-
-vi.mock("../../../src/core/template-registry", () => ({
-	resolveTemplatesDir: vi.fn(),
 }));
 
 vi.mock("../../../src/core/git", () => ({
@@ -48,14 +48,14 @@ vi.mock("../../../src/core/pkg-manager", () => ({
 	validatePackageName: vi.fn(),
 }));
 
-vi.mock("../../../src/core/template-registry", () => ({
+vi.mock("../../../src/core/templates", () => ({
 	listAvailableTemplates: vi.fn(),
 	resolveTemplatesDir: vi.fn(),
 }));
 
-vi.mock("../../../src/core/instructions-registry", async (importOriginal) => {
+vi.mock("../../../src/core/instructions", async (importOriginal) => {
 	const actual =
-		await importOriginal<typeof import("../../../src/core/instructions-registry")>();
+		await importOriginal<typeof import("../../../src/core/instructions")>();
 	return {
 		...actual,
 		getInstructionWithFrontmatter: vi.fn(),
@@ -79,13 +79,15 @@ vi.mock("../../../src/cli/prompts", () => ({
 
 vi.mock("../../../src/cli/tasks", () => ({
 	default: {
-		runWithTasks: vi.fn(async (goal, task) => {
+		runWithTasks: vi.fn(async (_, task) => {
 			if (task) await task();
 		}),
 	},
 }));
 
 import fs from "node:fs";
+import { resolveTemplatesDir } from "../../../src/core/templates";
+import { Language } from "../../core/constants";
 import {
 	copyDirSafeAsync,
 	ensureDirAsync,
@@ -93,25 +95,36 @@ import {
 	removeFilesByBasename,
 	renderMustacheTemplates,
 	writeFileAsync,
-} from "../../../src/core/fs";
-import { resolveTemplatesDir } from "../../../src/core/template-registry";
-import { Language } from "../../../src/resources/package/config";
+} from "../../core/fs";
 
-vi.mock("../../../src/resources/instructions/config", async (importOriginal) => {
-	const actual =
-		await importOriginal<typeof import("../../../src/resources/instructions/config")>();
-	return { ...actual };
-});
+vi.mock(
+	"../../../src/resources/instructions/config",
+	async (importOriginal) => {
+		const actual =
+			await importOriginal<typeof import("../instructions/config")>();
+		return { ...actual };
+	},
+);
 
-vi.mock("../../../src/resources/instructions/ide-formats", async (importOriginal) => {
-	const actual =
-		await importOriginal<typeof import("../../../src/resources/instructions/ide-formats")>();
-	return {
-		...actual,
-		writeInstructionToFile: vi.fn(),
-	};
-});
+vi.mock(
+	"../../../src/resources/instructions/ide-formats",
+	async (importOriginal) => {
+		const actual =
+			await importOriginal<typeof import("../instructions/ide-formats")>();
+		return {
+			...actual,
+			writeInstructionToFile: vi.fn(),
+		};
+	},
+);
 
+import {
+	getInstructionWithFrontmatter,
+	InstructionCategory,
+	listAvailableInstructions,
+} from "../../core/instructions";
+import { IdeFormat } from "../instructions/config";
+import { writeInstructionToFile } from "../instructions/ide-formats";
 // Import after mocks
 import {
 	addPackageInstructions,
@@ -119,13 +132,7 @@ import {
 	createPackageDirectory,
 	getRequiredGithubSecrets,
 	writePackageTemplateFiles,
-} from "../../../src/resources/package/setup";
-import {
-	getInstructionWithFrontmatter,
-	InstructionCategory,
-	listAvailableInstructions,
-} from "../../../src/core/instructions-registry";
-import { writeInstructionToFile } from "../../../src/resources/instructions/ide-formats";
+} from "./setup";
 
 describe("resources/package/setup", () => {
 	beforeEach(() => {
@@ -143,7 +150,7 @@ describe("resources/package/setup", () => {
 				name: "pkg",
 				template: "basic",
 				public: false,
-			} as any);
+			});
 
 			expect(listAvailableInstructions).not.toHaveBeenCalled();
 			expect(writeInstructionToFile).not.toHaveBeenCalled();
@@ -157,7 +164,7 @@ describe("resources/package/setup", () => {
 				public: false,
 				includeInstructions: true,
 				instructionsIdeFormat: undefined,
-			} as any);
+			});
 
 			expect(listAvailableInstructions).not.toHaveBeenCalled();
 		});
@@ -167,13 +174,13 @@ describe("resources/package/setup", () => {
 			vi.mocked(listAvailableInstructions).mockResolvedValue([]);
 
 			await addPackageInstructions("/target", {
-				lang: "python" as any,
+				lang: "no-lang" as Language,
 				name: "pkg",
 				template: "basic",
 				public: false,
 				includeInstructions: true,
-				instructionsIdeFormat: "cursor" as any,
-			} as any);
+				instructionsIdeFormat: IdeFormat.CURSOR,
+			});
 
 			expect(getInstructionWithFrontmatter).not.toHaveBeenCalled();
 			expect(writeInstructionToFile).not.toHaveBeenCalled();
@@ -210,8 +217,8 @@ describe("resources/package/setup", () => {
 				template: "basic",
 				public: false,
 				includeInstructions: true,
-				instructionsIdeFormat: "cursor" as any,
-			} as any);
+				instructionsIdeFormat: IdeFormat.CURSOR,
+			});
 
 			expect(listAvailableInstructions).toHaveBeenCalledWith(
 				InstructionCategory.LANGUAGE,
@@ -314,7 +321,7 @@ describe("resources/package/setup", () => {
 		it("should handle lang not in templatePublicPaths when removing public files", async () => {
 			const targetDir = "/path/to/package";
 			const generateConfig = {
-				lang: "javascript" as any,
+				lang: "javascript" as unknown as Language,
 				name: "test-package",
 				template: "default",
 				public: false,
@@ -453,7 +460,7 @@ describe("resources/package/setup", () => {
 			vi.mocked(fs.promises.readdir).mockResolvedValue([
 				{ name: "ci.yml", isFile: () => true, isDirectory: () => false },
 				{ name: "release.yml", isFile: () => true, isDirectory: () => false },
-			] as any);
+			] as never);
 			vi.mocked(fs.promises.readFile)
 				.mockResolvedValueOnce("secrets.NPM_TOKEN and secrets.GITHUB_TOKEN")
 				.mockResolvedValueOnce("secrets.CODECOV_TOKEN");
@@ -472,7 +479,7 @@ describe("resources/package/setup", () => {
 
 			vi.mocked(fs.promises.readdir).mockResolvedValue([
 				{ name: "ci.yml", isFile: () => true, isDirectory: () => false },
-			] as any);
+			] as never);
 			vi.mocked(fs.promises.readFile).mockResolvedValue("secrets.GITHUB_TOKEN");
 
 			const result = await getRequiredGithubSecrets(targetDir);
@@ -532,7 +539,9 @@ describe("resources/package/setup", () => {
 
 			// Mock Date
 			const mockDate = new Date(2023, 0, 1);
-			vi.spyOn(globalThis, "Date").mockImplementation(() => mockDate as any);
+			vi.spyOn(globalThis, "Date").mockImplementation(
+				() => mockDate as unknown as Date,
+			);
 
 			await writePackageTemplateFiles(targetDir, generateConfig);
 

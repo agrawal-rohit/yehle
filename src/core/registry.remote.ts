@@ -2,38 +2,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { downloadTemplate } from "giget";
+import {
+	DEFAULT_GITHUB_OWNER,
+	DEFAULT_GITHUB_REPO,
+	GITHUB_HEADERS,
+} from "./constants";
 import { isDirAsync } from "./fs";
-
-/** Default GitHub owner for fetching templates and instructions in remote mode. */
-export const DEFAULT_GITHUB_OWNER = "agrawal-rohit";
-
-/** Default GitHub repository for fetching templates and instructions in remote mode. */
-export const DEFAULT_GITHUB_REPO = "yehle";
-
-/** HTTP headers used when calling the GitHub API. */
-export const GITHUB_HEADERS = {
-	"User-Agent": "yehle-cli",
-	Accept: "application/vnd.github.v3+json",
-} as const;
-
-/**
- * Resolve a directory under process.cwd() and return its path if it exists.
- * @param dirName - Name of the directory under cwd (e.g. "templates").
- * @returns The absolute path if the directory exists, null otherwise.
- */
-export async function getLocalRoot(dirName: string): Promise<string | null> {
-	const root = path.resolve(process.cwd(), dirName);
-	if (await isDirAsync(root)) return root;
-	return null;
-}
-
-/**
- * Resolve the local templates root directory (process.cwd()/templates).
- * @returns The absolute path if it exists, null otherwise.
- */
-export async function getLocalTemplatesRoot(): Promise<string | null> {
-	return getLocalRoot("templates");
-}
 
 /**
  * Build a GitHub Contents API URL for a repository subpath.
@@ -78,6 +52,31 @@ export async function downloadSubtreeToTemp(
 }
 
 /**
+ * Check whether a remote repository subpath exists in GitHub.
+ * @param subpath - Path under the repository root, using forward slashes.
+ * @returns True if the subtree exists or is uncertain, false if definitely not.
+ */
+export async function remoteSubpathExists(subpath: string): Promise<boolean> {
+	try {
+		const url = buildContentsURL(subpath);
+		const res = await fetch(url, { headers: GITHUB_HEADERS });
+		if (res.status === 404) return false;
+		if (!res.ok) return true;
+		const data = await res.json();
+		if (Array.isArray(data)) return true;
+		if (
+			data &&
+			typeof data === "object" &&
+			(data as Record<string, unknown>).type === "dir"
+		)
+			return true;
+		return false;
+	} catch {
+		return true;
+	}
+}
+
+/**
  * List child directory names from the GitHub Contents API for a repository subpath.
  * @param subpath - Path under the repository root, using forward slashes.
  * @param exclude - Optional set of directory names (case-insensitive) to exclude.
@@ -100,9 +99,9 @@ export async function listRemoteChildDirsViaAPI(
 		);
 
 	const excludeSet =
-		exclude !== undefined
-			? new Set(Array.from(exclude).map((n) => n.toLowerCase()))
-			: null;
+		exclude === undefined
+			? null
+			: new Set(Array.from(exclude).map((n) => n.toLowerCase()));
 
 	return data
 		.filter((entry) => entry?.type === "dir" && typeof entry.name === "string")
@@ -147,4 +146,32 @@ export async function listRemoteFilesViaAPI(
 	}
 
 	return Array.from(names).sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Download a remote repository subpath to a temporary directory and normalize it.
+ * @param subpath - Path under the repository root, using forward slashes.
+ * @param tmpPrefix - Prefix for the temporary directory name.
+ * @param normalize - Optional function to normalize giget's download directory structure.
+ * @returns The normalized directory path.
+ */
+export async function resolveRemoteSubpath(
+	subpath: string,
+	tmpPrefix: string,
+	normalize?: (downloadedDir: string) => Promise<string>,
+): Promise<string> {
+	const exists = await remoteSubpathExists(subpath);
+	if (!exists)
+		throw new Error(
+			`Remote templates path does not exist: ${subpath} (repo: ${DEFAULT_GITHUB_OWNER}/yehle).`,
+		);
+
+	const downloadedDir = await downloadSubtreeToTemp(subpath, tmpPrefix);
+	const normalized = normalize ? await normalize(downloadedDir) : downloadedDir;
+
+	if (await isDirAsync(normalized)) return normalized;
+
+	throw new Error(
+		`No remote templates found at ${subpath} after download (repo: ${DEFAULT_GITHUB_OWNER}/yehle).`,
+	);
 }

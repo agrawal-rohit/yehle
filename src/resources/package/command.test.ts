@@ -30,19 +30,21 @@ vi.mock("../../../src/cli/logger", () => ({
 }));
 
 vi.mock("../../../src/cli/tasks", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("../../../src/cli/tasks")>();
-	const mockRunWithTasks = vi.fn(async (
-		_goal: string,
-		task?: () => Promise<void>,
-		subtasks?: { task?: () => Promise<void> }[],
-	) => {
-		if (task) await task();
-		if (subtasks) {
-			for (const sub of subtasks) {
-				if (sub.task) await sub.task();
+	const actual = await importOriginal<typeof import("../../cli/tasks")>();
+	const mockRunWithTasks = vi.fn(
+		async (
+			_goal: string,
+			task?: () => Promise<void>,
+			subtasks?: { task?: () => Promise<void> }[],
+		) => {
+			if (task) await task();
+			if (subtasks) {
+				for (const sub of subtasks) {
+					if (sub.task) await sub.task();
+				}
 			}
-		}
-	});
+		},
+	);
 	return {
 		...actual,
 		default: {
@@ -87,28 +89,26 @@ vi.mock("../../../src/resources/package/setup", () => ({
 import fs from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
-import logger from "../../../src/cli/logger";
-import tasks from "../../../src/cli/tasks";
-import { initGitRepo, makeInitialCommit } from "../../../src/core/git";
-import {
-	ensurePackageManager,
-	getInstallScript,
-} from "../../../src/core/pkg-manager";
-import { toSlug } from "../../../src/core/utils";
+import logger from "../../cli/logger";
+import tasks from "../../cli/tasks";
+import { Language } from "../../core/constants";
+import { initGitRepo, makeInitialCommit } from "../../core/git";
+import { ensurePackageManager, getInstallScript } from "../../core/pkg-manager";
+import { toSlug } from "../../core/utils";
+import { IdeFormat } from "../instructions/config";
 // Import after mocks
-import { generatePackage } from "../../../src/resources/package/command";
+import { generatePackage } from "./command";
 import {
 	type GeneratePackageConfiguration,
 	getGeneratePackageConfiguration,
-	Language,
-} from "../../../src/resources/package/config";
+} from "./config";
 import {
 	addPackageInstructions,
 	applyTemplateModifications,
 	createPackageDirectory,
 	getRequiredGithubSecrets,
 	writePackageTemplateFiles,
-} from "../../../src/resources/package/setup";
+} from "./setup";
 
 describe("resources/package/command", () => {
 	beforeEach(() => {
@@ -124,7 +124,7 @@ describe("resources/package/command", () => {
 		it("should call logger.intro to start the process", async () => {
 			// Arrange
 			const mockConfig: GeneratePackageConfiguration = {
-				lang: "typescript" as any,
+				lang: Language.TYPESCRIPT,
 				name: "test-package",
 				template: "basic",
 				public: false,
@@ -198,7 +198,7 @@ describe("resources/package/command", () => {
 			vi.mocked(toSlug).mockReturnValue("test-package");
 			vi.mocked(path.resolve).mockReturnValue("/path/to/test-package");
 			vi.mocked(fs.existsSync).mockReturnValue(true);
-			vi.mocked(fs.readdirSync).mockReturnValue(["existing-file.txt"] as any);
+			vi.mocked(fs.readdirSync).mockReturnValue(["existing-file.txt"] as never);
 
 			// Act & Assert
 			await expect(generatePackage({})).rejects.toThrow(
@@ -422,7 +422,7 @@ describe("resources/package/command", () => {
 				template: "basic",
 				public: false,
 				includeInstructions: true,
-				instructionsIdeFormat: "cursor" as any,
+				instructionsIdeFormat: IdeFormat.CURSOR,
 			};
 			vi.mocked(getGeneratePackageConfiguration).mockResolvedValue(mockConfig);
 			vi.mocked(toSlug).mockReturnValue("test-package");

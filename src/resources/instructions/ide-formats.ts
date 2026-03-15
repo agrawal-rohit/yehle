@@ -3,7 +3,7 @@ import { ensureDirAsync, writeFileAsync } from "../../core/fs";
 import {
 	InstructionCategory,
 	type RuleFrontmatter,
-} from "../../core/instructions-registry";
+} from "../../core/instructions";
 import { IdeFormat } from "./config";
 
 /** Marketing comment prepended to written instructions (yehle registry). */

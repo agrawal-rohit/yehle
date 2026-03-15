@@ -7,8 +7,8 @@ import {
 	initGitRepo,
 	isGitRepo,
 	makeInitialCommit,
-} from "../../src/core/git";
-import * as shell from "../../src/core/shell";
+} from "./git";
+import * as shell from "./shell";
 
 describe("core/git", () => {
 	let runAsyncSpy: any;

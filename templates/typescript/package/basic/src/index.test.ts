@@ -1,4 +1,4 @@
-import { myFunction } from "../src";
+import { myFunction } from ".";
 
 test("myFunction", () => {
 	expect(myFunction()).toBe("Hello, world!");

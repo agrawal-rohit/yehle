@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { commandExistsAsync, runAsync } from "../../src/core/shell";
+import { commandExistsAsync, runAsync } from "./shell";
 
 // Helper to test parseCommand indirectly through spawn calls
 function expectParsedCommand(

@@ -15,8 +15,8 @@ import {
 	type InstructionContext,
 	listAvailableInstructions,
 	readOptionalInstructionsMapping,
-} from "../../core/instructions-registry";
-import { resolveTemplatesDir } from "../../core/template-registry";
+} from "../../core/instructions";
+import { resolveTemplatesDir } from "../../core/templates";
 import { INSTRUCTION_CATEGORY_LANGUAGE } from "../instructions/config";
 import { writeInstructionToFile } from "../instructions/ide-formats";
 import type { GeneratePackageConfiguration } from "./config";

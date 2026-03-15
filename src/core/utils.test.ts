@@ -1,10 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	capitalizeFirstLetter,
-	sleep,
-	toSlug,
-	truncate,
-} from "../../src/core/utils";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { capitalizeFirstLetter, sleep, toSlug, truncate } from "./utils";
 
 describe("core/utils", () => {
 	describe("capitalizeFirstLetter", () => {
@@ -68,7 +63,7 @@ describe("core/utils", () => {
 		});
 
 		it("handles Windows-style paths", () => {
-			expect(toSlug("C:\\Users\\me\\my-package")).toBe("my-package");
+			expect(toSlug(String.raw`C:\Users\me\my-package`)).toBe("my-package");
 		});
 
 		it("handles values that normalize to empty segments", () => {

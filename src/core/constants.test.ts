@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 // Helper to load the module fresh with current env
 const importConstants = async () => {
 	// Ensure a fresh module instance each time so process.env is re-read
-	const modulePath = "../../src/core/constants";
-	const resolved = await import(modulePath + "?t=" + Date.now());
+	const modulePath = "./constants";
+	const resolved = await import(`${modulePath}?t=${Date.now()}`);
 	return resolved;
 };
 

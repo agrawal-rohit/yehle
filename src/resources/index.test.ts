@@ -1,25 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock node modules and internal modules
-vi.mock("../../src/cli/logger", () => ({
+vi.mock("../cli/logger", () => ({
 	default: {
 		error: vi.fn(),
 	},
 }));
 
-vi.mock("../../src/resources/instructions/command", () => ({
+vi.mock("./instructions/command", () => ({
 	default: vi.fn(),
 }));
 
-vi.mock("../../src/resources/package/command", () => ({
+vi.mock("./package/command", () => ({
 	default: vi.fn(),
 }));
 
-import logger from "../../src/cli/logger";
+import logger from "../cli/logger";
 // Import after mocks
-import { registerResourcesCli } from "../../src/resources/index";
-import generateInstructions from "../../src/resources/instructions/command";
-import generatePackage from "../../src/resources/package/command";
+import { registerResourcesCli } from "./index";
+import generateInstructions from "./instructions/command";
+import generatePackage from "./package/command";
 
 describe("resources/index", () => {
 	let mockApp: any;

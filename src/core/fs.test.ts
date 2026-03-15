@@ -1,6 +1,8 @@
+/** biome-ignore-all lint/suspicious/noTemplateCurlyInString: false positive for test files */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { describe, expect, it } from "vitest";
 
 import {
 	copyDirSafeAsync,
@@ -11,7 +13,7 @@ import {
 	removeMatchingFilesRecursively,
 	renderMustacheTemplates,
 	writeFileAsync,
-} from "../../src/core/fs";
+} from "./fs";
 
 function makeTempDir(prefix = "fs-test-"): string {
 	const tmp = fs.mkdtempSync(path.join(os.tmpdir(), prefix));

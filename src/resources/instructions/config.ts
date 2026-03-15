@@ -9,7 +9,7 @@ import {
 	listLanguageNames,
 	listProjectSpecNames,
 	type RuleFrontmatter,
-} from "../../core/instructions-registry";
+} from "../../core/instructions";
 import { capitalizeFirstLetter } from "../../core/utils";
 
 /** Supported IDE formats for agent instructions output. */

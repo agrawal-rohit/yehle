@@ -40,13 +40,24 @@ vi.mock("../../core/utils", () => ({
 }));
 
 import readline from "node:readline";
-import { stripAnsi } from "consola/utils";
-import animatedIntro from "../../src/cli/animated-intro";
+import animatedIntro from "./animated-intro";
 
 describe("cli/animated-intro", () => {
-	let mockStdout: any;
-	let mockStdin: any;
-	let processExitSpy: any;
+	type MockStdout = {
+		write: ReturnType<typeof vi.fn>;
+		columns?: number;
+	};
+
+	type MockStdin = {
+		on: ReturnType<typeof vi.fn>;
+		off: ReturnType<typeof vi.fn>;
+		setRawMode: ReturnType<typeof vi.fn>;
+		isTTY: boolean;
+	};
+
+	let mockStdout: MockStdout;
+	let mockStdin: MockStdin;
+	let processExitSpy: ReturnType<typeof vi.fn>;
 	let stdoutWriteSpy: ReturnType<typeof vi.fn>;
 	let stdinOnSpy: ReturnType<typeof vi.fn>;
 	let stdinOffSpy: ReturnType<typeof vi.fn>;
@@ -74,15 +85,26 @@ describe("cli/animated-intro", () => {
 		};
 
 		// Mock process.stdout and process.stdin
-		vi.spyOn(process, "stdout", "get").mockReturnValue(mockStdout as any);
-		vi.spyOn(process, "stdin", "get").mockReturnValue(mockStdin as any);
+		Object.defineProperty(process, "stdout", {
+			configurable: true,
+			get: () => mockStdout,
+		});
+		Object.defineProperty(process, "stdin", {
+			configurable: true,
+			get: () => mockStdin,
+		});
 
 		// Mock process.exit
-		processExitSpy = vi.spyOn(process, "exit").mockImplementation(((
-			code?: number,
-		) => {
-			throw new Error(`process.exit called with code ${code}`);
-		}) as any);
+		processExitSpy = vi.fn();
+		const originalExit = process.exit;
+		Object.defineProperty(process, "exit", {
+			configurable: true,
+			value: ((code?: string | number | null) => {
+				processExitSpy(code);
+				const normalized = code ?? undefined;
+				throw new Error(`process.exit called with code ${normalized}`);
+			}) as typeof originalExit,
+		});
 	});
 
 	afterEach(() => {
@@ -141,12 +163,14 @@ describe("cli/animated-intro", () => {
 		});
 
 		test("should use custom stdout when provided", async () => {
-			const customStdout = {
+			const customStdout: MockStdout = {
 				write: vi.fn(),
 				columns: 100,
 			};
 
-			await animatedIntro("Test", { stdout: customStdout as any });
+			await animatedIntro("Test", {
+				stdout: customStdout as unknown as NodeJS.WriteStream,
+			});
 
 			expect(customStdout.write).toHaveBeenCalled();
 			expect(stdoutWriteSpy).not.toHaveBeenCalled();
@@ -277,13 +301,23 @@ describe("cli/animated-intro", () => {
 
 	describe("keyboard interaction", () => {
 		test("should handle Ctrl+C to exit", async () => {
-			let keypressHandler: Function | undefined;
+			let keypressHandler:
+				| ((str: string, key: { ctrl?: boolean; name?: string }) => void)
+				| undefined;
 
-			stdinOnSpy.mockImplementation((event: string, handler: Function) => {
-				if (event === "keypress") {
-					keypressHandler = handler;
-				}
-			});
+			stdinOnSpy.mockImplementation(
+				(
+					event: string,
+					handler: (
+						str: string,
+						key: { ctrl?: boolean; name?: string },
+					) => void,
+				) => {
+					if (event === "keypress") {
+						keypressHandler = handler;
+					}
+				},
+			);
 
 			animatedIntro("Test");
 
@@ -294,13 +328,23 @@ describe("cli/animated-intro", () => {
 		});
 
 		test("should handle ESC key for early cleanup", async () => {
-			let keypressHandler: Function | undefined;
+			let keypressHandler:
+				| ((str: string, key: { ctrl?: boolean; name?: string }) => void)
+				| undefined;
 
-			stdinOnSpy.mockImplementation((event: string, handler: Function) => {
-				if (event === "keypress") {
-					keypressHandler = handler;
-				}
-			});
+			stdinOnSpy.mockImplementation(
+				(
+					event: string,
+					handler: (
+						str: string,
+						key: { ctrl?: boolean; name?: string },
+					) => void,
+				) => {
+					if (event === "keypress") {
+						keypressHandler = handler;
+					}
+				},
+			);
 
 			animatedIntro("Test");
 
@@ -311,13 +355,23 @@ describe("cli/animated-intro", () => {
 		});
 
 		test("should not exit on Ctrl with non-C key", async () => {
-			let keypressHandler: Function | undefined;
+			let keypressHandler:
+				| ((str: string, key: { ctrl?: boolean; name?: string }) => void)
+				| undefined;
 
-			stdinOnSpy.mockImplementation((event: string, handler: Function) => {
-				if (event === "keypress") {
-					keypressHandler = handler;
-				}
-			});
+			stdinOnSpy.mockImplementation(
+				(
+					event: string,
+					handler: (
+						str: string,
+						key: { ctrl?: boolean; name?: string },
+					) => void,
+				) => {
+					if (event === "keypress") {
+						keypressHandler = handler;
+					}
+				},
+			);
 
 			animatedIntro("Test");
 
@@ -330,13 +384,23 @@ describe("cli/animated-intro", () => {
 		});
 
 		test("should handle other keypresses without cleanup or exit", async () => {
-			let keypressHandler: Function | undefined;
+			let keypressHandler:
+				| ((str: string, key: { ctrl?: boolean; name?: string }) => void)
+				| undefined;
 
-			stdinOnSpy.mockImplementation((event: string, handler: Function) => {
-				if (event === "keypress") {
-					keypressHandler = handler;
-				}
-			});
+			stdinOnSpy.mockImplementation(
+				(
+					event: string,
+					handler: (
+						str: string,
+						key: { ctrl?: boolean; name?: string },
+					) => void,
+				) => {
+					if (event === "keypress") {
+						keypressHandler = handler;
+					}
+				},
+			);
 
 			animatedIntro("Test");
 
@@ -369,7 +433,7 @@ describe("cli/animated-intro", () => {
 		});
 
 		test("should handle numeric message converted to string", async () => {
-			await animatedIntro(123 as any);
+			await animatedIntro(123 as unknown as string);
 
 			expect(stdoutWriteSpy).toHaveBeenCalled();
 		});
@@ -380,15 +444,18 @@ describe("cli/animated-intro", () => {
 			// This tests the Array.isArray branch on line 113
 			const messageArray = ["Hello", "World", "Test"];
 
-			await animatedIntro(messageArray as any, { frameDelayMs: 10 });
+			await animatedIntro(messageArray, { frameDelayMs: 10 });
 
 			expect(stdoutWriteSpy).toHaveBeenCalled();
 		});
 
 		test("should handle mixed string and array messages", async () => {
-			const messages = ["String message", ["array", "message"] as any];
+			const messages: (string | string[])[] = [
+				"String message",
+				["array", "message"],
+			];
 
-			await animatedIntro(messages as any, { frameDelayMs: 10 });
+			await animatedIntro(messages as unknown as string, { frameDelayMs: 10 });
 
 			expect(stdoutWriteSpy).toHaveBeenCalled();
 		});
@@ -408,13 +475,13 @@ describe("cli/animated-intro", () => {
 			// The lines array now returns 4 lines with top padding, but the renderer's paint
 			// function has logic to handle < height and > height scenarios
 			// These are defensive branches that protect against edge cases
-			const customStdout = {
+			const customStdout: MockStdout = {
 				write: vi.fn(),
 				columns: 80,
 			};
 
 			await animatedIntro("Test message", {
-				stdout: customStdout as any,
+				stdout: customStdout as unknown as NodeJS.WriteStream,
 				frameDelayMs: 10,
 			});
 
@@ -423,13 +490,13 @@ describe("cli/animated-intro", () => {
 
 		test("should handle renderer initialization and multiple paints", async () => {
 			// Ensure both initialized and non-initialized paths are tested
-			const testStdout = {
+			const testStdout: MockStdout = {
 				write: vi.fn(),
 				columns: 80,
 			};
 
 			await animatedIntro(["First", "Second"], {
-				stdout: testStdout as any,
+				stdout: testStdout as unknown as NodeJS.WriteStream,
 				frameDelayMs: 10,
 			});
 
@@ -439,12 +506,15 @@ describe("cli/animated-intro", () => {
 
 		test("should handle finish when renderer is initialized", async () => {
 			// Tests that finish() writes newline when initialized
-			const testStdout = {
+			const testStdout: MockStdout = {
 				write: vi.fn(),
 				columns: 80,
 			};
 
-			await animatedIntro("A", { stdout: testStdout as any, frameDelayMs: 10 });
+			await animatedIntro("A", {
+				stdout: testStdout as unknown as NodeJS.WriteStream,
+				frameDelayMs: 10,
+			});
 
 			// Check that cleanup was called (which calls finish)
 			expect(testStdout.write).toHaveBeenCalled();

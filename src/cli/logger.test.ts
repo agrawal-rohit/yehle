@@ -1,25 +1,30 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import animatedIntro from "../../src/cli/animated-intro";
-import logger, { Logger } from "../../src/cli/logger";
+import animatedIntro from "./animated-intro";
+import logger, { Logger } from "./logger";
 
-// Mock the animated-intro module
-vi.mock("../../src/cli/animated-intro", () => ({
+// Mock the animated-intro module used by Logger
+vi.mock("./animated-intro", () => ({
 	default: vi.fn(),
 }));
 
 describe("cli/logger", () => {
 	let consoleLogSpy: ReturnType<typeof vi.spyOn>;
 	let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
-	let processExitSpy: any;
+	let processExitSpy: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
 		consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 		consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-		processExitSpy = vi.spyOn(process, "exit").mockImplementation(((
-			code?: number,
-		) => {
-			throw new Error(`process.exit called with code ${code}`);
-		}) as any);
+		processExitSpy = vi.fn();
+		const originalExit = process.exit;
+		Object.defineProperty(process, "exit", {
+			configurable: true,
+			value: ((code?: string | number | null) => {
+				processExitSpy(code);
+				const normalized = code ?? undefined;
+				throw new Error(`process.exit called with code ${normalized}`);
+			}) as typeof originalExit,
+		});
 	});
 
 	afterEach(() => {
