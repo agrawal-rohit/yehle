@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
 import logger, { primaryText } from "../../cli/logger";
-import tasks from "../../cli/tasks";
+import tasks, { conditionalTask } from "../../cli/tasks";
 import { initGitRepo, makeInitialCommit } from "../../core/git";
 import {
 	ensurePackageManager,
@@ -16,12 +16,19 @@ import {
 	getGeneratePackageConfiguration,
 } from "./config";
 import {
+	addPackageInstructions,
 	applyTemplateModifications,
 	createPackageDirectory,
 	getRequiredGithubSecrets,
 	writePackageTemplateFiles,
 } from "./setup";
 
+/**
+ * Generate a new package: gather config (or use options), run preflight checks, create directory, write templates, apply modifications, optionally add instructions, init git, and print next steps.
+ * @param options - Optional CLI-style options (lang, name, template, public, etc.); when omitted, the user is prompted.
+ * @returns Promise that resolves when the package has been generated and next steps have been printed.
+ * @throws Error when the target directory is not empty, the package manager is missing, or template/config steps fail.
+ */
 export async function generatePackage(
 	options: Partial<GeneratePackageConfiguration> = {},
 ): Promise<void> {
@@ -92,6 +99,12 @@ export async function generatePackage(
 				);
 			},
 		},
+		...conditionalTask(Boolean(generateConfig.includeInstructions), {
+			title: "Add agent instructions",
+			task: async () => {
+				await addPackageInstructions(targetDir, generateConfig);
+			},
+		}),
 	]);
 
 	let githubSecrets: string[] = [];

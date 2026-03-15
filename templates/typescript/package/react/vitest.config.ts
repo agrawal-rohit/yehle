@@ -4,7 +4,7 @@ export default defineConfig({
 	test: {
 		environment: "happy-dom",
 		globals: true,
-		setupFiles: "./tests/setup.ts",
+		setupFiles: "./test-setup.ts",
 		exclude: [...configDefaults.exclude, "**/.stryker-tmp/**"],
 		coverage: {
 			reporter: ["text", "lcov", "html"],
