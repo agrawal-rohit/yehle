@@ -122,9 +122,9 @@ import {
 } from "../../../src/resources/package/setup";
 import {
 	getInstructionWithFrontmatter,
+	InstructionCategory,
 	listAvailableInstructions,
 } from "../../../src/core/instructions-registry";
-import { InstructionCategory } from "../../../src/resources/instructions/config";
 import { writeInstructionToFile } from "../../../src/resources/instructions/ide-formats";
 
 describe("resources/package/setup", () => {
@@ -182,7 +182,7 @@ describe("resources/package/setup", () => {
 		it("should write instruction when config is complete", async () => {
 			const metadata = {
 				description: "TypeScript standards",
-				globs: ["**/*.ts", "**/*.tsx"],
+				paths: ["**/*.ts", "**/*.tsx"],
 				alwaysApply: false,
 			};
 			vi.mocked(listAvailableInstructions).mockImplementation(

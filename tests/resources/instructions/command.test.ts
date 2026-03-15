@@ -50,7 +50,7 @@ vi.mock("../../../src/resources/instructions/ide-formats", async (importOriginal
 });
 
 import logger from "../../../src/cli/logger";
-import { getInstructionWithFrontmatter } from "../../../src/core/instructions-registry";
+import { getInstructionWithFrontmatter, InstructionCategory } from "../../../src/core/instructions-registry";
 import { generateInstructions } from "../../../src/resources/instructions/command";
 import {
 	getGenerateInstructionsConfiguration,
@@ -65,11 +65,11 @@ describe("resources/instructions/command", () => {
 		vi.mocked(getGenerateInstructionsConfiguration).mockResolvedValue({
 			selections: [
 				{
-					category: "essential",
+					category: InstructionCategory.ESSENTIAL,
 					instruction: "react-vite",
 					frontmatter: {
 						description: "react vite",
-						globs: ["**/*"],
+						paths: ["**/*"],
 						alwaysApply: true,
 					},
 				},
@@ -116,7 +116,7 @@ describe("resources/instructions/command", () => {
 				"# Rule content",
 				IdeFormat.CURSOR,
 				"essential",
-				{ description: "react vite", globs: ["**/*"], alwaysApply: true },
+				{ description: "react vite", paths: ["**/*"], alwaysApply: true },
 			);
 		});
 

@@ -74,12 +74,12 @@ describe("instructions/ide-formats", () => {
 
 	const essentialMeta = {
 		description: "react vite",
-		globs: ["**/*"],
+		paths: ["**/*"],
 		alwaysApply: true,
 	};
 	const languageMeta = {
 		description: "TypeScript standards",
-		globs: ["**/*"],
+		paths: ["**/*"],
 		alwaysApply: false,
 	};
 
@@ -104,7 +104,7 @@ describe("instructions/ide-formats", () => {
 				content,
 				IdeFormat.CLINE,
 				InstructionCategory.ESSENTIAL,
-				{ description: "general", globs: ["**/*"], alwaysApply: true },
+				{ description: "general", paths: ["**/*"], alwaysApply: true },
 			);
 			expect(result).toContain('glob: "**/*"');
 			expect(result).toContain("# Rule");
@@ -138,7 +138,7 @@ describe("instructions/ide-formats", () => {
 				content,
 				IdeFormat.COPILOT,
 				InstructionCategory.ESSENTIAL,
-				{ description: "general", globs: ["**/*"], alwaysApply: true },
+				{ description: "general", paths: ["**/*"], alwaysApply: true },
 			);
 			expect(result).toBe(content);
 			expect(result).not.toContain("---");
@@ -150,7 +150,7 @@ describe("instructions/ide-formats", () => {
 				content,
 				IdeFormat.WINDSURF,
 				InstructionCategory.ESSENTIAL,
-				{ description: "general", globs: ["**/*"], alwaysApply: true },
+				{ description: "general", paths: ["**/*"], alwaysApply: true },
 			);
 			expect(result).toBe(content);
 		});

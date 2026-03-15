@@ -13,14 +13,13 @@ const YEHLE_REGISTRY_COMMENT = `<!-- This instruction is part of the "yehle" ins
 
 /**
  * Build Cursor .mdc frontmatter: description, globs (YAML array), alwaysApply.
- * @param frontmatter - Rule frontmatter (description, globs, alwaysApply from instruction file).
- * @returns YAML frontmatter string (including closing ---).
+ * Cursor uses "globs"; we write frontmatter.paths as globs.
  */
 function cursorFrontmatter(frontmatter: RuleFrontmatter): string {
 	return `---
 description: "${frontmatter.description}"
 globs:
-${frontmatter.globs?.map((g) => `  - "${g}"`).join("\n")}
+${frontmatter.paths?.map((g) => `  - "${g}"`).join("\n")}
 alwaysApply: ${frontmatter.alwaysApply}
 ---
 
@@ -31,7 +30,7 @@ alwaysApply: ${frontmatter.alwaysApply}
  * Build Cline .mdc frontmatter: title, description, glob (single pattern).
  */
 function clineFrontmatter(frontmatter: RuleFrontmatter): string {
-	const glob = frontmatter.globs?.[0] ?? "**/*";
+	const glob = frontmatter.paths?.[0] ?? "**/*";
 	return `---
 title: "${frontmatter.description}"
 description: "${frontmatter.description}"
@@ -45,7 +44,7 @@ glob: "${glob}"
  * Build Claude .claude/rules frontmatter: globs as comma-separated (per docs).
  */
 function claudeFrontmatter(frontmatter: RuleFrontmatter): string {
-	const globsStr = frontmatter.globs?.join(", ") ?? "";
+	const globsStr = frontmatter.paths?.join(", ") ?? "";
 	return `---
 globs: ${globsStr}
 ---
@@ -57,7 +56,7 @@ globs: ${globsStr}
  * Build Copilot path-specific .instructions.md frontmatter: applyTo (single glob).
  */
 function copilotFrontmatter(frontmatter: RuleFrontmatter): string {
-	const applyTo = frontmatter.globs?.[0] ?? "**/*";
+	const applyTo = frontmatter.paths?.[0] ?? "**/*";
 	return `---
 applyTo: "${applyTo}"
 ---

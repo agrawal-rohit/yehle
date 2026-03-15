@@ -232,7 +232,7 @@ describe("core/instructions-registry", () => {
 	});
 
 	describe("getInstructionWithFrontmatter", () => {
-		it("returns content and normalized frontmatter (alwaysOn normalized to alwaysApply)", async () => {
+		it("returns content and frontmatter (description, paths, alwaysApply)", async () => {
 			setLocalModeEnv(true);
 			const { getInstructionWithFrontmatter } =
 				await importInstructionsRegistry();
@@ -246,8 +246,8 @@ describe("core/instructions-registry", () => {
 			fs.mkdirSync(essentialDir, { recursive: true });
 			const raw = `---
 description: "My rule"
-globs: ["**/*.ts"]
-alwaysOn: true
+paths: ["**/*.ts"]
+alwaysApply: true
 ---
 
 # Body`;
@@ -261,7 +261,7 @@ alwaysOn: true
 					await getInstructionWithFrontmatter(InstructionCategory.ESSENTIAL, "rule");
 				expect(content).toContain("# Body");
 				expect(frontmatter.description).toBe("My rule");
-				expect(frontmatter.globs).toEqual(["**/*.ts"]);
+				expect(frontmatter.paths).toEqual(["**/*.ts"]);
 				expect(frontmatter.alwaysApply).toBe(true);
 			} finally {
 				process.chdir(originalCwd);

@@ -19,6 +19,7 @@ export enum Language {
 	TYPESCRIPT = "typescript",
 }
 
+/** Public files for the template. */
 export const templatePublicPaths: Record<Language | "shared", string[]> = {
 	shared: [
 		"CODE_OF_CONDUCT.md",

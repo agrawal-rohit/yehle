@@ -11,15 +11,13 @@ import {
 } from "../../core/fs";
 import {
 	getInstructionWithFrontmatter,
+	InstructionCategory,
 	type InstructionContext,
 	listAvailableInstructions,
 	readOptionalInstructionsMapping,
 } from "../../core/instructions-registry";
 import { resolveTemplatesDir } from "../../core/template-registry";
-import {
-	INSTRUCTION_CATEGORY_LANGUAGE,
-	InstructionCategory,
-} from "../instructions/config";
+import { INSTRUCTION_CATEGORY_LANGUAGE } from "../instructions/config";
 import { writeInstructionToFile } from "../instructions/ide-formats";
 import type { GeneratePackageConfiguration } from "./config";
 import { templatePublicPaths } from "./config";
@@ -113,7 +111,7 @@ export async function addPackageInstructions(
 	const projectSpec = "package";
 	const ctx: InstructionContext = {
 		lang: generateConfig.lang,
-		projectSpec,
+		projectSpec: projectSpec,
 		template: generateConfig.template,
 	};
 

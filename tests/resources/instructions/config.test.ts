@@ -58,7 +58,7 @@ describe("instructions/config", () => {
 			content: "# Rule",
 			frontmatter: {
 				description: "react vite",
-				globs: ["**/*"],
+				paths: ["**/*"],
 				alwaysApply: true,
 			},
 		});
@@ -102,7 +102,7 @@ describe("instructions/config", () => {
 			expect(result.selections[0].instruction).toBe("react-vite");
 			expect(result.selections[0].frontmatter).toEqual({
 				description: "react vite",
-				globs: ["**/*"],
+				paths: ["**/*"],
 				alwaysApply: true,
 			});
 			expect(result.ideFormat).toBe(IdeFormat.CURSOR);

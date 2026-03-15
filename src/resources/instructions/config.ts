@@ -10,9 +10,6 @@ import {
 	listProjectSpecNames,
 	type RuleFrontmatter,
 } from "../../core/instructions-registry";
-
-export { InstructionCategory };
-
 import { capitalizeFirstLetter } from "../../core/utils";
 
 /** Supported IDE formats for agent instructions output. */
@@ -28,9 +25,7 @@ export enum IdeFormat {
 export type InstructionSelection = {
 	category: InstructionCategory;
 	instruction: string;
-	/** Frontmatter from the instruction file (description, globs, alwaysApply). */
 	frontmatter: RuleFrontmatter;
-	/** Required when fetching content for language, project-spec, or template. */
 	context?: InstructionContext;
 };
 

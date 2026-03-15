@@ -53,7 +53,7 @@ describe("instructions/config (remote mode)", () => {
 			content: "# Rule",
 			frontmatter: {
 				description: "react vite",
-				globs: ["**/*"],
+				paths: ["**/*"],
 				alwaysApply: true,
 			},
 		});
