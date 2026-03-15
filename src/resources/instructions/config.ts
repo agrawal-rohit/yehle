@@ -202,7 +202,12 @@ async function getGranularInstructionsSelections(): Promise<
 	}
 
 	// 2. Languages
-	const langOptions = await getAvailableLanguageOptions();
+	const languageNames = await listLanguageNames();
+	const langOptions = languageNames.map((name) => ({
+		label: capitalizeFirstLetter(name),
+		value: name,
+	}));
+
 	let chosenLangs: string[] = [];
 	if (langOptions.length > 0) {
 		chosenLangs = await prompts.multiselectInput(
@@ -307,17 +312,6 @@ async function getGranularInstructionsSelections(): Promise<
 	}
 
 	return selections;
-}
-
-/** Discover available languages by scanning templates/ for subdirs (excluding shared). */
-async function getAvailableLanguageOptions(): Promise<
-	{ label: string; value: string }[]
-> {
-	const names = await listLanguageNames();
-	return names.map((name) => ({
-		label: capitalizeFirstLetter(name.replaceAll("-", " ")),
-		value: name,
-	}));
 }
 
 /**

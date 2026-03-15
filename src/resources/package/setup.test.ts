@@ -60,7 +60,7 @@ vi.mock("../../core/instructions", async (importOriginal) => {
 		...actual,
 		getInstructionWithFrontmatter: vi.fn(),
 		listAvailableInstructions: vi.fn(() => Promise.resolve([])),
-		readOptionalInstructionsMapping: vi.fn(() => Promise.resolve([])),
+		readSituationalInstructionsMapping: vi.fn(() => Promise.resolve([])),
 	};
 });
 

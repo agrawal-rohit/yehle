@@ -46,6 +46,7 @@ vi.mock("../../core/pkg-manager", () => ({
 
 vi.mock("../../core/templates", () => ({
 	listAvailableTemplates: vi.fn(),
+	listLanguageNames: vi.fn().mockResolvedValue(["typescript"]),
 }));
 
 vi.mock("../../resources/instructions/config", () => ({
@@ -65,7 +66,10 @@ import tasks from "../../cli/tasks";
 import { Language } from "../../core/constants";
 import { getGitEmail, getGitUsername } from "../../core/git";
 import { validatePackageName } from "../../core/pkg-manager";
-import { listAvailableTemplates } from "../../core/templates";
+import {
+	listAvailableTemplates,
+	listLanguageNames,
+} from "../../core/templates";
 import { capitalizeFirstLetter, toSlug } from "../../core/utils";
 // Import after mocks
 import {
@@ -153,28 +157,38 @@ describe("resources/package/config", () => {
 
 	describe("getPackageLanguage", () => {
 		it("should return language from cliFlags if provided and valid", async () => {
+			vi.mocked(listLanguageNames).mockResolvedValue(["typescript"]);
+
 			const result = await getPackageLanguage({ lang: Language.TYPESCRIPT });
+
+			expect(listLanguageNames).toHaveBeenCalled();
 			expect(result).toBe(Language.TYPESCRIPT);
 		});
 
 		it("should prompt for language if not provided in cliFlags", async () => {
+			vi.mocked(listLanguageNames).mockResolvedValue(["typescript"]);
 			vi.mocked(capitalizeFirstLetter).mockReturnValue("Typescript");
 			vi.mocked(prompts.selectInput).mockResolvedValue(Language.TYPESCRIPT);
 
 			const result = await getPackageLanguage({});
 
+			expect(listLanguageNames).toHaveBeenCalled();
 			expect(prompts.selectInput).toHaveBeenCalledWith(
 				"Which language would you prefer to use?",
-				expect.any(Object),
+				expect.objectContaining({
+					options: [{ label: "Typescript", value: "typescript" }],
+				}),
 				Language.TYPESCRIPT,
 			);
 			expect(result).toBe(Language.TYPESCRIPT);
 		});
 
 		it("should throw an error for an invalid language", async () => {
+			vi.mocked(listLanguageNames).mockResolvedValue(["typescript"]);
+
 			await expect(
 				getPackageLanguage({ lang: "invalid" as unknown as Language }),
-			).rejects.toThrow("Unsupported language: invalid");
+			).rejects.toThrow("Unsupported language: invalid (valid: typescript)");
 		});
 	});
 
