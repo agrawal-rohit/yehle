@@ -22,14 +22,14 @@ vi.mock("chalk", () => ({
 }));
 
 // Mock internal modules
-vi.mock("../../../src/cli/logger", () => ({
+vi.mock("../../cli/logger", () => ({
 	default: {
 		intro: vi.fn(),
 	},
 	primaryText: vi.fn((text) => text),
 }));
 
-vi.mock("../../../src/cli/tasks", async (importOriginal) => {
+vi.mock("../../cli/tasks", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../../cli/tasks")>();
 	const mockRunWithTasks = vi.fn(
 		async (
@@ -55,12 +55,12 @@ vi.mock("../../../src/cli/tasks", async (importOriginal) => {
 	};
 });
 
-vi.mock("../../../src/core/git", () => ({
+vi.mock("../../core/git", () => ({
 	initGitRepo: vi.fn(),
 	makeInitialCommit: vi.fn(),
 }));
 
-vi.mock("../../../src/core/pkg-manager", () => ({
+vi.mock("../../core/pkg-manager", () => ({
 	ensurePackageManager: vi.fn(),
 	getInstallScript: vi.fn(),
 	LANGUAGE_PACKAGE_MANAGER: {
@@ -69,16 +69,16 @@ vi.mock("../../../src/core/pkg-manager", () => ({
 	},
 }));
 
-vi.mock("../../../src/core/utils", () => ({
+vi.mock("../../core/utils", () => ({
 	toSlug: vi.fn(),
 }));
 
-vi.mock("../../../src/resources/package/config", () => ({
+vi.mock("../../resources/package/config", () => ({
 	getGeneratePackageConfiguration: vi.fn(),
 	Language: { TYPESCRIPT: "typescript" },
 }));
 
-vi.mock("../../../src/resources/package/setup", () => ({
+vi.mock("../../resources/package/setup", () => ({
 	addPackageInstructions: vi.fn(),
 	applyTemplateModifications: vi.fn(),
 	createPackageDirectory: vi.fn(),

@@ -95,7 +95,6 @@ describe("index", () => {
 		});
 
 		it("should filter out empty arguments", () => {
-			const argv = ["node", "yehle", "", "package"];
 			vi.stubGlobal("process", { argv: ["node", "yehle", "package"] });
 			vi.mocked(mockApp.parse).mockImplementation(() => {});
 

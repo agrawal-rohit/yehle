@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock node modules and internal modules
-vi.mock("../../../src/cli/prompts", () => ({
+vi.mock("../../cli/prompts", () => ({
 	default: {
 		selectInput: vi.fn(),
 		textInput: vi.fn(),
@@ -9,7 +9,7 @@ vi.mock("../../../src/cli/prompts", () => ({
 	},
 }));
 
-vi.mock("../../../src/cli/tasks", () => ({
+vi.mock("../../cli/tasks", () => ({
 	default: {
 		runWithTasks: vi.fn(async (_, task) => {
 			if (task) await task();
@@ -21,7 +21,7 @@ vi.mock("../../../src/cli/tasks", () => ({
 	globalThis as typeof globalThis & { mockIsLocalMode: boolean }
 ).mockIsLocalMode = false;
 
-vi.mock("../../../src/core/constants", async (importOriginal) => {
+vi.mock("../../core/constants", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../../core/constants")>();
 	return {
 		...actual,
@@ -32,40 +32,40 @@ vi.mock("../../../src/core/constants", async (importOriginal) => {
 	};
 });
 
-vi.mock("../../../src/core/git", () => ({
+vi.mock("../../core/git", () => ({
 	getGitEmail: vi.fn(),
 	getGitUsername: vi.fn(),
 }));
 
-vi.mock("../../../src/core/pkg-manager", () => ({
+vi.mock("../../core/pkg-manager", () => ({
 	LANGUAGE_PACKAGE_REGISTRY: {
 		typescript: "npm",
 	},
 	validatePackageName: vi.fn(),
 }));
 
-vi.mock("../../../src/core/templates", () => ({
+vi.mock("../../core/templates", () => ({
 	listAvailableTemplates: vi.fn(),
 }));
 
-vi.mock("../../../src/resources/instructions/config", () => ({
+vi.mock("../../resources/instructions/config", () => ({
 	getPackageInstructionsConfiguration: vi.fn().mockResolvedValue({
 		includeInstructions: false,
 		ideFormat: undefined,
 	}),
 }));
 
-vi.mock("../../../src/core/utils", () => ({
+vi.mock("../../core/utils", () => ({
 	capitalizeFirstLetter: vi.fn(),
 	toSlug: vi.fn(),
 }));
 
-import { listAvailableTemplates } from "../../../src/core/templates";
 import prompts from "../../cli/prompts";
 import tasks from "../../cli/tasks";
 import { Language } from "../../core/constants";
 import { getGitEmail, getGitUsername } from "../../core/git";
 import { validatePackageName } from "../../core/pkg-manager";
+import { listAvailableTemplates } from "../../core/templates";
 import { capitalizeFirstLetter, toSlug } from "../../core/utils";
 // Import after mocks
 import {
@@ -173,7 +173,7 @@ describe("resources/package/config", () => {
 
 		it("should throw an error for an invalid language", async () => {
 			await expect(
-				getPackageLanguage({ lang: "invalid" as any }),
+				getPackageLanguage({ lang: "invalid" as unknown as Language }),
 			).rejects.toThrow("Unsupported language: invalid");
 		});
 	});

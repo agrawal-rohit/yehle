@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { MockInstance } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	getGitEmail,
@@ -8,15 +9,18 @@ import {
 	isGitRepo,
 	makeInitialCommit,
 } from "./git";
+import type { RunOptions } from "./shell";
 import * as shell from "./shell";
 
 describe("core/git", () => {
-	let runAsyncSpy: any;
-	let existsSyncSpy: any;
+	let runAsyncSpy: MockInstance<
+		(cmd: string, opts?: RunOptions | undefined) => Promise<string>
+	>;
+	let existsSyncSpy: MockInstance<(path: fs.PathLike) => boolean>;
 
 	beforeEach(() => {
-		runAsyncSpy = vi.spyOn(shell as any, "runAsync");
-		existsSyncSpy = vi.spyOn(fs as any, "existsSync");
+		runAsyncSpy = vi.spyOn(shell, "runAsync");
+		existsSyncSpy = vi.spyOn(fs, "existsSync");
 	});
 
 	afterEach(() => {

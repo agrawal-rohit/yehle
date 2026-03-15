@@ -19,7 +19,7 @@ vi.mock("spdx-license-list/licenses/MIT.json", () => ({
 	},
 }));
 
-vi.mock("../../../src/core/constants", async (importOriginal) => {
+vi.mock("../../core/constants", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../../core/constants")>();
 	return {
 		...actual,
@@ -27,7 +27,7 @@ vi.mock("../../../src/core/constants", async (importOriginal) => {
 	};
 });
 
-vi.mock("../../../src/core/fs", () => ({
+vi.mock("../../core/fs", () => ({
 	copyDirSafeAsync: vi.fn(),
 	ensureDirAsync: vi.fn(),
 	isDirAsync: vi.fn(),
@@ -36,26 +36,26 @@ vi.mock("../../../src/core/fs", () => ({
 	writeFileAsync: vi.fn(),
 }));
 
-vi.mock("../../../src/core/git", () => ({
+vi.mock("../../core/git", () => ({
 	getGitEmail: vi.fn(),
 	getGitUsername: vi.fn(),
 }));
 
-vi.mock("../../../src/core/pkg-manager", () => ({
+vi.mock("../../core/pkg-manager", () => ({
 	LANGUAGE_PACKAGE_REGISTRY: {
 		typescript: "npm",
 	},
 	validatePackageName: vi.fn(),
 }));
 
-vi.mock("../../../src/core/templates", () => ({
+vi.mock("../../core/templates", () => ({
 	listAvailableTemplates: vi.fn(),
 	resolveTemplatesDir: vi.fn(),
 }));
 
-vi.mock("../../../src/core/instructions", async (importOriginal) => {
+vi.mock("../../core/instructions", async (importOriginal) => {
 	const actual =
-		await importOriginal<typeof import("../../../src/core/instructions")>();
+		await importOriginal<typeof import("../../core/instructions")>();
 	return {
 		...actual,
 		getInstructionWithFrontmatter: vi.fn(),
@@ -64,12 +64,12 @@ vi.mock("../../../src/core/instructions", async (importOriginal) => {
 	};
 });
 
-vi.mock("../../../src/core/utils", () => ({
+vi.mock("../../core/utils", () => ({
 	capitalizeFirstLetter: vi.fn(),
 	toSlug: vi.fn(),
 }));
 
-vi.mock("../../../src/cli/prompts", () => ({
+vi.mock("../../cli/prompts", () => ({
 	default: {
 		selectInput: vi.fn(),
 		textInput: vi.fn(),
@@ -77,7 +77,7 @@ vi.mock("../../../src/cli/prompts", () => ({
 	},
 }));
 
-vi.mock("../../../src/cli/tasks", () => ({
+vi.mock("../../cli/tasks", () => ({
 	default: {
 		runWithTasks: vi.fn(async (_, task) => {
 			if (task) await task();
@@ -86,7 +86,6 @@ vi.mock("../../../src/cli/tasks", () => ({
 }));
 
 import fs from "node:fs";
-import { resolveTemplatesDir } from "../../../src/core/templates";
 import { Language } from "../../core/constants";
 import {
 	copyDirSafeAsync,
@@ -96,27 +95,22 @@ import {
 	renderMustacheTemplates,
 	writeFileAsync,
 } from "../../core/fs";
+import { resolveTemplatesDir } from "../../core/templates";
 
-vi.mock(
-	"../../../src/resources/instructions/config",
-	async (importOriginal) => {
-		const actual =
-			await importOriginal<typeof import("../instructions/config")>();
-		return { ...actual };
-	},
-);
+vi.mock("../../resources/instructions/config", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("../instructions/config")>();
+	return { ...actual };
+});
 
-vi.mock(
-	"../../../src/resources/instructions/ide-formats",
-	async (importOriginal) => {
-		const actual =
-			await importOriginal<typeof import("../instructions/ide-formats")>();
-		return {
-			...actual,
-			writeInstructionToFile: vi.fn(),
-		};
-	},
-);
+vi.mock("../../resources/instructions/ide-formats", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("../instructions/ide-formats")>();
+	return {
+		...actual,
+		writeInstructionToFile: vi.fn(),
+	};
+});
 
 import {
 	getInstructionWithFrontmatter,
@@ -409,7 +403,7 @@ describe("resources/package/setup", () => {
 			expect(fs.promises.readFile).toHaveBeenCalledWith(biomeJsonPath, "utf8");
 			expect(fs.promises.writeFile).toHaveBeenCalledWith(
 				biomeJsonPath,
-				JSON.stringify(expectedConfig, null, "\t") + "\n",
+				`${JSON.stringify(expectedConfig, null, "\t")}\n`,
 			);
 		});
 

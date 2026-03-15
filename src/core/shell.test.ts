@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import type { MockedFunction } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { commandExistsAsync, runAsync } from "./shell";
 
@@ -8,25 +9,26 @@ function expectParsedCommand(
 	expectedCommand: string,
 	expectedArgs: string[],
 ) {
-	const fakeChild = {
-		stdout: { on: vi.fn() },
-		on: vi.fn(),
+	type FakeChild = {
+		stdout: {
+			on: (event: string, handler: (data: string) => void) => void;
+		};
+		on: (event: string, handler: (code?: number) => void) => FakeChild;
 	};
 
-	(spawn as any).mockReturnValue(fakeChild);
-
-	fakeChild.on.mockImplementation(
-		(event: string, handler: (arg?: any) => void) => {
-			if (event === "close") handler(0);
-			return fakeChild;
-		},
-	);
-
-	fakeChild.stdout.on.mockImplementation(
-		(event: string, handler: (data: any) => void) => {
+	const fakeChild = {} as FakeChild;
+	fakeChild.stdout = {
+		on: (event, handler) => {
 			if (event === "data") handler("test output");
 		},
-	);
+	};
+	fakeChild.on = (event, handler) => {
+		if (event === "close") handler(0);
+		return fakeChild;
+	};
+
+	const mockedSpawn = vi.mocked(spawn);
+	mockedSpawn.mockReturnValue(fakeChild as unknown as ReturnType<typeof spawn>);
 
 	runAsync(cmd);
 
@@ -37,19 +39,16 @@ function expectParsedCommand(
 	);
 }
 
-vi.mock("node:child_process", () => {
-	return {
-		spawn: vi.fn(),
-	};
-});
+vi.mock("node:child_process", () => ({
+	spawn: vi.fn(),
+}));
 
 describe("core/shell", () => {
-	let spawnMock: any;
+	let spawnMock: MockedFunction<typeof spawn>;
 
 	beforeEach(() => {
-		spawnMock = spawn as unknown as any;
-
-		(spawnMock as any).mockReset();
+		spawnMock = vi.mocked(spawn);
+		spawnMock.mockReset();
 	});
 
 	afterEach(() => {
@@ -59,27 +58,18 @@ describe("core/shell", () => {
 	describe("runAsync", () => {
 		it("uses spawn and resolves trimmed stdout when stdio is pipe (default)", async () => {
 			const fakeChild = {
-				stdout: { on: vi.fn() },
-				on: vi.fn(),
+				stdout: {
+					on: (event: string, handler: (data: string) => void) => {
+						if (event === "data") handler("  ok \n");
+					},
+				},
+				on: (event: string, handler: (code?: number) => void) => {
+					if (event === "close") handler(0);
+				},
 			};
 
-			(spawnMock as any).mockReturnValue(fakeChild);
-
-			(fakeChild.on as any).mockImplementation(
-				(event: string, handler: (arg?: any) => void) => {
-					if (event === "close") {
-						handler(0);
-					}
-					return fakeChild;
-				},
-			);
-
-			(fakeChild.stdout.on as any).mockImplementation(
-				(event: string, handler: (data: any) => void) => {
-					if (event === "data") {
-						handler("  ok \n");
-					}
-				},
+			spawnMock.mockReturnValue(
+				fakeChild as unknown as ReturnType<typeof spawn>,
 			);
 
 			const result = await runAsync("echo test");
@@ -100,10 +90,12 @@ describe("core/shell", () => {
 				on: vi.fn(),
 			};
 
-			(spawnMock as any).mockReturnValue(fakeChild);
+			spawnMock.mockReturnValue(
+				fakeChild as unknown as ReturnType<typeof spawn>,
+			);
 
-			(fakeChild.on as any).mockImplementation(
-				(event: string, handler: (arg?: any) => void) => {
+			vi.mocked(fakeChild.on).mockImplementation(
+				(event: string, handler: (code?: number) => void) => {
 					if (event === "close") {
 						handler(0);
 					}
@@ -111,8 +103,8 @@ describe("core/shell", () => {
 				},
 			);
 
-			(fakeChild.stdout.on as any).mockImplementation(
-				(event: string, handler: (data: any) => void) => {
+			vi.mocked(fakeChild.stdout.on).mockImplementation(
+				(event: string, handler: (data: string) => void) => {
 					if (event === "data") {
 						handler("done");
 					}
@@ -145,12 +137,14 @@ describe("core/shell", () => {
 				on: vi.fn(),
 			};
 
-			(spawnMock as any).mockReturnValue(fakeChild);
+			spawnMock.mockReturnValue(
+				fakeChild as unknown as ReturnType<typeof spawn>,
+			);
 
 			const error = new Error("spawn failed");
 
-			(fakeChild.on as any).mockImplementation(
-				(event: string, handler: (arg?: any) => void) => {
+			vi.mocked(fakeChild.on).mockImplementation(
+				(event: string, handler: (arg?: unknown) => void) => {
 					if (event === "error") {
 						handler(error);
 					}
@@ -167,10 +161,12 @@ describe("core/shell", () => {
 				on: vi.fn(),
 			};
 
-			(spawnMock as any).mockReturnValue(fakeChild);
+			spawnMock.mockReturnValue(
+				fakeChild as unknown as ReturnType<typeof spawn>,
+			);
 
-			(fakeChild.on as any).mockImplementation(
-				(event: string, handler: (arg?: any) => void) => {
+			vi.mocked(fakeChild.on).mockImplementation(
+				(event: string, handler: (code?: number) => void) => {
 					if (event === "close") {
 						handler(1);
 					}
@@ -189,10 +185,12 @@ describe("core/shell", () => {
 				on: vi.fn(),
 			};
 
-			(spawnMock as any).mockReturnValue(fakeChild);
+			spawnMock.mockReturnValue(
+				fakeChild as unknown as ReturnType<typeof spawn>,
+			);
 
-			(fakeChild.on as any).mockImplementation(
-				(event: string, handler: (arg?: any) => void) => {
+			vi.mocked(fakeChild.on).mockImplementation(
+				(event: string, handler: (code?: number) => void) => {
 					if (event === "close") {
 						handler(0);
 					}
@@ -200,8 +198,8 @@ describe("core/shell", () => {
 				},
 			);
 
-			(fakeChild.stdout.on as any).mockImplementation(
-				(event: string, handler: (data: any) => void) => {
+			vi.mocked(fakeChild.stdout.on).mockImplementation(
+				(event: string, handler: (data: string) => void) => {
 					if (event === "data") {
 						handler("  ignored output \n");
 					}
@@ -225,11 +223,13 @@ describe("core/shell", () => {
 				on: vi.fn(),
 			};
 
-			(spawnMock as any).mockReturnValue(fakeChild);
+			spawnMock.mockReturnValue(
+				fakeChild as unknown as ReturnType<typeof spawn>,
+			);
 
 			// Simulate event handlers being attached, then trigger them
-			(fakeChild.on as any).mockImplementation(
-				(event: string, handler: (arg?: any) => void) => {
+			vi.mocked(fakeChild.on).mockImplementation(
+				(event: string, handler: (code?: number) => void) => {
 					if (event === "error") {
 						// do nothing for this test
 					}
@@ -261,10 +261,12 @@ describe("core/shell", () => {
 				on: vi.fn(),
 			};
 
-			(spawnMock as any).mockReturnValue(fakeChild);
+			spawnMock.mockReturnValue(
+				fakeChild as unknown as ReturnType<typeof spawn>,
+			);
 
-			(fakeChild.on as any).mockImplementation(
-				(event: string, handler: (arg?: any) => void) => {
+			vi.mocked(fakeChild.on).mockImplementation(
+				(event: string, handler: (code?: number) => void) => {
 					if (event === "close") {
 						handler(1);
 					}
@@ -285,10 +287,12 @@ describe("core/shell", () => {
 					on: vi.fn(),
 				};
 
-				(spawnMock as any).mockReturnValue(fakeChild);
+				spawnMock.mockReturnValue(
+					fakeChild as unknown as ReturnType<typeof spawn>,
+				);
 
-				(fakeChild.on as any).mockImplementation(
-					(event: string, handler: (arg?: any) => void) => {
+				vi.mocked(fakeChild.on).mockImplementation(
+					(event: string, handler: (code?: number) => void) => {
 						if (event === "close") {
 							handler(0);
 						}
@@ -296,8 +300,8 @@ describe("core/shell", () => {
 					},
 				);
 
-				(fakeChild.stdout.on as any).mockImplementation(
-					(event: string, handler: (data: any) => void) => {
+				vi.mocked(fakeChild.stdout.on).mockImplementation(
+					(event: string, handler: (data: string) => void) => {
 						if (event === "data") {
 							handler("/usr/bin/node\n");
 						}
@@ -333,10 +337,12 @@ describe("core/shell", () => {
 					on: vi.fn(),
 				};
 
-				(spawnMock as any).mockReturnValue(fakeChild);
+				spawnMock.mockReturnValue(
+					fakeChild as unknown as ReturnType<typeof spawn>,
+				);
 
-				(fakeChild.on as any).mockImplementation(
-					(event: string, handler: (arg?: any) => void) => {
+				vi.mocked(fakeChild.on).mockImplementation(
+					(event: string, handler: (code?: number) => void) => {
 						if (event === "close") {
 							handler(0);
 						}
@@ -344,8 +350,8 @@ describe("core/shell", () => {
 					},
 				);
 
-				(fakeChild.stdout.on as any).mockImplementation(
-					(event: string, handler: (data: any) => void) => {
+				vi.mocked(fakeChild.stdout.on).mockImplementation(
+					(event: string, handler: (data: string) => void) => {
 						if (event === "data") {
 							handler("C:\\\\Program Files\\\\node.exe\r\n");
 						}
@@ -379,12 +385,14 @@ describe("core/shell", () => {
 					on: vi.fn(),
 				};
 
-				(spawnMock as any).mockReturnValue(fakeChild);
+				spawnMock.mockReturnValue(
+					fakeChild as unknown as ReturnType<typeof spawn>,
+				);
 
 				const error = new Error("not found");
 
-				(fakeChild.on as any).mockImplementation(
-					(event: string, handler: (arg?: any) => void) => {
+				vi.mocked(fakeChild.on).mockImplementation(
+					(event: string, handler: (arg?: unknown) => void) => {
 						if (event === "error") {
 							handler(error);
 						}
@@ -419,10 +427,12 @@ describe("core/shell", () => {
 				on: vi.fn(),
 			};
 
-			(spawnMock as any).mockReturnValue(fakeChild);
+			spawnMock.mockReturnValue(
+				fakeChild as unknown as ReturnType<typeof spawn>,
+			);
 
-			(fakeChild.on as any).mockImplementation(
-				(event: string, handler: (arg?: any) => void) => {
+			vi.mocked(fakeChild.on).mockImplementation(
+				(event: string, handler: (code?: number) => void) => {
 					if (event === "close") {
 						handler(0);
 					}
@@ -454,12 +464,14 @@ describe("core/shell", () => {
 				on: vi.fn(),
 			};
 
-			(spawnMock as any).mockReturnValue(fakeChild);
+			spawnMock.mockReturnValue(
+				fakeChild as unknown as ReturnType<typeof spawn>,
+			);
 
 			const error = new Error("spawn failed");
 
-			(fakeChild.on as any).mockImplementation(
-				(event: string, handler: (arg?: any) => void) => {
+			vi.mocked(fakeChild.on).mockImplementation(
+				(event: string, handler: (arg?: unknown) => void) => {
 					if (event === "error") {
 						handler(error);
 					}
@@ -475,10 +487,12 @@ describe("core/shell", () => {
 				on: vi.fn(),
 			};
 
-			(spawnMock as any).mockReturnValue(fakeChild);
+			spawnMock.mockReturnValue(
+				fakeChild as unknown as ReturnType<typeof spawn>,
+			);
 
-			(fakeChild.on as any).mockImplementation(
-				(event: string, handler: (arg?: any) => void) => {
+			vi.mocked(fakeChild.on).mockImplementation(
+				(event: string, handler: (code?: number) => void) => {
 					if (event === "close") {
 						handler(2);
 					}

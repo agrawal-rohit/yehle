@@ -1,3 +1,4 @@
+import type { CAC } from "cac";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock node modules and internal modules
@@ -21,19 +22,26 @@ import { registerResourcesCli } from "./index";
 import generateInstructions from "./instructions/command";
 import generatePackage from "./package/command";
 
+type MockCommand = {
+	option: ReturnType<typeof vi.fn>;
+	action: ReturnType<typeof vi.fn>;
+};
+
 describe("resources/index", () => {
-	let mockApp: any;
-	let mockCommand: any;
+	let mockApp: CAC;
+	let mockCommand: MockCommand;
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockCommand = {
 			option: vi.fn().mockReturnThis(),
 			action: vi.fn(),
 		};
-		mockApp = {
+		const commandFn = vi.fn(() => mockCommand);
+		const appLike = {
 			usage: vi.fn(),
-			command: vi.fn(() => mockCommand),
+			command: commandFn,
 		};
+		mockApp = appLike as unknown as CAC;
 	});
 
 	afterEach(() => {
