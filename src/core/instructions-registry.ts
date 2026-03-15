@@ -10,7 +10,7 @@ import {
 	DEFAULT_GITHUB_REPO,
 	GITHUB_HEADERS,
 	getLocalTemplatesRoot,
-} from "./repo";
+} from "./registry";
 
 /** Path segment for the instructions tree under templates or cwd. */
 const INSTRUCTIONS_PATH = "instructions";

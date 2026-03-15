@@ -10,7 +10,7 @@ import {
 	DEFAULT_GITHUB_REPO,
 	GITHUB_HEADERS,
 	getLocalTemplatesRoot,
-} from "./repo";
+} from "./registry";
 
 /** Name of the shared templates directory that may be filtered out from listings. */
 const SHARED_DIR_NAME = "shared";
