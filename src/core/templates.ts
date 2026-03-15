@@ -22,6 +22,33 @@ export const NON_TEMPLATE_DIR_NAMES = new Set(
 );
 
 /**
+ * List language directory names (e.g. "typescript") by scanning templates/.
+ * Excludes shared and instructions (see NON_TEMPLATE_DIR_NAMES). Used by standalone instructions flow to discover languages.
+ * @returns Promise resolving to sorted array of language names; empty if templates root not found.
+ */
+export async function listLanguageNames(): Promise<string[]> {
+	const root = await getLocalRoot("templates");
+	if (!root) return [];
+	const names = await listLocalChildDirs(root, NON_TEMPLATE_DIR_NAMES);
+	return names.sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * List project-spec directory names for a language (e.g. "package") by scanning templates/<lang>/.
+ * Excludes shared and instructions (see NON_TEMPLATE_DIR_NAMES). Used by standalone instructions flow to discover project-specs.
+ * @param lang - Language key (e.g. typescript).
+ * @returns Promise resolving to sorted array of project-spec names; empty if lang dir not found.
+ */
+export async function listProjectSpecNames(lang: string): Promise<string[]> {
+	const root = await getLocalRoot("templates");
+	if (!root) return [];
+	const langDir = path.join(root, lang);
+	if (!(await isDirAsync(langDir))) return [];
+	const names = await listLocalChildDirs(langDir, NON_TEMPLATE_DIR_NAMES);
+	return names.sort((a, b) => a.localeCompare(b));
+}
+
+/**
  * Attempt to normalize the downloaded directory to the expected subtree.
  * @param downloadedDir - The path to the directory returned by giget.
  * @param language - The programming language for the templates (used to construct candidate paths).

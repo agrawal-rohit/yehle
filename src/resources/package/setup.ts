@@ -14,7 +14,7 @@ import {
 	InstructionCategory,
 	type InstructionContext,
 	listAvailableInstructions,
-	readOptionalInstructionsMapping,
+	readSituationalInstructionsMapping,
 } from "../../core/instructions";
 import { resolveTemplatesDir } from "../../core/templates";
 import { INSTRUCTION_CATEGORY_LANGUAGE } from "../instructions/config";
@@ -206,7 +206,8 @@ export async function addPackageInstructions(
 	}
 
 	// Add all situational instructions listed in yehle.yaml (e.g. templates/typescript/package/<template>/yehle.yaml)
-	const situationalNames = await readOptionalInstructionsMapping(templateDir);
+	const situationalNames =
+		await readSituationalInstructionsMapping(templateDir);
 	for (const name of situationalNames) {
 		const { content, frontmatter } = await getInstructionWithFrontmatter(
 			InstructionCategory.SITUATIONAL,

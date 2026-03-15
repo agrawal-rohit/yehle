@@ -47,8 +47,8 @@ export async function listLocalChildDirs(
 			: new Set(Array.from(exclude).map((n) => n.toLowerCase()));
 
 	return entries
-		.filter((e) => e.isDirectory())
-		.map((e) => e.name)
+		.filter((entry) => entry.isDirectory())
+		.map((entry) => entry.name)
 		.filter((name) =>
 			excludeSet ? !excludeSet.has(name.toLowerCase()) : true,
 		);
@@ -69,9 +69,9 @@ export async function listLocalFilesWithExtensions(
 	const names = new Set<string>();
 	for (const entry of entries) {
 		if (!entry.isFile()) continue;
-		for (const ext of extensions) {
-			if (entry.name.endsWith(ext)) {
-				names.add(entry.name.slice(0, -ext.length));
+		for (const extension of extensions) {
+			if (entry.name.endsWith(extension)) {
+				names.add(entry.name.slice(0, -extension.length));
 				break;
 			}
 		}

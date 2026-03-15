@@ -6,10 +6,9 @@ import {
 	InstructionCategory,
 	type InstructionContext,
 	listAvailableInstructions,
-	listLanguageNames,
-	listProjectSpecNames,
 	type RuleFrontmatter,
 } from "../../core/instructions";
+import { listLanguageNames, listProjectSpecNames } from "../../core/templates";
 import { capitalizeFirstLetter } from "../../core/utils";
 
 /** Supported IDE formats for agent instructions output. */

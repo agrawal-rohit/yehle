@@ -3,6 +3,15 @@ export enum Language {
 	TYPESCRIPT = "typescript",
 }
 
+/** Schema for yehle.yaml. */
+export type YehleConfiguration = {
+	/** Situational instructions to apply for this template or project-spec. */
+	situationalInstructions?: string[];
+};
+
+/** Filename for the yehle configuration file in a template or project-spec dir. */
+export const YEHLE_CONFIGURATION_FILENAME = "yehle.yaml";
+
 /** When true, use local templates (and instructions under ./templates/instructions/ and ./templates/<lang>/...); otherwise fetch from GitHub. */
 export const IS_LOCAL_MODE = process.env.YEHLE_LOCAL_TEMPLATES === "true";
 

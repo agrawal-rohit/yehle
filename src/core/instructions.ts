@@ -2,15 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
 import { parse as parseYaml } from "yaml";
-import { IS_LOCAL_MODE } from "./constants";
-import { isDirAsync } from "./fs";
 import {
-	getLocalRoot,
-	listLocalChildDirs,
-	resolveLocalTemplatesSubpath,
-} from "./registry.local";
+	IS_LOCAL_MODE,
+	YEHLE_CONFIGURATION_FILENAME,
+	type YehleConfiguration,
+} from "./constants";
+import { isDirAsync } from "./fs";
+import { getLocalRoot, resolveLocalTemplatesSubpath } from "./registry.local";
 import { listRemoteFilesViaAPI, resolveRemoteSubpath } from "./registry.remote";
-import { NON_TEMPLATE_DIR_NAMES } from "./templates";
 
 /** Path segment for the instructions tree under templates. */
 const INSTRUCTIONS_PATH = "instructions";
@@ -64,11 +63,13 @@ async function listInstructionFiles(dir: string): Promise<string[]> {
 	if (!(await isDirAsync(dir))) return [];
 	const entries = await fs.promises.readdir(dir, { withFileTypes: true });
 	const names = new Set<string>();
-	for (const e of entries) {
-		if (!e.isFile()) continue;
-		for (const ext of INSTRUCTION_EXTENSIONS) {
-			if (e.name.endsWith(ext)) {
-				names.add(e.name.slice(0, -ext.length));
+
+	// We need to filter out the entries that are not files.
+	for (const entry of entries) {
+		if (!entry.isFile()) continue;
+		for (const extension of INSTRUCTION_EXTENSIONS) {
+			if (entry.name.endsWith(extension)) {
+				names.add(entry.name.slice(0, -extension.length));
 				break;
 			}
 		}
@@ -92,10 +93,10 @@ function parseInstructionFile(raw: string): InstructionWithFrontmatter {
 		frontmatter.description = fm.description;
 
 	// Paths
-	const pathsArr = Array.isArray(fm.paths)
+	const paths = Array.isArray(fm.paths)
 		? fm.paths.filter((x): x is string => typeof x === "string")
 		: [];
-	if (pathsArr.length > 0) frontmatter.paths = pathsArr;
+	if (paths.length > 0) frontmatter.paths = paths;
 
 	// Always apply flag
 	if (fm.alwaysApply === true || fm.alwaysApply === false)
@@ -114,11 +115,11 @@ async function findInstructionFilePath(
 	dir: string,
 	name: string,
 ): Promise<string | null> {
-	for (const ext of INSTRUCTION_EXTENSIONS) {
-		const fp = path.join(dir, `${name}${ext}`);
+	for (const extension of INSTRUCTION_EXTENSIONS) {
+		const filePath = path.join(dir, `${name}${extension}`);
 		try {
-			await fs.promises.access(fp, fs.constants.R_OK);
-			return fp;
+			await fs.promises.access(filePath, fs.constants.R_OK);
+			return filePath;
 		} catch {
 			// continue
 		}
@@ -126,6 +127,12 @@ async function findInstructionFilePath(
 	return null;
 }
 
+/**
+ * Get the subpath for an instruction category.
+ * @param category - Instruction category.
+ * @param context - Required for language, project-spec, template.
+ * @returns The subpath for the instruction category.
+ */
 function getInstructionsSubpath(
 	category: InstructionCategory,
 	context?: InstructionContext,
@@ -133,26 +140,31 @@ function getInstructionsSubpath(
 	switch (category) {
 		case InstructionCategory.ESSENTIAL:
 			return `${TEMPLATES_SEGMENT}/${INSTRUCTIONS_PATH}/${InstructionCategory.ESSENTIAL}`;
+
 		case InstructionCategory.SITUATIONAL:
 			return `${TEMPLATES_SEGMENT}/${INSTRUCTIONS_PATH}/${InstructionCategory.SITUATIONAL}`;
+
 		case InstructionCategory.LANGUAGE:
 			if (!context?.lang)
 				throw new Error(
 					`Instruction category "${category}" requires a language context.`,
 				);
 			return `${TEMPLATES_SEGMENT}/${context.lang}/${INSTRUCTIONS_PATH}`;
+
 		case InstructionCategory.PROJECT_SPEC:
 			if (!context?.lang || !context?.projectSpec)
 				throw new Error(
 					`Instruction category "${category}" requires language and projectSpec context.`,
 				);
 			return `${TEMPLATES_SEGMENT}/${context.lang}/${context.projectSpec}/${INSTRUCTIONS_PATH}`;
+
 		case InstructionCategory.TEMPLATE:
 			if (!context?.lang || !context?.projectSpec || !context?.template)
 				throw new Error(
 					`Instruction category "${category}" requires language, projectSpec, and template context.`,
 				);
 			return `${TEMPLATES_SEGMENT}/${context.lang}/${context.projectSpec}/${context.template}/${INSTRUCTIONS_PATH}`;
+
 		default:
 			throw new Error(`Unknown instruction category: "${category}".`);
 	}
@@ -194,14 +206,15 @@ export async function resolveInstructionsDir(
 	category: InstructionCategory,
 	context?: InstructionContext,
 ): Promise<string> {
-	// Local mode: check local directory.
+	// Local mode
 	if (IS_LOCAL_MODE) {
 		const subpath = getInstructionsSubpath(category, context);
 		const dir = await resolveLocalTemplatesSubpath(subpath);
 		if (dir && (await isDirAsync(dir))) return dir;
 
-		const root =
-			(await getLocalRoot("templates")) || "<no local templates root>";
+		const root = await getLocalRoot("templates");
+		if (!root) throw new Error(`No local templates root found.`);
+
 		const expectedPath = getInstructionsSubpath(category, context);
 		throw new Error(
 			`Local instructions not found for category "${category}". Expected directory at ${path.join(
@@ -211,7 +224,7 @@ export async function resolveInstructionsDir(
 		);
 	}
 
-	// Remote mode: fetch from GitHub.
+	// Remote mode
 	return await downloadRemoteInstructionsDir(category, context);
 }
 
@@ -227,13 +240,16 @@ export async function listAvailableInstructions(
 	category: InstructionCategory,
 	context?: InstructionContext,
 ): Promise<string[]> {
+	const subpath = getInstructionsSubpath(category, context);
+
+	// Local mode
 	if (IS_LOCAL_MODE) {
-		const subpath = getInstructionsSubpath(category, context);
 		const dir = await resolveLocalTemplatesSubpath(subpath);
 		if (!dir) return [];
 		return listInstructionFiles(dir);
 	}
-	const subpath = getInstructionsSubpath(category, context);
+
+	// Remote mode
 	return listRemoteFilesViaAPI(subpath, INSTRUCTION_EXTENSIONS);
 }
 
@@ -263,58 +279,24 @@ export async function getInstructionWithFrontmatter(
 }
 
 /**
- * List language directory names (e.g. "typescript") by scanning templates/.
- * Excludes shared and instructions (see NON_TEMPLATE_DIR_NAMES). Used by standalone instructions flow to discover languages.
- * @returns Promise resolving to sorted array of language names; empty if templates root not found.
- */
-export async function listLanguageNames(): Promise<string[]> {
-	const root = await getLocalRoot("templates");
-	if (!root) return [];
-	const names = await listLocalChildDirs(root, NON_TEMPLATE_DIR_NAMES);
-	return names.sort((a, b) => a.localeCompare(b));
-}
-
-/**
- * List project-spec directory names for a language (e.g. "package") by scanning templates/<lang>/.
- * Excludes shared and instructions (see NON_TEMPLATE_DIR_NAMES). Used by standalone instructions flow to discover project-specs.
- * @param lang - Language key (e.g. typescript).
- * @returns Promise resolving to sorted array of project-spec names; empty if lang dir not found.
- */
-export async function listProjectSpecNames(lang: string): Promise<string[]> {
-	const root = await getLocalRoot("templates");
-	if (!root) return [];
-	const langDir = path.join(root, lang);
-	if (!(await isDirAsync(langDir))) return [];
-	const names = await listLocalChildDirs(langDir, NON_TEMPLATE_DIR_NAMES);
-	return names.sort((a, b) => a.localeCompare(b));
-}
-
-/** Filename for the optional-instructions mapping in a template or project-spec dir. */
-export const YEHLE_INSTRUCTIONS_FILENAME = "yehle.yaml";
-
-/** Schema for yehle.yaml: optionalInstructions lists optional instruction names to apply for this template. */
-export type YehleInstructionsMapping = {
-	optionalInstructions?: string[];
-};
-
-/**
- * Read the optional instructions mapping from a template or project-spec directory.
- * Looks for yehle.yaml with optionalInstructions: string[]. No file or invalid/missing array returns [].
+ * Read the situational instructions mapping from a template or project-spec directory.
+ * Looks for yehle.yaml with situationalInstructions: string[]. No file or invalid/missing array returns [].
  * @param templateOrProjectSpecDir - Absolute path to the template dir (e.g. .../package/react) or project-spec dir.
- * @returns Promise resolving to the list of optional instruction names to apply; empty if not found or invalid.
+ * @returns Promise resolving to the list of situational instruction names to apply; empty if not found or invalid.
  */
-export async function readOptionalInstructionsMapping(
+export async function readSituationalInstructionsMapping(
 	templateOrProjectSpecDir: string,
 ): Promise<string[]> {
 	const filePath = path.join(
 		templateOrProjectSpecDir,
-		YEHLE_INSTRUCTIONS_FILENAME,
+		YEHLE_CONFIGURATION_FILENAME,
 	);
+
 	try {
 		const raw = await fs.promises.readFile(filePath, "utf8");
 		const data = parseYaml(raw) as unknown;
 		if (data && typeof data === "object") {
-			const list = (data as YehleInstructionsMapping).optionalInstructions;
+			const list = (data as YehleConfiguration).situationalInstructions;
 			if (Array.isArray(list)) return list;
 		}
 	} catch {

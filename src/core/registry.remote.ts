@@ -143,9 +143,9 @@ export async function listRemoteFilesViaAPI(
 	const names = new Set<string>();
 	for (const entry of data) {
 		if (entry?.type !== "file" || typeof entry.name !== "string") continue;
-		for (const ext of extensions) {
-			if (entry.name.endsWith(ext)) {
-				names.add(entry.name.slice(0, -ext.length));
+		for (const extension of extensions) {
+			if (entry.name.endsWith(extension)) {
+				names.add(entry.name.slice(0, -extension.length));
 				break;
 			}
 		}

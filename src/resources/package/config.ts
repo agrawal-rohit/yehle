@@ -7,7 +7,10 @@ import {
 	LANGUAGE_PACKAGE_REGISTRY,
 	validatePackageName,
 } from "../../core/pkg-manager";
-import { listAvailableTemplates } from "../../core/templates";
+import {
+	listAvailableTemplates,
+	listLanguageNames,
+} from "../../core/templates";
 import { capitalizeFirstLetter, toSlug } from "../../core/utils";
 import {
 	getPackageInstructionsConfiguration,
@@ -100,9 +103,10 @@ export async function getGeneratePackageConfiguration(
 export async function getPackageLanguage(
 	cliFlags: Partial<GeneratePackageConfiguration> = {},
 ): Promise<GeneratePackageConfiguration["lang"]> {
-	const languageOptions = Object.keys(Language).map((key: string) => ({
-		label: capitalizeFirstLetter(Language[key as keyof typeof Language]),
-		value: Language[key as keyof typeof Language],
+	const languageNames = await listLanguageNames();
+	const languageOptions = languageNames.map((name) => ({
+		label: capitalizeFirstLetter(name),
+		value: name,
 	}));
 
 	const language =
