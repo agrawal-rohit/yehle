@@ -7,11 +7,15 @@ vi.mock("../../../src/core/constants", () => ({
 	IS_LOCAL_MODE: false,
 }));
 
-vi.mock("../../../src/core/instructions-registry", () => ({
-	listAvailableInstructions: vi.fn(),
-	getInstructionContent: vi.fn(),
-	getInstructionWithFrontmatter: vi.fn(),
-}));
+vi.mock("../../../src/core/instructions-registry", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("../../../src/core/instructions-registry")>();
+	return {
+		...actual,
+		listAvailableInstructions: vi.fn(),
+		getInstructionWithFrontmatter: vi.fn(),
+	};
+});
 
 vi.mock("../../../src/cli/tasks", () => ({
 	default: {
@@ -47,7 +51,11 @@ describe("instructions/config (remote mode)", () => {
 		]);
 		vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
 			content: "# Rule",
-			frontmatter: { globs: ["**/*"], alwaysApply: true },
+			frontmatter: {
+				description: "react vite",
+				globs: ["**/*"],
+				alwaysApply: true,
+			},
 		});
 		vi.mocked(prompts.textInput).mockResolvedValue("**/*");
 		vi.mocked(prompts.confirmInput).mockResolvedValue(true);

@@ -23,23 +23,36 @@ vi.mock("../../../src/cli/tasks", async (importOriginal) => {
 	};
 });
 
+vi.mock("../../../src/core/instructions-registry", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("../../../src/core/instructions-registry")>();
+	return {
+		...actual,
+		getInstructionWithFrontmatter: vi.fn(),
+	};
+});
+
 vi.mock("../../../src/resources/instructions/config", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../../../src/resources/instructions/config")>();
 	return {
 		...actual,
 		getGenerateInstructionsConfiguration: vi.fn(),
-		fetchInstructionContent: vi.fn(),
 	};
 });
 
-vi.mock("../../../src/resources/instructions/ide-formats", () => ({
-	writeInstructionToFile: vi.fn(),
-}));
+vi.mock("../../../src/resources/instructions/ide-formats", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("../../../src/resources/instructions/ide-formats")>();
+	return {
+		...actual,
+		writeInstructionToFile: vi.fn(),
+	};
+});
 
 import logger from "../../../src/cli/logger";
+import { getInstructionWithFrontmatter } from "../../../src/core/instructions-registry";
 import { generateInstructions } from "../../../src/resources/instructions/command";
 import {
-	fetchInstructionContent,
 	getGenerateInstructionsConfiguration,
 	IdeFormat,
 } from "../../../src/resources/instructions/config";
@@ -54,7 +67,7 @@ describe("resources/instructions/command", () => {
 				{
 					category: "essential",
 					instruction: "react-vite",
-					metadata: {
+					frontmatter: {
 						description: "react vite",
 						globs: ["**/*"],
 						alwaysApply: true,
@@ -63,7 +76,10 @@ describe("resources/instructions/command", () => {
 			],
 			ideFormat: IdeFormat.CURSOR,
 		});
-		vi.mocked(fetchInstructionContent).mockResolvedValue("# Rule content");
+		vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
+			content: "# Rule content",
+			frontmatter: {},
+		});
 		vi.mocked(writeInstructionToFile).mockResolvedValue(
 			"/project/.cursor/rules/react-vite.mdc",
 		);
@@ -89,7 +105,7 @@ describe("resources/instructions/command", () => {
 				instruction: "react-vite",
 				ideFormat: IdeFormat.CURSOR,
 			});
-			expect(fetchInstructionContent).toHaveBeenCalledWith(
+			expect(getInstructionWithFrontmatter).toHaveBeenCalledWith(
 				"essential",
 				"react-vite",
 				undefined,
@@ -100,11 +116,7 @@ describe("resources/instructions/command", () => {
 				"# Rule content",
 				IdeFormat.CURSOR,
 				"essential",
-				expect.objectContaining({
-					description: "react vite",
-					globs: ["**/*"],
-					alwaysApply: true,
-				}),
+				{ description: "react vite", globs: ["**/*"], alwaysApply: true },
 			);
 		});
 

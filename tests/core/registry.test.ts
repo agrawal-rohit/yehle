@@ -8,9 +8,9 @@ import {
 	GITHUB_HEADERS,
 	getLocalRoot,
 	getLocalTemplatesRoot,
-} from "../../src/core/repo";
+} from "../../src/core/registry";
 
-describe("core/repo", () => {
+describe("core/registry", () => {
 	const tmpRoots: string[] = [];
 
 	afterEach(() => {

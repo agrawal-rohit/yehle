@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { downloadTemplate } from "giget";
 import matter from "gray-matter";
+import { parse as parseYaml } from "yaml";
 import { IS_LOCAL_MODE } from "./constants";
 import { isDirAsync } from "./fs";
 import {
@@ -11,6 +12,7 @@ import {
 	GITHUB_HEADERS,
 	getLocalTemplatesRoot,
 } from "./registry";
+import { NON_TEMPLATE_DIR_NAMES } from "./template-registry";
 
 /** Path segment for the instructions tree under templates or cwd. */
 const INSTRUCTIONS_PATH = "instructions";
@@ -23,12 +25,13 @@ const INSTRUCTIONS_PATH = "instructions";
  * - project-spec: Per project-spec (e.g. package); lives in templates/<lang>/<project-spec>/instructions/
  * - template: Template-specific; lives in templates/<lang>/<project-spec>/<template>/instructions/
  */
-export type InstructionCategory =
-	| "essential"
-	| "optional"
-	| "language"
-	| "project-spec"
-	| "template";
+export enum InstructionCategory {
+	ESSENTIAL = "essential",
+	OPTIONAL = "optional",
+	LANGUAGE = "language",
+	PROJECT_SPEC = "project-spec",
+	TEMPLATE = "template",
+}
 
 /** Context required to resolve scoped categories (language, project-spec, template). */
 export type InstructionContext = {
@@ -62,8 +65,8 @@ export type InstructionWithFrontmatter = {
 
 /** Categories that live under templates/instructions/. */
 const GLOBAL_CATEGORIES = new Set<InstructionCategory>([
-	"essential",
-	"optional",
+	InstructionCategory.ESSENTIAL,
+	InstructionCategory.OPTIONAL,
 ]);
 
 /**
@@ -103,19 +106,23 @@ async function getInstructionsCategoryDir(
 	const langDir = path.join(templatesRoot, context.lang);
 	if (!(await isDirAsync(langDir))) return null;
 
-	if (category === "language") {
+	if (category === InstructionCategory.LANGUAGE) {
 		const dir = path.join(langDir, INSTRUCTIONS_PATH);
 		return (await isDirAsync(dir)) ? dir : null;
 	}
 
-	if (category === "project-spec" && context.projectSpec) {
+	if (category === InstructionCategory.PROJECT_SPEC && context.projectSpec) {
 		const projectSpecDir = path.join(langDir, context.projectSpec);
 		if (!(await isDirAsync(projectSpecDir))) return null;
 		const dir = path.join(projectSpecDir, INSTRUCTIONS_PATH);
 		return (await isDirAsync(dir)) ? dir : null;
 	}
 
-	if (category === "template" && context.projectSpec && context.template) {
+	if (
+		category === InstructionCategory.TEMPLATE &&
+		context.projectSpec &&
+		context.template
+	) {
 		const templateDir = path.join(
 			langDir,
 			context.projectSpec,
@@ -372,30 +379,8 @@ export async function getInstructionWithFrontmatter(
 }
 
 /**
- * Read instruction body only (strips frontmatter). Delegates to getInstructionWithFrontmatter.
- * For language, project-spec, template pass context.
- * @param category - Instruction category.
- * @param name - Instruction name (basename without extension).
- * @param context - Required for language, project-spec, template.
- * @returns Promise resolving to the markdown body string.
- * @throws Error when the instruction is not found or file read fails.
- */
-export async function getInstructionContent(
-	category: InstructionCategory,
-	name: string,
-	context?: InstructionContext,
-): Promise<string> {
-	const { content } = await getInstructionWithFrontmatter(
-		category,
-		name,
-		context,
-	);
-	return content;
-}
-
-/**
  * List language directory names (e.g. "typescript") by scanning templates/.
- * Excludes "shared". Used by standalone instructions flow to discover languages.
+ * Excludes shared and instructions (see NON_TEMPLATE_DIR_NAMES). Used by standalone instructions flow to discover languages.
  * @returns Promise resolving to sorted array of language names; empty if templates root not found.
  */
 export async function listLanguageNames(): Promise<string[]> {
@@ -403,7 +388,10 @@ export async function listLanguageNames(): Promise<string[]> {
 	if (!root) return [];
 	const entries = await fs.promises.readdir(root, { withFileTypes: true });
 	const names = entries
-		.filter((e) => e.isDirectory() && e.name.toLowerCase() !== "shared")
+		.filter(
+			(e) =>
+				e.isDirectory() && !NON_TEMPLATE_DIR_NAMES.has(e.name.toLowerCase()),
+		)
 		.map((e) => e.name)
 		.sort((a, b) => a.localeCompare(b));
 	return names;
@@ -411,7 +399,7 @@ export async function listLanguageNames(): Promise<string[]> {
 
 /**
  * List project-spec directory names for a language (e.g. "package") by scanning templates/<lang>/.
- * Excludes "shared". Used by standalone instructions flow to discover project-specs.
+ * Excludes shared and instructions (see NON_TEMPLATE_DIR_NAMES). Used by standalone instructions flow to discover project-specs.
  * @param lang - Language key (e.g. typescript).
  * @returns Promise resolving to sorted array of project-spec names; empty if lang dir not found.
  */
@@ -422,23 +410,26 @@ export async function listProjectSpecNames(lang: string): Promise<string[]> {
 	if (!(await isDirAsync(langDir))) return [];
 	const entries = await fs.promises.readdir(langDir, { withFileTypes: true });
 	const names = entries
-		.filter((e) => e.isDirectory() && e.name.toLowerCase() !== "shared")
+		.filter(
+			(e) =>
+				e.isDirectory() && !NON_TEMPLATE_DIR_NAMES.has(e.name.toLowerCase()),
+		)
 		.map((e) => e.name)
 		.sort((a, b) => a.localeCompare(b));
 	return names;
 }
 
 /** Filename for the optional-instructions mapping in a template or project-spec dir. */
-export const YEHLE_INSTRUCTIONS_FILENAME = "yehle-instructions.json";
+export const YEHLE_INSTRUCTIONS_FILENAME = "yehle.yaml";
 
-/** Schema for yehle-instructions.json: lists optional instruction names to apply for this template. */
+/** Schema for yehle.yaml: optionalInstructions lists optional instruction names to apply for this template. */
 export type YehleInstructionsMapping = {
-	optional?: string[];
+	optionalInstructions?: string[];
 };
 
 /**
  * Read the optional instructions mapping from a template or project-spec directory.
- * Looks for yehle-instructions.json with { "optional": string[] }. No file or invalid/missing optional array returns [].
+ * Looks for yehle.yaml with optionalInstructions: string[]. No file or invalid/missing array returns [].
  * @param templateOrProjectSpecDir - Absolute path to the template dir (e.g. .../package/react) or project-spec dir.
  * @returns Promise resolving to the list of optional instruction names to apply; empty if not found or invalid.
  */
@@ -451,13 +442,13 @@ export async function readOptionalInstructionsMapping(
 	);
 	try {
 		const raw = await fs.promises.readFile(filePath, "utf8");
-		const data = JSON.parse(raw) as unknown;
+		const data = parseYaml(raw) as unknown;
 		if (data && typeof data === "object") {
-			const optional = (data as YehleInstructionsMapping).optional;
-			if (Array.isArray(optional)) return optional;
+			const list = (data as YehleInstructionsMapping).optionalInstructions;
+			if (Array.isArray(list)) return list;
 		}
 	} catch {
-		// No file or invalid JSON
+		// No file or invalid YAML
 	}
 	return [];
 }

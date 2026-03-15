@@ -1,31 +1,27 @@
 import path from "node:path";
 import { ensureDirAsync, writeFileAsync } from "../../core/fs";
-import type { InstructionCategory } from "../../core/instructions-registry";
-import { getDefaultGlobsForLanguage, IdeFormat } from "./config";
+import {
+	InstructionCategory,
+	type RuleFrontmatter,
+} from "../../core/instructions-registry";
+import { IdeFormat } from "./config";
 
 /** Marketing comment prepended to written instructions (yehle registry). */
 const YEHLE_REGISTRY_URL =
 	"https://github.com/agrawal-rohit/yehle/blob/main/instructions/";
 const YEHLE_REGISTRY_COMMENT = `<!-- This instruction is part of the "yehle" instruction registry: ${YEHLE_REGISTRY_URL} -->\n\n`;
 
-/** Globs and metadata per instruction type for IDE frontmatter. */
-export type InstructionMetadata = {
-	description: string;
-	globs: string[];
-	alwaysApply: boolean;
-};
-
 /**
  * Build Cursor .mdc frontmatter: description, globs (YAML array), alwaysApply.
- * @param meta - Instruction metadata.
+ * @param frontmatter - Rule frontmatter (description, globs, alwaysApply from instruction file).
  * @returns YAML frontmatter string (including closing ---).
  */
-function cursorFrontmatter(meta: InstructionMetadata): string {
+function cursorFrontmatter(frontmatter: RuleFrontmatter): string {
 	return `---
-description: "${meta.description}"
+description: "${frontmatter.description}"
 globs:
-${meta.globs.map((g) => `  - "${g}"`).join("\n")}
-alwaysApply: ${meta.alwaysApply}
+${frontmatter.globs?.map((g) => `  - "${g}"`).join("\n")}
+alwaysApply: ${frontmatter.alwaysApply}
 ---
 
 `;
@@ -33,14 +29,12 @@ alwaysApply: ${meta.alwaysApply}
 
 /**
  * Build Cline .mdc frontmatter: title, description, glob (single pattern).
- * @param meta - Instruction metadata.
- * @returns YAML frontmatter string (including closing ---).
  */
-function clineFrontmatter(meta: InstructionMetadata): string {
-	const glob = meta.globs[0] ?? "**/*";
+function clineFrontmatter(frontmatter: RuleFrontmatter): string {
+	const glob = frontmatter.globs?.[0] ?? "**/*";
 	return `---
-title: "${meta.description}"
-description: "${meta.description}"
+title: "${frontmatter.description}"
+description: "${frontmatter.description}"
 glob: "${glob}"
 ---
 
@@ -49,11 +43,9 @@ glob: "${glob}"
 
 /**
  * Build Claude .claude/rules frontmatter: globs as comma-separated (per docs).
- * @param meta - Instruction metadata.
- * @returns YAML frontmatter string (including closing ---).
  */
-function claudeFrontmatter(meta: InstructionMetadata): string {
-	const globsStr = meta.globs.join(", ");
+function claudeFrontmatter(frontmatter: RuleFrontmatter): string {
+	const globsStr = frontmatter.globs?.join(", ") ?? "";
 	return `---
 globs: ${globsStr}
 ---
@@ -63,11 +55,9 @@ globs: ${globsStr}
 
 /**
  * Build Copilot path-specific .instructions.md frontmatter: applyTo (single glob).
- * @param meta - Instruction metadata.
- * @returns YAML frontmatter string (including closing ---).
  */
-function copilotFrontmatter(meta: InstructionMetadata): string {
-	const applyTo = meta.globs[0] ?? "**/*";
+function copilotFrontmatter(frontmatter: RuleFrontmatter): string {
+	const applyTo = frontmatter.globs?.[0] ?? "**/*";
 	return `---
 applyTo: "${applyTo}"
 ---
@@ -75,120 +65,54 @@ applyTo: "${applyTo}"
 `;
 }
 
-/**
- * Copilot repo-wide (e.g. essential): no frontmatter, content only.
- * @param _meta - Unused; kept for signature consistency.
- * @returns Empty string.
- */
-function copilotRepoWide(_meta: InstructionMetadata): string {
+/** Copilot repo-wide (e.g. essential): no frontmatter, content only. */
+function copilotRepoWide(_frontmatter: RuleFrontmatter): string {
 	return "";
 }
 
-/**
- * Build default metadata for an instruction based on category and name.
- * Used when metadata is not provided by the caller (e.g. in transformContentForIde).
- * @param category - Instruction category.
- * @param name - Instruction name (basename without extension).
- * @returns Default metadata (description, globs, alwaysApply).
- */
-export function getInstructionMetadata(
-	category: InstructionCategory,
-	name: string,
-): InstructionMetadata {
-	const humanName = name.replaceAll("-", " ");
-	if (category === "essential") {
-		return {
-			description: humanName,
-			globs: ["**/*"],
-			alwaysApply: true,
-		};
-	}
-	if (category === "language") {
-		return {
-			description:
-				name === "typescript"
-					? "TypeScript-specific coding standards"
-					: humanName,
-			globs: getDefaultGlobsForLanguage(name),
-			alwaysApply: false,
-		};
-	}
-	return {
-		description: humanName,
-		globs: ["**/*"],
-		alwaysApply: false,
-	};
-}
-
 /** Path templates per IDE; some vary by category (e.g. Copilot). */
-const IDE_PATH_TEMPLATES: Record<
-	IdeFormat,
-	Record<InstructionCategory, string>
-> = {
-	[IdeFormat.CURSOR]: {
-		essential: ".cursor/rules/{{ruleName}}.mdc",
-		optional: ".cursor/rules/{{ruleName}}.mdc",
-		language: ".cursor/rules/{{ruleName}}.mdc",
-		"project-spec": ".cursor/rules/{{ruleName}}.mdc",
-		template: ".cursor/rules/{{ruleName}}.mdc",
-	},
-	[IdeFormat.WINDSURF]: {
-		essential: ".windsurf/rules/{{ruleName}}.md",
-		optional: ".windsurf/rules/{{ruleName}}.md",
-		language: ".windsurf/rules/{{ruleName}}.md",
-		"project-spec": ".windsurf/rules/{{ruleName}}.md",
-		template: ".windsurf/rules/{{ruleName}}.md",
-	},
-	[IdeFormat.CLINE]: {
-		essential: ".clinerules/{{ruleName}}.mdc",
-		optional: ".clinerules/{{ruleName}}.mdc",
-		language: ".clinerules/{{ruleName}}.mdc",
-		"project-spec": ".clinerules/{{ruleName}}.mdc",
-		template: ".clinerules/{{ruleName}}.mdc",
-	},
-	[IdeFormat.CLAUDE]: {
-		essential: ".claude/rules/{{ruleName}}.md",
-		optional: ".claude/rules/{{ruleName}}.md",
-		language: ".claude/rules/{{ruleName}}.md",
-		"project-spec": ".claude/rules/{{ruleName}}.md",
-		template: ".claude/rules/{{ruleName}}.md",
-	},
-	[IdeFormat.COPILOT]: {
-		essential: ".github/copilot-instructions.md",
-		optional: ".github/instructions/{{ruleName}}.instructions.md",
-		language: ".github/instructions/{{ruleName}}.instructions.md",
-		"project-spec": ".github/instructions/{{ruleName}}.instructions.md",
-		template: ".github/instructions/{{ruleName}}.instructions.md",
-	},
+/** Path template per IDE ({{ruleName}} replaced with instruction name). Same for all categories except Copilot essential. */
+const IDE_PATH_TEMPLATES: Record<IdeFormat, string> = {
+	[IdeFormat.CURSOR]: ".cursor/rules/{{ruleName}}.mdc",
+	[IdeFormat.WINDSURF]: ".windsurf/rules/{{ruleName}}.md",
+	[IdeFormat.CLINE]: ".clinerules/{{ruleName}}.mdc",
+	[IdeFormat.CLAUDE]: ".claude/rules/{{ruleName}}.md",
+	[IdeFormat.COPILOT]: ".github/instructions/{{ruleName}}.instructions.md",
 };
+
+/** Copilot repo-wide single file for essential (no {{ruleName}}). */
+const COPILOT_REPO_WIDE_PATH = ".github/copilot-instructions.md";
 
 /**
  * Get the transform function for the given IDE and category (adds frontmatter or passes through).
  * Copilot: repo-wide (no frontmatter) for essential; path-specific frontmatter otherwise.
  * @param ideFormat - Target IDE format.
  * @param category - Instruction category.
- * @returns A function (content, meta) => transformed string, or undefined when no transform (e.g. Windsurf).
+ * @returns A function (content, frontmatter) => transformed string, or undefined when no transform (e.g. Windsurf).
  */
 function getTransformForIde(
 	ideFormat: IdeFormat,
 	category: InstructionCategory,
-): ((content: string, meta: InstructionMetadata) => string) | undefined {
-	if (ideFormat === IdeFormat.COPILOT && category === "essential")
-		return (content, _meta) => copilotRepoWide(_meta) + content;
+): ((content: string, frontmatter: RuleFrontmatter) => string) | undefined {
 	if (
 		ideFormat === IdeFormat.COPILOT &&
-		(category === "optional" ||
-			category === "language" ||
-			category === "project-spec" ||
-			category === "template")
+		category === InstructionCategory.ESSENTIAL
 	)
-		return (content, meta) => copilotFrontmatter(meta) + content;
+		return (content, fm) => copilotRepoWide(fm) + content;
+	if (
+		ideFormat === IdeFormat.COPILOT &&
+		(category === InstructionCategory.OPTIONAL ||
+			category === InstructionCategory.LANGUAGE ||
+			category === InstructionCategory.PROJECT_SPEC ||
+			category === InstructionCategory.TEMPLATE)
+	)
+		return (content, fm) => copilotFrontmatter(fm) + content;
 	if (ideFormat === IdeFormat.CURSOR)
-		return (content, meta) => cursorFrontmatter(meta) + content;
+		return (content, fm) => cursorFrontmatter(fm) + content;
 	if (ideFormat === IdeFormat.CLINE)
-		return (content, meta) => clineFrontmatter(meta) + content;
+		return (content, fm) => clineFrontmatter(fm) + content;
 	if (ideFormat === IdeFormat.CLAUDE)
-		return (content, meta) => claudeFrontmatter(meta) + content;
+		return (content, fm) => claudeFrontmatter(fm) + content;
 	return undefined;
 }
 
@@ -197,7 +121,7 @@ function getTransformForIde(
  * @param ideFormat - Target IDE format (determines path template).
  * @param ruleName - Instruction name (replaces {{ruleName}} in template).
  * @param cwd - Current working directory (project root).
- * @param category - Instruction category (some IDEs use different paths per category).
+ * @param category - Instruction category (Copilot uses repo-wide path for essential only).
  * @returns Absolute path where the instruction file should be written.
  */
 export function resolveOutputPath(
@@ -206,31 +130,35 @@ export function resolveOutputPath(
 	cwd: string,
 	category: InstructionCategory,
 ): string {
-	const template = IDE_PATH_TEMPLATES[ideFormat][category];
-	const relPath = template.replaceAll("{{ruleName}}", ruleName);
+	if (
+		ideFormat === IdeFormat.COPILOT &&
+		category === InstructionCategory.ESSENTIAL
+	) {
+		return path.resolve(cwd, COPILOT_REPO_WIDE_PATH);
+	}
+	const relPath = IDE_PATH_TEMPLATES[ideFormat].replaceAll(
+		"{{ruleName}}",
+		ruleName,
+	);
 	return path.resolve(cwd, relPath);
 }
 
 /**
  * Transform raw instruction content for the given IDE format (add frontmatter when applicable).
- * Uses provided metadata when given; otherwise derives from category and name via getInstructionMetadata.
  * @param content - Raw markdown body (may already include registry comment).
- * @param ruleName - Instruction name (used when metadata is not provided).
  * @param ideFormat - Target IDE format.
  * @param category - Instruction category.
- * @param metadata - Optional metadata; when omitted, defaults are derived from category and ruleName.
+ * @param frontmatter - Rule frontmatter from the instruction file.
  * @returns Transformed string (content with optional frontmatter prepended).
  */
 export function transformContentForIde(
 	content: string,
-	ruleName: string,
 	ideFormat: IdeFormat,
 	category: InstructionCategory,
-	metadata?: InstructionMetadata,
+	frontmatter: RuleFrontmatter,
 ): string {
 	const transform = getTransformForIde(ideFormat, category);
-	const meta = metadata ?? getInstructionMetadata(category, ruleName);
-	if (transform) return transform(content, meta);
+	if (transform) return transform(content, frontmatter);
 	return content;
 }
 
@@ -238,11 +166,11 @@ export function transformContentForIde(
  * Write the instruction to the appropriate location for the given IDE format.
  * Prepends the yehle registry comment, then IDE-specific frontmatter (when applicable), then content.
  * @param cwd - Current working directory (project root).
- * @param ruleName - Instruction name (used for path and default metadata if metadata omitted).
+ * @param ruleName - Instruction name (used for path).
  * @param content - Raw instruction body (markdown).
  * @param ideFormat - Target IDE format.
  * @param category - Instruction category.
- * @param metadata - Optional metadata for frontmatter; when omitted, derived from category and ruleName.
+ * @param frontmatter - Rule frontmatter from the instruction file.
  * @returns Promise resolving to the absolute path of the written file.
  */
 export async function writeInstructionToFile(
@@ -251,16 +179,15 @@ export async function writeInstructionToFile(
 	content: string,
 	ideFormat: IdeFormat,
 	category: InstructionCategory,
-	metadata?: InstructionMetadata,
+	frontmatter: RuleFrontmatter,
 ): Promise<string> {
 	const outputPath = resolveOutputPath(ideFormat, ruleName, cwd, category);
 	const contentWithRegistryComment = YEHLE_REGISTRY_COMMENT + content;
 	const transformedContent = transformContentForIde(
 		contentWithRegistryComment,
-		ruleName,
 		ideFormat,
 		category,
-		metadata,
+		frontmatter,
 	);
 
 	await ensureDirAsync(path.dirname(outputPath));

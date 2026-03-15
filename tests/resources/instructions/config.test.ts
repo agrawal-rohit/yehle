@@ -4,11 +4,15 @@ vi.mock("../../../src/core/constants", () => ({
 	IS_LOCAL_MODE: true,
 }));
 
-vi.mock("../../../src/core/instructions-registry", () => ({
-	listAvailableInstructions: vi.fn(),
-	getInstructionContent: vi.fn(),
-	getInstructionWithFrontmatter: vi.fn(),
-}));
+vi.mock("../../../src/core/instructions-registry", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("../../../src/core/instructions-registry")>();
+	return {
+		...actual,
+		listAvailableInstructions: vi.fn(),
+		getInstructionWithFrontmatter: vi.fn(),
+	}; 
+});
 
 vi.mock("../../../src/cli/tasks", () => ({
 	default: {
@@ -28,17 +32,15 @@ vi.mock("../../../src/cli/prompts", () => ({
 }));
 
 import {
-	fetchInstructionContent,
 	getGenerateInstructionsConfiguration,
 	getIdeFormatSelection,
-	getLanguageInstructionForPackageLang,
 	getPackageInstructionsConfiguration,
 	IdeFormat,
 } from "../../../src/resources/instructions/config";
 import prompts from "../../../src/cli/prompts";
 import {
-	getInstructionContent,
 	getInstructionWithFrontmatter,
+	InstructionCategory,
 	listAvailableInstructions,
 } from "../../../src/core/instructions-registry";
 
@@ -54,7 +56,11 @@ describe("instructions/config", () => {
 		);
 		vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
 			content: "# Rule",
-			frontmatter: { globs: ["**/*"], alwaysApply: true },
+			frontmatter: {
+				description: "react vite",
+				globs: ["**/*"],
+				alwaysApply: true,
+			},
 		});
 		vi.mocked(prompts.textInput).mockResolvedValue("**/*");
 		vi.mocked(prompts.confirmInput).mockResolvedValue(true);
@@ -94,7 +100,7 @@ describe("instructions/config", () => {
 			expect(result.selections).toHaveLength(1);
 			expect(result.selections[0].category).toBe("essential");
 			expect(result.selections[0].instruction).toBe("react-vite");
-			expect(result.selections[0].metadata).toEqual({
+			expect(result.selections[0].frontmatter).toEqual({
 				description: "react vite",
 				globs: ["**/*"],
 				alwaysApply: true,
@@ -113,7 +119,7 @@ describe("instructions/config", () => {
 		it("should use given category when both --instruction and --category provided", async () => {
 			const result = await getGenerateInstructionsConfiguration({
 				instruction: "typescript",
-				category: "language",
+				category: InstructionCategory.LANGUAGE,
 				ideFormat: IdeFormat.CURSOR,
 			});
 			expect(result.selections[0].category).toBe("language");
@@ -133,7 +139,7 @@ describe("instructions/config", () => {
 			await expect(
 				getGenerateInstructionsConfiguration({
 					instruction: "invalid",
-					category: "essential",
+					category: InstructionCategory.ESSENTIAL,
 					ideFormat: IdeFormat.CURSOR,
 				}),
 			).rejects.toThrow("Unsupported instruction");
@@ -158,31 +164,4 @@ describe("instructions/config", () => {
 		});
 	});
 
-	describe("getLanguageInstructionForPackageLang", () => {
-		it("should return typescript when lang is typescript", async () => {
-			const result = await getLanguageInstructionForPackageLang("typescript");
-			expect(result).toBe("typescript");
-		});
-
-		it("should return null when lang has no instruction", async () => {
-			const result = await getLanguageInstructionForPackageLang("python");
-			expect(result).toBeNull();
-		});
-	});
-
-	describe("fetchInstructionContent", () => {
-		it("should delegate to getInstructionContent", async () => {
-			vi.mocked(getInstructionContent).mockResolvedValue("# Content");
-			const result = await fetchInstructionContent(
-				"essential",
-				"react-vite",
-			);
-			expect(result).toBe("# Content");
-			expect(getInstructionContent).toHaveBeenCalledWith(
-				"essential",
-				"react-vite",
-				undefined,
-			);
-		});
-	});
 });

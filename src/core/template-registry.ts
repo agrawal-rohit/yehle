@@ -12,8 +12,10 @@ import {
 	getLocalTemplatesRoot,
 } from "./registry";
 
-/** Name of the shared templates directory that may be filtered out from listings. */
-const SHARED_DIR_NAME = "shared";
+/** Directory names to exclude when listing template/language children (e.g. shared, instructions). */
+export const NON_TEMPLATE_DIR_NAMES = new Set(
+	["shared", "instructions"].map((n) => n.toLowerCase()),
+);
 
 /**
  * Resolve the absolute path to the local templates subdirectory for a given language and resource.
@@ -41,7 +43,7 @@ async function getLocalTemplatesSubdir(
 }
 
 /**
- * List immediate child directory names, excluding "shared".
+ * List immediate child directory names, excluding shared and instructions (not templates).
  * @param dir - The directory to list child directories from.
  * @returns An array of child directory names.
  */
@@ -51,7 +53,7 @@ async function listChildDirs(dir: string): Promise<string[]> {
 	const names = entries
 		.filter((e) => e.isDirectory())
 		.map((e) => e.name)
-		.filter((n) => n.toLowerCase() !== SHARED_DIR_NAME);
+		.filter((n) => !NON_TEMPLATE_DIR_NAMES.has(n.toLowerCase()));
 	return names;
 }
 
@@ -208,7 +210,7 @@ async function listRemoteChildDirsViaAPI(
 	const names = data
 		.filter((entry) => entry?.type === "dir" && typeof entry.name === "string")
 		.map((entry) => entry.name as string)
-		.filter((n) => n.toLowerCase() !== SHARED_DIR_NAME);
+		.filter((n) => !NON_TEMPLATE_DIR_NAMES.has(n.toLowerCase()));
 
 	return names;
 }

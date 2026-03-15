@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { InstructionCategory } from "../../../src/core/instructions-registry";
 import { IdeFormat } from "../../../src/resources/instructions/config";
 import {
-	getInstructionMetadata,
 	resolveOutputPath,
 	transformContentForIde,
 	writeInstructionToFile,
@@ -19,42 +19,13 @@ vi.mock("../../../src/core/fs", async (importOriginal) => {
 });
 
 describe("instructions/ide-formats", () => {
-	describe("getInstructionMetadata", () => {
-		it("returns essential metadata with alwaysApply true", () => {
-			const meta = getInstructionMetadata("essential", "react-vite");
-			expect(meta).toEqual({
-				description: "react vite",
-				globs: ["**/*"],
-				alwaysApply: true,
-			});
-		});
-
-		it("returns typescript language metadata with file globs", () => {
-			const meta = getInstructionMetadata("language", "typescript");
-			expect(meta).toEqual({
-				description: "TypeScript-specific coding standards",
-				globs: ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
-				alwaysApply: false,
-			});
-		});
-
-		it("returns fallback for unknown language", () => {
-			const meta = getInstructionMetadata("language", "python");
-			expect(meta).toEqual({
-				description: "python",
-				globs: ["**/*"],
-				alwaysApply: false,
-			});
-		});
-	});
-
 	describe("resolveOutputPath", () => {
 		it("resolves Cursor path for essential", () => {
 			const result = resolveOutputPath(
 				IdeFormat.CURSOR,
 				"react-vite",
 				"/project",
-				"essential",
+				InstructionCategory.ESSENTIAL,
 			);
 			expect(result).toBe("/project/.cursor/rules/react-vite.mdc");
 		});
@@ -64,7 +35,7 @@ describe("instructions/ide-formats", () => {
 				IdeFormat.COPILOT,
 				"typescript",
 				"/project",
-				"language",
+				InstructionCategory.LANGUAGE,
 			);
 			expect(result).toBe(
 				"/project/.github/instructions/typescript.instructions.md",
@@ -76,29 +47,50 @@ describe("instructions/ide-formats", () => {
 				IdeFormat.COPILOT,
 				"general",
 				"/project",
-				"essential",
+				InstructionCategory.ESSENTIAL,
 			);
 			expect(result).toBe("/project/.github/copilot-instructions.md");
 		});
 
 		it("resolves Windsurf and Claude paths", () => {
 			expect(
-				resolveOutputPath(IdeFormat.WINDSURF, "x", "/p", "essential"),
+				resolveOutputPath(
+					IdeFormat.WINDSURF,
+					"x",
+					"/p",
+					InstructionCategory.ESSENTIAL,
+				),
 			).toBe("/p/.windsurf/rules/x.md");
 			expect(
-				resolveOutputPath(IdeFormat.CLAUDE, "x", "/p", "language"),
+				resolveOutputPath(
+					IdeFormat.CLAUDE,
+					"x",
+					"/p",
+					InstructionCategory.LANGUAGE,
+				),
 			).toBe("/p/.claude/rules/x.md");
 		});
 	});
+
+	const essentialMeta = {
+		description: "react vite",
+		globs: ["**/*"],
+		alwaysApply: true,
+	};
+	const languageMeta = {
+		description: "TypeScript standards",
+		globs: ["**/*"],
+		alwaysApply: false,
+	};
 
 	describe("transformContentForIde", () => {
 		it("adds Cursor frontmatter for essential", () => {
 			const content = "# Rule\n\nContent.";
 			const result = transformContentForIde(
 				content,
-				"react-vite",
 				IdeFormat.CURSOR,
-				"essential",
+				InstructionCategory.ESSENTIAL,
+				essentialMeta,
 			);
 			expect(result).toContain("---");
 			expect(result).toContain('description: "react vite"');
@@ -110,9 +102,9 @@ describe("instructions/ide-formats", () => {
 			const content = "# Rule";
 			const result = transformContentForIde(
 				content,
-				"general",
 				IdeFormat.CLINE,
-				"essential",
+				InstructionCategory.ESSENTIAL,
+				{ description: "general", globs: ["**/*"], alwaysApply: true },
 			);
 			expect(result).toContain('glob: "**/*"');
 			expect(result).toContain("# Rule");
@@ -122,33 +114,31 @@ describe("instructions/ide-formats", () => {
 			const content = "# Rule";
 			const result = transformContentForIde(
 				content,
-				"typescript",
 				IdeFormat.CLAUDE,
-				"language",
+				InstructionCategory.LANGUAGE,
+				languageMeta,
 			);
-			expect(result).toContain(
-				"globs: **/*.ts, **/*.tsx, **/*.mts, **/*.cts",
-			);
+			expect(result).toContain("globs: **/*");
 		});
 
 		it("adds Copilot applyTo for language", () => {
 			const content = "# Rule";
 			const result = transformContentForIde(
 				content,
-				"typescript",
 				IdeFormat.COPILOT,
-				"language",
+				InstructionCategory.LANGUAGE,
+				languageMeta,
 			);
-			expect(result).toContain('applyTo: "**/*.ts"');
+			expect(result).toContain('applyTo: "**/*"');
 		});
 
 		it("passes through for Copilot essential (repo-wide, no frontmatter)", () => {
 			const content = "# Repo-wide rules";
 			const result = transformContentForIde(
 				content,
-				"general",
 				IdeFormat.COPILOT,
-				"essential",
+				InstructionCategory.ESSENTIAL,
+				{ description: "general", globs: ["**/*"], alwaysApply: true },
 			);
 			expect(result).toBe(content);
 			expect(result).not.toContain("---");
@@ -158,9 +148,9 @@ describe("instructions/ide-formats", () => {
 			const content = "# Rule";
 			const result = transformContentForIde(
 				content,
-				"general",
 				IdeFormat.WINDSURF,
-				"essential",
+				InstructionCategory.ESSENTIAL,
+				{ description: "general", globs: ["**/*"], alwaysApply: true },
 			);
 			expect(result).toBe(content);
 		});
@@ -174,7 +164,8 @@ describe("instructions/ide-formats", () => {
 				"react-vite",
 				"# Content",
 				IdeFormat.CURSOR,
-				"essential",
+				InstructionCategory.ESSENTIAL,
+				essentialMeta,
 			);
 			expect(result).toBe(
 				path.join(cwd, ".cursor", "rules", "react-vite.mdc"),

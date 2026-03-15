@@ -2,8 +2,8 @@ import path from "node:path";
 import chalk from "chalk";
 import logger, { primaryText } from "../../cli/logger";
 import tasks from "../../cli/tasks";
+import { getInstructionWithFrontmatter } from "../../core/instructions-registry";
 import {
-	fetchInstructionContent,
 	type GenerateInstructionsOptions,
 	getGenerateInstructionsConfiguration,
 } from "./config";
@@ -31,7 +31,7 @@ export async function generateInstructions(
 		config.selections.map((sel) => ({
 			title: `Fetch and write ${sel.category}/${sel.instruction}`,
 			task: async () => {
-				const content = await fetchInstructionContent(
+				const { content } = await getInstructionWithFrontmatter(
 					sel.category,
 					sel.instruction,
 					sel.context,
@@ -42,7 +42,7 @@ export async function generateInstructions(
 					content,
 					config.ideFormat,
 					sel.category,
-					sel.metadata,
+					sel.frontmatter,
 				);
 				outputPaths.push(outputPath);
 			},

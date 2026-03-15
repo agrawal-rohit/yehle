@@ -53,10 +53,16 @@ vi.mock("../../../src/core/template-registry", () => ({
 	resolveTemplatesDir: vi.fn(),
 }));
 
-vi.mock("../../../src/core/instructions-registry", () => ({
-	listAvailableInstructions: vi.fn(() => Promise.resolve([])),
-	readOptionalInstructionsMapping: vi.fn(() => Promise.resolve([])),
-}));
+vi.mock("../../../src/core/instructions-registry", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("../../../src/core/instructions-registry")>();
+	return {
+		...actual,
+		getInstructionWithFrontmatter: vi.fn(),
+		listAvailableInstructions: vi.fn(() => Promise.resolve([])),
+		readOptionalInstructionsMapping: vi.fn(() => Promise.resolve([])),
+	};
+});
 
 vi.mock("../../../src/core/utils", () => ({
 	capitalizeFirstLetter: vi.fn(),
@@ -90,20 +96,21 @@ import {
 } from "../../../src/core/fs";
 import { resolveTemplatesDir } from "../../../src/core/template-registry";
 import { Language } from "../../../src/resources/package/config";
+
 vi.mock("../../../src/resources/instructions/config", async (importOriginal) => {
 	const actual =
 		await importOriginal<typeof import("../../../src/resources/instructions/config")>();
-	return {
-		...actual,
-		getLanguageInstructionForPackageLang: vi.fn(),
-		getLanguageInstructionMetadata: vi.fn(),
-		fetchInstructionContent: vi.fn(),
-	};
+	return { ...actual };
 });
 
-vi.mock("../../../src/resources/instructions/ide-formats", () => ({
-	writeInstructionToFile: vi.fn(),
-}));
+vi.mock("../../../src/resources/instructions/ide-formats", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("../../../src/resources/instructions/ide-formats")>();
+	return {
+		...actual,
+		writeInstructionToFile: vi.fn(),
+	};
+});
 
 // Import after mocks
 import {
@@ -114,10 +121,10 @@ import {
 	writePackageTemplateFiles,
 } from "../../../src/resources/package/setup";
 import {
-	fetchInstructionContent,
-	getLanguageInstructionForPackageLang,
-	getLanguageInstructionMetadata,
-} from "../../../src/resources/instructions/config";
+	getInstructionWithFrontmatter,
+	listAvailableInstructions,
+} from "../../../src/core/instructions-registry";
+import { InstructionCategory } from "../../../src/resources/instructions/config";
 import { writeInstructionToFile } from "../../../src/resources/instructions/ide-formats";
 
 describe("resources/package/setup", () => {
@@ -138,7 +145,7 @@ describe("resources/package/setup", () => {
 				public: false,
 			} as any);
 
-			expect(getLanguageInstructionForPackageLang).not.toHaveBeenCalled();
+			expect(listAvailableInstructions).not.toHaveBeenCalled();
 			expect(writeInstructionToFile).not.toHaveBeenCalled();
 		});
 
@@ -152,13 +159,12 @@ describe("resources/package/setup", () => {
 				instructionsIdeFormat: undefined,
 			} as any);
 
-			expect(getLanguageInstructionForPackageLang).not.toHaveBeenCalled();
+			expect(listAvailableInstructions).not.toHaveBeenCalled();
 		});
 
 		it("should no-op when language has no instruction", async () => {
-			vi.mocked(getLanguageInstructionForPackageLang).mockResolvedValue(
-				null,
-			);
+			// No language instructions for this lang (list returns [])
+			vi.mocked(listAvailableInstructions).mockResolvedValue([]);
 
 			await addPackageInstructions("/target", {
 				lang: "python" as any,
@@ -169,7 +175,7 @@ describe("resources/package/setup", () => {
 				instructionsIdeFormat: "cursor" as any,
 			} as any);
 
-			expect(fetchInstructionContent).not.toHaveBeenCalled();
+			expect(getInstructionWithFrontmatter).not.toHaveBeenCalled();
 			expect(writeInstructionToFile).not.toHaveBeenCalled();
 		});
 
@@ -179,11 +185,21 @@ describe("resources/package/setup", () => {
 				globs: ["**/*.ts", "**/*.tsx"],
 				alwaysApply: false,
 			};
-			vi.mocked(getLanguageInstructionForPackageLang).mockResolvedValue(
-				"typescript",
+			vi.mocked(listAvailableInstructions).mockImplementation(
+				(category, context) => {
+					if (
+						category === InstructionCategory.LANGUAGE &&
+						context?.lang === "typescript"
+					) {
+						return Promise.resolve(["typescript"]);
+					}
+					return Promise.resolve([]);
+				},
 			);
-			vi.mocked(getLanguageInstructionMetadata).mockResolvedValue(metadata);
-			vi.mocked(fetchInstructionContent).mockResolvedValue("# TS rules");
+			vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
+				content: "# TS rules",
+				frontmatter: metadata,
+			});
 			vi.mocked(writeInstructionToFile).mockResolvedValue(
 				"/target/.cursor/rules/typescript.mdc",
 			);
@@ -197,14 +213,12 @@ describe("resources/package/setup", () => {
 				instructionsIdeFormat: "cursor" as any,
 			} as any);
 
-			expect(getLanguageInstructionForPackageLang).toHaveBeenCalledWith(
-				"typescript",
+			expect(listAvailableInstructions).toHaveBeenCalledWith(
+				InstructionCategory.LANGUAGE,
+				{ lang: "typescript" },
 			);
-			expect(getLanguageInstructionMetadata).toHaveBeenCalledWith(
-				"typescript",
-			);
-			expect(fetchInstructionContent).toHaveBeenCalledWith(
-				"language",
+			expect(getInstructionWithFrontmatter).toHaveBeenCalledWith(
+				InstructionCategory.LANGUAGE,
 				"typescript",
 				{ lang: "typescript" },
 			);
@@ -213,7 +227,7 @@ describe("resources/package/setup", () => {
 				"typescript",
 				"# TS rules",
 				"cursor",
-				"language",
+				InstructionCategory.LANGUAGE,
 				metadata,
 			);
 		});

@@ -38,6 +38,9 @@ importers:
       validate-npm-package-name:
         specifier: 7.0.2
         version: 7.0.2
+      yaml:
+        specifier: ^2.8.2
+        version: 2.8.2
     devDependencies:
       '@biomejs/biome':
         specifier: 2.3.10

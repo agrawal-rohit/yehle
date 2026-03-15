@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { InstructionCategory } from "../../src/core/instructions-registry";
 
 const importInstructionsRegistry = async () => {
 	vi.resetModules();
@@ -55,7 +56,7 @@ describe("core/instructions-registry", () => {
 			process.chdir(projectRoot);
 
 			try {
-				const rules = await listAvailableInstructions("essential");
+				const rules = await listAvailableInstructions(InstructionCategory.ESSENTIAL);
 				expect(rules).toContain("react-vite");
 				expect(rules).toContain("general");
 				expect(rules).toHaveLength(2);
@@ -81,7 +82,7 @@ describe("core/instructions-registry", () => {
 			process.chdir(projectRoot);
 
 			try {
-				const rules = await listAvailableInstructions("essential");
+				const rules = await listAvailableInstructions(InstructionCategory.ESSENTIAL);
 				expect(rules).toContain("react-vite");
 				expect(rules).toHaveLength(1);
 			} finally {
@@ -110,7 +111,7 @@ describe("core/instructions-registry", () => {
 			process.chdir(projectRoot);
 
 			try {
-				const rules = await listAvailableInstructions("language", {
+				const rules = await listAvailableInstructions(InstructionCategory.LANGUAGE, {
 					lang: "typescript",
 				});
 				expect(rules).toContain("typescript");
@@ -141,7 +142,7 @@ describe("core/instructions-registry", () => {
 			process.chdir(projectRoot);
 
 			try {
-				const rules = await listAvailableInstructions("essential");
+				const rules = await listAvailableInstructions(InstructionCategory.ESSENTIAL);
 				expect(rules).toContain("custom-rule");
 				expect(rules).toHaveLength(1);
 			} finally {
@@ -172,7 +173,7 @@ describe("core/instructions-registry", () => {
 			process.chdir(projectRoot);
 
 			try {
-				const rules = await listAvailableInstructions("template", {
+				const rules = await listAvailableInstructions(InstructionCategory.TEMPLATE, {
 					lang: "typescript",
 					projectSpec: "package",
 					template: "basic",
@@ -195,7 +196,7 @@ describe("core/instructions-registry", () => {
 			process.chdir(projectRoot);
 
 			try {
-				const rules = await listAvailableInstructions("essential");
+				const rules = await listAvailableInstructions(InstructionCategory.ESSENTIAL);
 				expect(rules).toEqual([]);
 			} finally {
 				process.chdir(originalCwd);
@@ -219,10 +220,10 @@ describe("core/instructions-registry", () => {
 
 			try {
 				await expect(
-					resolveInstructionsCategoryDir("essential"),
+					resolveInstructionsCategoryDir(InstructionCategory.ESSENTIAL),
 				).rejects.toThrow(/Local instructions not found for category "essential"/);
 				await expect(
-					resolveInstructionsCategoryDir("essential"),
+					resolveInstructionsCategoryDir(InstructionCategory.ESSENTIAL),
 				).rejects.toThrow(/templates\/instructions\/essential/);
 			} finally {
 				process.chdir(originalCwd);
@@ -257,7 +258,7 @@ alwaysOn: true
 
 			try {
 				const { content, frontmatter } =
-					await getInstructionWithFrontmatter("essential", "rule");
+					await getInstructionWithFrontmatter(InstructionCategory.ESSENTIAL, "rule");
 				expect(content).toContain("# Body");
 				expect(frontmatter.description).toBe("My rule");
 				expect(frontmatter.globs).toEqual(["**/*.ts"]);
@@ -268,68 +269,43 @@ alwaysOn: true
 		});
 	});
 
-	describe("getInstructionContent", () => {
-		it("reads content from .md file and strips frontmatter", async () => {
-			setLocalModeEnv(true);
-			const { getInstructionContent } = await importInstructionsRegistry();
-			const projectRoot = makeTempDir("yehle-instructions-");
-			const essentialDir = path.join(
-				projectRoot,
-				"templates",
-				"instructions",
-				"essential",
+	describe("readOptionalInstructionsMapping", () => {
+		it("returns optional instruction names from yehle.yaml", async () => {
+			const { readOptionalInstructionsMapping, YEHLE_INSTRUCTIONS_FILENAME } =
+				await importInstructionsRegistry();
+			const dir = makeTempDir("yehle-yaml-");
+			const yamlPath = path.join(dir, YEHLE_INSTRUCTIONS_FILENAME);
+			fs.writeFileSync(
+				yamlPath,
+				"optionalInstructions:\n  - react\n  - node\n",
+				"utf8",
 			);
-			fs.mkdirSync(essentialDir, { recursive: true });
-			const raw = `---
-description: "react vite"
-globs: ["**/*"]
-alwaysApply: true
----
 
-# My Rule
-
-Content here.`;
-			fs.writeFileSync(path.join(essentialDir, "react-vite.md"), raw, "utf8");
-
-			const originalCwd = process.cwd();
-			process.chdir(projectRoot);
-
-			try {
-				const result = await getInstructionContent(
-					"essential",
-					"react-vite",
-				);
-				expect(result).toContain("# My Rule");
-				expect(result).toContain("Content here.");
-				expect(result).not.toContain("---");
-			} finally {
-				process.chdir(originalCwd);
-			}
+			const names = await readOptionalInstructionsMapping(dir);
+			expect(names).toEqual(["react", "node"]);
 		});
 
-		it("throws when instruction name is not found in category", async () => {
-			setLocalModeEnv(true);
-			const { getInstructionContent } = await importInstructionsRegistry();
-			const projectRoot = makeTempDir("yehle-instructions-");
-			const essentialDir = path.join(
-				projectRoot,
-				"templates",
-				"instructions",
-				"essential",
+		it("returns [] when yehle.yaml is missing", async () => {
+			const { readOptionalInstructionsMapping } =
+				await importInstructionsRegistry();
+			const dir = makeTempDir("yehle-yaml-");
+
+			const names = await readOptionalInstructionsMapping(dir);
+			expect(names).toEqual([]);
+		});
+
+		it("returns [] when optionalInstructions is missing or not an array", async () => {
+			const { readOptionalInstructionsMapping, YEHLE_INSTRUCTIONS_FILENAME } =
+				await importInstructionsRegistry();
+			const dir = makeTempDir("yehle-yaml-");
+			fs.writeFileSync(
+				path.join(dir, YEHLE_INSTRUCTIONS_FILENAME),
+				"# no optionalInstructions key\n",
+				"utf8",
 			);
-			fs.mkdirSync(essentialDir, { recursive: true });
-			fs.writeFileSync(path.join(essentialDir, "other.md"), "# Other", "utf8");
 
-			const originalCwd = process.cwd();
-			process.chdir(projectRoot);
-
-			try {
-				await expect(
-					getInstructionContent("essential", "nonexistent"),
-				).rejects.toThrow(/Instruction "nonexistent" not found/);
-			} finally {
-				process.chdir(originalCwd);
-			}
+			const names = await readOptionalInstructionsMapping(dir);
+			expect(names).toEqual([]);
 		});
 	});
 });
