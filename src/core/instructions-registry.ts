@@ -19,15 +19,15 @@ const INSTRUCTIONS_PATH = "instructions";
 
 /**
  * Instruction categories:
- * - essential: Common coding styles (default)
- * - optional: Optional/situational (e.g. react, node); anything extra based on project setup
- * - language: Per-language (e.g. typescript); lives in templates/<lang>/instructions/
- * - project-spec: Per project-spec (e.g. package); lives in templates/<lang>/<project-spec>/instructions/
- * - template: Template-specific; lives in templates/<lang>/<project-spec>/<template>/instructions/
+ * - essential: Essential instructions like code style, testing patterns, etc.
+ * - situational: Situational instructions like react best practices, sonarqube best practices, etc. Anything extra based on project setup
+ * - language: Language-specific instructions (e.g. typescript, python, etc.)
+ * - project-spec: Project-spec-specific instructions (e.g. package, app, monorepo, etc.)
+ * - template: Template-specific instructions like folder structure, commands, workflows, etc.
  */
 export enum InstructionCategory {
 	ESSENTIAL = "essential",
-	OPTIONAL = "optional",
+	SITUATIONAL = "situational",
 	LANGUAGE = "language",
 	PROJECT_SPEC = "project-spec",
 	TEMPLATE = "template",
@@ -66,12 +66,12 @@ export type InstructionWithFrontmatter = {
 /** Categories that live under templates/instructions/. */
 const GLOBAL_CATEGORIES = new Set<InstructionCategory>([
 	InstructionCategory.ESSENTIAL,
-	InstructionCategory.OPTIONAL,
+	InstructionCategory.SITUATIONAL,
 ]);
 
 /**
- * Resolve directory for essential/optional: templates/instructions/<category>.
- * @param category - essential or optional.
+ * Resolve directory for essential/situational: templates/instructions/<category>.
+ * @param category - essential or situational.
  * @returns The directory path if found, null otherwise.
  */
 async function getGlobalInstructionsDir(
@@ -85,7 +85,7 @@ async function getGlobalInstructionsDir(
 
 /**
  * Resolve the directory for an instruction category on the local filesystem.
- * essential/optional: templates/instructions/<category>.
+ * essential/situational: templates/instructions/<category>.
  * language: templates/<lang>/instructions (requires context.lang).
  * project-spec: templates/<lang>/<projectSpec>/instructions (requires context.lang, context.projectSpec).
  * template: templates/<lang>/<projectSpec>/<template>/instructions (requires full context).
@@ -325,7 +325,7 @@ export async function resolveInstructionsCategoryDir(
 			`Local instructions not found for category "${category}". ${hint}`,
 		);
 	}
-	// Remote mode: only essential and optional are fetched from GitHub instructions/.
+	// Remote mode: only essential and situational are fetched from GitHub instructions/.
 	if (!GLOBAL_CATEGORIES.has(category))
 		throw new Error(
 			`Remote instructions for category "${category}" are not supported; use local templates.`,

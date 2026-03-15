@@ -101,7 +101,7 @@ function getTransformForIde(
 		return (content, fm) => copilotRepoWide(fm) + content;
 	if (
 		ideFormat === IdeFormat.COPILOT &&
-		(category === InstructionCategory.OPTIONAL ||
+		(category === InstructionCategory.SITUATIONAL ||
 			category === InstructionCategory.LANGUAGE ||
 			category === InstructionCategory.PROJECT_SPEC ||
 			category === InstructionCategory.TEMPLATE)

@@ -42,7 +42,7 @@ export type GenerateInstructionsConfiguration = {
 
 /** Options for the instructions command (CLI flags / programmatic input). */
 export type GenerateInstructionsOptions = {
-	/** Instruction type: essential, optional, language, project-spec, template. */
+	/** Instruction type: essential, situational, language, project-spec, template. */
 	category?: InstructionCategory;
 	/** Instruction template name (e.g. react-vite). */
 	instruction?: string;
@@ -74,8 +74,8 @@ export const INSTRUCTION_CATEGORY_LANGUAGE = InstructionCategory.LANGUAGE;
 /** Human-readable labels for instruction categories (for prompts). */
 const CATEGORY_LABELS: Record<InstructionCategory, string> = {
 	[InstructionCategory.ESSENTIAL]: "Essential (default coding styles)",
-	[InstructionCategory.OPTIONAL]:
-		"Optional / situational (e.g. react, node; extra based on project setup)",
+	[InstructionCategory.SITUATIONAL]:
+		"Situational (e.g. react, node; extra based on project setup)",
 	[InstructionCategory.LANGUAGE]: "Language (best practices for a language)",
 	[InstructionCategory.PROJECT_SPEC]:
 		"Project spec (use case & architecture: package, app, monorepo, etc.)",
@@ -86,7 +86,7 @@ const CATEGORY_LABELS: Record<InstructionCategory, string> = {
 /** All instruction categories in display order. */
 export const INSTRUCTION_CATEGORIES: InstructionCategory[] = [
 	InstructionCategory.ESSENTIAL,
-	InstructionCategory.OPTIONAL,
+	InstructionCategory.SITUATIONAL,
 	InstructionCategory.LANGUAGE,
 	InstructionCategory.PROJECT_SPEC,
 	InstructionCategory.TEMPLATE,
@@ -101,7 +101,7 @@ export const IDE_FORMAT_OPTION_DESCRIPTION = `Target IDE format (${Object.values
 /** Global categories that do not require context (can be listed without lang/projectSpec/template). */
 const GLOBAL_CATEGORIES: InstructionCategory[] = [
 	InstructionCategory.ESSENTIAL,
-	InstructionCategory.OPTIONAL,
+	InstructionCategory.SITUATIONAL,
 ];
 
 /**
@@ -165,15 +165,15 @@ export async function getGenerateInstructionsConfiguration(
 		};
 	}
 
-	// Granular flow: essential → languages → project-spec → optional (then write in that order)
+	// Granular flow: essential → languages → project-spec → situational (then write in that order)
 	const selections = await getGranularInstructionsSelections();
 	if (selections.length === 0) throw new Error("No instructions selected.");
 	return { selections, ideFormat };
 }
 
 /**
- * Run the granular prompt flow: essential (multi) → languages (multi) → project-spec (single, scoped by first language) → optional (multi).
- * Returns selections in write order: essential → language → project-spec → optional.
+ * Run the granular prompt flow: essential (multi) → languages (multi) → project-spec (single, scoped by first language) → situational (multi).
+ * Returns selections in write order: essential → language → project-spec → situational.
  */
 async function getGranularInstructionsSelections(): Promise<
 	InstructionSelection[]
@@ -285,15 +285,15 @@ async function getGranularInstructionsSelections(): Promise<
 		}
 	}
 
-	// 4. Optional
-	const optionalNames = await listAvailableInstructions(
-		InstructionCategory.OPTIONAL,
+	// 4. Situational
+	const situationalNames = await listAvailableInstructions(
+		InstructionCategory.SITUATIONAL,
 	);
-	if (optionalNames.length > 0) {
+	if (situationalNames.length > 0) {
 		const chosen = await prompts.multiselectInput(
-			"Which optional instructions apply to this project?",
+			"Which situational instructions apply to this project?",
 			{
-				options: optionalNames.map((name) => ({
+				options: situationalNames.map((name) => ({
 					label: capitalizeFirstLetter(name.replaceAll("-", " ")),
 					value: name,
 				})),
@@ -301,11 +301,11 @@ async function getGranularInstructionsSelections(): Promise<
 		);
 		for (const name of chosen) {
 			const { frontmatter } = await getInstructionWithFrontmatter(
-				InstructionCategory.OPTIONAL,
+				InstructionCategory.SITUATIONAL,
 				name,
 			);
 			selections.push({
-				category: InstructionCategory.OPTIONAL,
+				category: InstructionCategory.SITUATIONAL,
 				instruction: name,
 				frontmatter,
 			});

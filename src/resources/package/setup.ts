@@ -94,7 +94,7 @@ export async function applyTemplateModifications(
 
 /**
  * Add agent instructions to the package when includeInstructions is true and instructionsIdeFormat is set.
- * Applies in order: essential → language → project-spec (package) → template → mapped optionals.
+ * Applies in order: essential → language → project-spec (package) → template → mapped situational (from yehle.yaml).
  * @param targetDir - Absolute path to the package root directory.
  * @param generateConfig - Generate configuration (must have includeInstructions, instructionsIdeFormat, and lang).
  * @returns Promise that resolves when all instruction files have been written, or immediately when instructions are disabled.
@@ -207,11 +207,11 @@ export async function addPackageInstructions(
 		);
 	}
 
-	// Add all optional instructions (e.g. templates/typescript/package/<template>/yehle.yaml)
-	const optionalNames = await readOptionalInstructionsMapping(templateDir);
-	for (const name of optionalNames) {
+	// Add all situational instructions listed in yehle.yaml (e.g. templates/typescript/package/<template>/yehle.yaml)
+	const situationalNames = await readOptionalInstructionsMapping(templateDir);
+	for (const name of situationalNames) {
 		const { content, frontmatter } = await getInstructionWithFrontmatter(
-			InstructionCategory.OPTIONAL,
+			InstructionCategory.SITUATIONAL,
 			name,
 		);
 		await writeInstructionToFile(
@@ -219,7 +219,7 @@ export async function addPackageInstructions(
 			name,
 			content,
 			ideFormat,
-			InstructionCategory.OPTIONAL,
+			InstructionCategory.SITUATIONAL,
 			frontmatter,
 		);
 	}
