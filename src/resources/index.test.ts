@@ -158,6 +158,28 @@ describe("resources/index", () => {
 			});
 		});
 
+		it("should pass includeInstructions and instructionsIdeFormat when provided", async () => {
+			vi.mocked(generatePackage).mockResolvedValue();
+
+			registerResourcesCli(mockApp);
+			const packageAction = mockCommand.action.mock.calls[1]?.[0];
+			if (packageAction) {
+				await packageAction({
+					includeInstructions: true,
+					instructionsIdeFormat: "cursor",
+				});
+			}
+
+			expect(generatePackage).toHaveBeenCalledWith({
+				lang: undefined,
+				name: undefined,
+				template: undefined,
+				public: undefined,
+				includeInstructions: true,
+				instructionsIdeFormat: "cursor",
+			});
+		});
+
 		it("should log error for thrown exceptions", async () => {
 			const error = new Error("Test error");
 			vi.mocked(generatePackage).mockRejectedValue(error);

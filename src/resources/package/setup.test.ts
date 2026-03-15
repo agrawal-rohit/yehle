@@ -116,6 +116,7 @@ import {
 	getInstructionWithFrontmatter,
 	InstructionCategory,
 	listAvailableInstructions,
+	readSituationalInstructionsMapping,
 } from "../../core/instructions";
 import { writeInstructionToFile } from "../instructions/ide-formats";
 // Import after mocks
@@ -228,6 +229,215 @@ describe("resources/package/setup", () => {
 				"# TS rules",
 				"cursor",
 				InstructionCategory.LANGUAGE,
+				metadata,
+			);
+		});
+
+		it("should write essential instructions when available", async () => {
+			const metadata = {
+				description: "Essential rules",
+				paths: ["**/*"],
+				alwaysApply: true,
+			};
+			vi.mocked(listAvailableInstructions).mockImplementation((category) => {
+				if (category === InstructionCategory.ESSENTIAL) {
+					return Promise.resolve(["essential-rule"]);
+				}
+				if (category === InstructionCategory.LANGUAGE) {
+					return Promise.resolve([]);
+				}
+				if (category === InstructionCategory.PROJECT_SPEC) {
+					return Promise.resolve([]);
+				}
+				if (category === InstructionCategory.TEMPLATE) {
+					return Promise.resolve([]);
+				}
+				return Promise.resolve([]);
+			});
+			vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
+				content: "# Essential",
+				frontmatter: metadata,
+			});
+			vi.mocked(writeInstructionToFile).mockResolvedValue(
+				"/target/.cursor/rules/essential-rule.mdc",
+			);
+
+			await addPackageInstructions("/target", {
+				lang: Language.TYPESCRIPT,
+				name: "pkg",
+				template: "basic",
+				public: false,
+				includeInstructions: true,
+				instructionsIdeFormat: "cursor",
+			});
+
+			expect(writeInstructionToFile).toHaveBeenCalledWith(
+				"/target",
+				"essential-rule",
+				"# Essential",
+				"cursor",
+				InstructionCategory.ESSENTIAL,
+				metadata,
+			);
+		});
+
+		it("should write project-spec instructions when available", async () => {
+			const metadata = {
+				description: "Package rules",
+				paths: ["package.json"],
+				alwaysApply: false,
+			};
+			vi.mocked(listAvailableInstructions).mockImplementation(
+				(category, context) => {
+					if (category === InstructionCategory.ESSENTIAL) {
+						return Promise.resolve([]);
+					}
+					if (category === InstructionCategory.LANGUAGE) {
+						return Promise.resolve([]);
+					}
+					if (
+						category === InstructionCategory.PROJECT_SPEC &&
+						context?.projectSpec === "package"
+					) {
+						return Promise.resolve(["package-rule"]);
+					}
+					if (category === InstructionCategory.TEMPLATE) {
+						return Promise.resolve([]);
+					}
+					return Promise.resolve([]);
+				},
+			);
+			vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
+				content: "# Package rules",
+				frontmatter: metadata,
+			});
+			vi.mocked(writeInstructionToFile).mockResolvedValue(
+				"/target/.cursor/rules/package-rule.mdc",
+			);
+
+			await addPackageInstructions("/target", {
+				lang: Language.TYPESCRIPT,
+				name: "pkg",
+				template: "basic",
+				public: false,
+				includeInstructions: true,
+				instructionsIdeFormat: "cursor",
+			});
+
+			expect(writeInstructionToFile).toHaveBeenCalledWith(
+				"/target",
+				"package-rule",
+				"# Package rules",
+				"cursor",
+				InstructionCategory.PROJECT_SPEC,
+				metadata,
+			);
+		});
+
+		it("should write template instructions when available", async () => {
+			const metadata = {
+				description: "Basic template rules",
+				paths: ["src/**/*"],
+				alwaysApply: false,
+			};
+			vi.mocked(listAvailableInstructions).mockImplementation((category) => {
+				if (category === InstructionCategory.ESSENTIAL) {
+					return Promise.resolve([]);
+				}
+				if (category === InstructionCategory.LANGUAGE) {
+					return Promise.resolve([]);
+				}
+				if (category === InstructionCategory.PROJECT_SPEC) {
+					return Promise.resolve([]);
+				}
+				if (category === InstructionCategory.TEMPLATE) {
+					return Promise.resolve(["basic-rule"]);
+				}
+				return Promise.resolve([]);
+			});
+			vi.mocked(resolveTemplatesDir).mockResolvedValue(
+				"/templates/typescript/package/basic",
+			);
+			vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
+				content: "# Basic template",
+				frontmatter: metadata,
+			});
+			vi.mocked(writeInstructionToFile).mockResolvedValue(
+				"/target/.cursor/rules/basic-rule.mdc",
+			);
+
+			await addPackageInstructions("/target", {
+				lang: Language.TYPESCRIPT,
+				name: "pkg",
+				template: "basic",
+				public: false,
+				includeInstructions: true,
+				instructionsIdeFormat: "cursor",
+			});
+
+			expect(writeInstructionToFile).toHaveBeenCalledWith(
+				"/target",
+				"basic-rule",
+				"# Basic template",
+				"cursor",
+				InstructionCategory.TEMPLATE,
+				metadata,
+			);
+		});
+
+		it("should write situational instructions from yehle.yaml when available", async () => {
+			const metadata = {
+				description: "Situational rules",
+				paths: ["**/*.ts"],
+				alwaysApply: false,
+			};
+			vi.mocked(listAvailableInstructions).mockImplementation((category) => {
+				if (category === InstructionCategory.ESSENTIAL) {
+					return Promise.resolve([]);
+				}
+				if (category === InstructionCategory.LANGUAGE) {
+					return Promise.resolve([]);
+				}
+				if (category === InstructionCategory.PROJECT_SPEC) {
+					return Promise.resolve([]);
+				}
+				if (category === InstructionCategory.TEMPLATE) {
+					return Promise.resolve([]);
+				}
+				if (category === InstructionCategory.SITUATIONAL) {
+					return Promise.resolve(["situational-rule"]);
+				}
+				return Promise.resolve([]);
+			});
+			vi.mocked(resolveTemplatesDir).mockResolvedValue(
+				"/templates/typescript/package/basic",
+			);
+			vi.mocked(readSituationalInstructionsMapping).mockResolvedValue([
+				"situational-rule",
+			]);
+			vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
+				content: "# Situational",
+				frontmatter: metadata,
+			});
+			vi.mocked(writeInstructionToFile).mockResolvedValue(
+				"/target/.cursor/rules/situational-rule.mdc",
+			);
+
+			await addPackageInstructions("/target", {
+				lang: Language.TYPESCRIPT,
+				name: "pkg",
+				template: "basic",
+				public: false,
+				includeInstructions: true,
+				instructionsIdeFormat: "cursor",
+			});
+
+			expect(writeInstructionToFile).toHaveBeenCalledWith(
+				"/target",
+				"situational-rule",
+				"# Situational",
+				"cursor",
+				InstructionCategory.SITUATIONAL,
 				metadata,
 			);
 		});
