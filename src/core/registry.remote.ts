@@ -46,7 +46,7 @@ export async function downloadSubtreeToTemp(
 		const msg = e instanceof Error ? e.message : String(e);
 		throw new Error(
 			`Failed to download templates from "${spec}" (subpath "${subpath}"). ${msg}. ` +
-				`Ensure the path exists and that network/GitHub access are available.`,
+				`Ensure the path exists and that network access is available.`,
 		);
 	}
 }
@@ -54,16 +54,20 @@ export async function downloadSubtreeToTemp(
 /**
  * Check whether a remote repository subpath exists in GitHub.
  * @param subpath - Path under the repository root, using forward slashes.
- * @returns True if the subtree exists or is uncertain, false if definitely not.
+ * @returns True if the subtree exists, false if not or when the check fails (e.g. non-OK response or network error).
  */
 export async function remoteSubpathExists(subpath: string): Promise<boolean> {
 	try {
 		const url = buildContentsURL(subpath);
 		const res = await fetch(url, { headers: GITHUB_HEADERS });
 		if (res.status === 404) return false;
-		if (!res.ok) return true;
+		if (!res.ok) return false;
 		const data = await res.json();
+
+		// If the data is an array, then the subtree exists.
 		if (Array.isArray(data)) return true;
+
+		// If the data is an object with a type property that is "dir", then the subtree exists.
 		if (
 			data &&
 			typeof data === "object" &&
@@ -72,7 +76,7 @@ export async function remoteSubpathExists(subpath: string): Promise<boolean> {
 			return true;
 		return false;
 	} catch {
-		return true;
+		return false;
 	}
 }
 
@@ -112,7 +116,7 @@ export async function listRemoteChildDirsViaAPI(
 }
 
 /**
- * List file basenames (without extension) from the GitHub Contents API for a repository subpath.
+ * List file basenames from the GitHub Contents API for a repository subpath.
  * Only files whose names end with one of the provided extensions are included.
  * @param subpath - Path under the repository root, using forward slashes.
  * @param extensions - Allowed file extensions such as [".mdc", ".md"].
@@ -128,12 +132,14 @@ export async function listRemoteFilesViaAPI(
 			`Failed to fetch from GitHub API: ${res.status} ${res.statusText}`,
 		);
 
+	// The response is an array of objects with a type and name property.
 	const data = (await res.json()) as { type?: string; name?: string }[];
 	if (!Array.isArray(data))
 		throw new Error(
 			"Invalid response from GitHub API: expected array of contents",
 		);
 
+	// We need to filter out the objects that are not files.
 	const names = new Set<string>();
 	for (const entry of data) {
 		if (entry?.type !== "file" || typeof entry.name !== "string") continue;
