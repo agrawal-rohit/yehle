@@ -14,22 +14,14 @@ export async function getLocalRoot(dirName: string): Promise<string | null> {
 }
 
 /**
- * Resolve the local templates root directory (process.cwd()/templates).
- * @returns The absolute path if it exists, null otherwise.
- */
-export async function getLocalTemplatesRoot(): Promise<string | null> {
-	return getLocalRoot("templates");
-}
-
-/**
  * Resolve a repository subpath against the local templates root.
  * @param subpath - Path under the templates root, using forward slashes (e.g. "templates/typescript").
  * @returns The absolute path if it exists, null otherwise.
  */
-export async function resolveLocalSubpath(
+export async function resolveLocalTemplatesSubpath(
 	subpath: string,
 ): Promise<string | null> {
-	const root = await getLocalTemplatesRoot();
+	const root = await getLocalRoot("templates");
 	if (!root) return null;
 
 	const fullPath = path.join(root, ...subpath.split("/").slice(1));
@@ -50,9 +42,9 @@ export async function listLocalChildDirs(
 	const entries = await fs.promises.readdir(dir, { withFileTypes: true });
 
 	const excludeSet =
-		exclude !== undefined
-			? new Set(Array.from(exclude).map((n) => n.toLowerCase()))
-			: null;
+		exclude === undefined
+			? null
+			: new Set(Array.from(exclude).map((n) => n.toLowerCase()));
 
 	return entries
 		.filter((e) => e.isDirectory())

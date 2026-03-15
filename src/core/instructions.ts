@@ -5,9 +5,9 @@ import { parse as parseYaml } from "yaml";
 import { IS_LOCAL_MODE } from "./constants";
 import { isDirAsync } from "./fs";
 import {
-	getLocalTemplatesRoot,
+	getLocalRoot,
 	listLocalChildDirs,
-	resolveLocalSubpath,
+	resolveLocalTemplatesSubpath,
 } from "./registry.local";
 import { listRemoteFilesViaAPI, resolveRemoteSubpath } from "./registry.remote";
 import { NON_TEMPLATE_DIR_NAMES } from "./templates";
@@ -197,10 +197,11 @@ export async function resolveInstructionsDir(
 	// Local mode: check local directory.
 	if (IS_LOCAL_MODE) {
 		const subpath = getInstructionsSubpath(category, context);
-		const dir = await resolveLocalSubpath(subpath);
+		const dir = await resolveLocalTemplatesSubpath(subpath);
 		if (dir && (await isDirAsync(dir))) return dir;
 
-		const root = (await getLocalTemplatesRoot()) || "<no local templates root>";
+		const root =
+			(await getLocalRoot("templates")) || "<no local templates root>";
 		const expectedPath = getInstructionsSubpath(category, context);
 		throw new Error(
 			`Local instructions not found for category "${category}". Expected directory at ${path.join(
@@ -228,7 +229,7 @@ export async function listAvailableInstructions(
 ): Promise<string[]> {
 	if (IS_LOCAL_MODE) {
 		const subpath = getInstructionsSubpath(category, context);
-		const dir = await resolveLocalSubpath(subpath);
+		const dir = await resolveLocalTemplatesSubpath(subpath);
 		if (!dir) return [];
 		return listInstructionFiles(dir);
 	}
@@ -267,7 +268,7 @@ export async function getInstructionWithFrontmatter(
  * @returns Promise resolving to sorted array of language names; empty if templates root not found.
  */
 export async function listLanguageNames(): Promise<string[]> {
-	const root = await getLocalTemplatesRoot();
+	const root = await getLocalRoot("templates");
 	if (!root) return [];
 	const names = await listLocalChildDirs(root, NON_TEMPLATE_DIR_NAMES);
 	return names.sort((a, b) => a.localeCompare(b));
@@ -280,7 +281,7 @@ export async function listLanguageNames(): Promise<string[]> {
  * @returns Promise resolving to sorted array of project-spec names; empty if lang dir not found.
  */
 export async function listProjectSpecNames(lang: string): Promise<string[]> {
-	const root = await getLocalTemplatesRoot();
+	const root = await getLocalRoot("templates");
 	if (!root) return [];
 	const langDir = path.join(root, lang);
 	if (!(await isDirAsync(langDir))) return [];

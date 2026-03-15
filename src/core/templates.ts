@@ -7,9 +7,9 @@ import {
 } from "./constants";
 import { isDirAsync } from "./fs";
 import {
-	getLocalTemplatesRoot,
+	getLocalRoot,
 	listLocalChildDirs,
-	resolveLocalSubpath,
+	resolveLocalTemplatesSubpath,
 } from "./registry.local";
 import {
 	listRemoteChildDirsViaAPI,
@@ -57,10 +57,11 @@ export async function resolveTemplatesDir(
 ): Promise<string> {
 	if (IS_LOCAL_MODE) {
 		const subpath = ["templates", language, resource].filter(Boolean).join("/");
-		const localDir = await resolveLocalSubpath(subpath);
+		const localDir = await resolveLocalTemplatesSubpath(subpath);
 		if (localDir && (await isDirAsync(localDir))) return localDir;
 
-		const root = (await getLocalTemplatesRoot()) || "<no local templates root>";
+		const root =
+			(await getLocalRoot("templates")) || "<no local templates root>";
 		const resourcePart = resource ? ` and resource "${resource}"` : "";
 		throw new Error(
 			`Local templates not found at ${root} for language "${language}"${resourcePart}.`,
@@ -98,7 +99,7 @@ export async function listAvailableTemplates(
 ): Promise<string[]> {
 	if (IS_LOCAL_MODE) {
 		const subpath = ["templates", language, resource].filter(Boolean).join("/");
-		const localDir = await resolveLocalSubpath(subpath);
+		const localDir = await resolveLocalTemplatesSubpath(subpath);
 		if (!localDir) return [];
 		return listLocalChildDirs(localDir, NON_TEMPLATE_DIR_NAMES);
 	}
