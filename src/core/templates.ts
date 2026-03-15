@@ -16,7 +16,7 @@ import {
 	resolveRemoteSubpath,
 } from "./registry.remote";
 
-/** Directory names to exclude when listing template/language children (e.g. shared, instructions). */
+/** Directory names to exclude when listing template/language children. */
 export const NON_TEMPLATE_DIR_NAMES = new Set(
 	["shared", "instructions"].map((n) => n.toLowerCase()),
 );
@@ -33,19 +33,17 @@ async function normalizeDownloadedDir(
 	language: string,
 	resource?: string,
 ): Promise<string> {
-	const candidates: string[] = resource
-		? [path.join(downloadedDir, "templates", language, resource)]
-		: [path.join(downloadedDir, "templates", language)];
+	const candidate = resource
+		? path.join(downloadedDir, "templates", language, resource)
+		: path.join(downloadedDir, "templates", language);
 
-	for (const cand of candidates) {
-		if (await isDirAsync(cand)) return cand;
-	}
+	if (await isDirAsync(candidate)) return candidate;
 	return downloadedDir;
 }
 
 /**
  * Resolve the on-disk directory that contains templates for a given language and resource.
- * In local mode uses ./templates; in remote mode downloads from GitHub to a temp dir.
+ * Local mode uses ./templates, remote mode downloads from GitHub to a temp dir.
  * @param language - The programming language for the templates.
  * @param resource - Optional resource within the language (e.g. "package").
  * @returns Promise resolving to the absolute path of the templates directory.
@@ -55,13 +53,16 @@ export async function resolveTemplatesDir(
 	language: string,
 	resource?: string,
 ): Promise<string> {
+	const subpath = ["templates", language, resource].filter(Boolean).join("/");
+
+	// Local mode
 	if (IS_LOCAL_MODE) {
-		const subpath = ["templates", language, resource].filter(Boolean).join("/");
 		const localDir = await resolveLocalTemplatesSubpath(subpath);
 		if (localDir && (await isDirAsync(localDir))) return localDir;
 
-		const root =
-			(await getLocalRoot("templates")) || "<no local templates root>";
+		const root = await getLocalRoot("templates");
+		if (!root) throw new Error(`No local templates root found.`);
+
 		const resourcePart = resource ? ` and resource "${resource}"` : "";
 		throw new Error(
 			`Local templates not found at ${root} for language "${language}"${resourcePart}.`,
@@ -69,7 +70,6 @@ export async function resolveTemplatesDir(
 	}
 
 	// Remote mode
-	const subpath = ["templates", language, resource].filter(Boolean).join("/");
 	const remoteDir = await resolveRemoteSubpath(
 		subpath,
 		"yehle-templates-",
@@ -97,15 +97,16 @@ export async function listAvailableTemplates(
 	language: Language,
 	resource: string,
 ): Promise<string[]> {
+	const subpath = ["templates", language, resource].filter(Boolean).join("/");
+
+	// Local mode
 	if (IS_LOCAL_MODE) {
-		const subpath = ["templates", language, resource].filter(Boolean).join("/");
 		const localDir = await resolveLocalTemplatesSubpath(subpath);
 		if (!localDir) return [];
 		return listLocalChildDirs(localDir, NON_TEMPLATE_DIR_NAMES);
 	}
 
-	// Prefer API listing
-	const subpath = ["templates", language, resource].filter(Boolean).join("/");
+	// Remote mode
 	const apiNames = await listRemoteChildDirsViaAPI(
 		subpath,
 		NON_TEMPLATE_DIR_NAMES,
