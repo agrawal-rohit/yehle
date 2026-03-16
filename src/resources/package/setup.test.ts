@@ -60,7 +60,8 @@ vi.mock("../../core/instructions", async (importOriginal) => {
 		...actual,
 		getInstructionWithFrontmatter: vi.fn(),
 		listAvailableInstructions: vi.fn(() => Promise.resolve([])),
-		readSituationalInstructionsMapping: vi.fn(() => Promise.resolve([])),
+		readToolingInstructionsMapping: vi.fn(() => Promise.resolve([])),
+		readSkillsMapping: vi.fn(() => Promise.resolve([])),
 	};
 });
 
@@ -116,7 +117,8 @@ import {
 	getInstructionWithFrontmatter,
 	InstructionCategory,
 	listAvailableInstructions,
-	readSituationalInstructionsMapping,
+	readSkillsMapping,
+	readToolingInstructionsMapping,
 } from "../../core/instructions";
 import { writeInstructionToFile } from "../instructions/ide-formats";
 // Import after mocks
@@ -163,9 +165,20 @@ describe("resources/package/setup", () => {
 			expect(listAvailableInstructions).not.toHaveBeenCalled();
 		});
 
-		it("should no-op when language has no instruction", async () => {
-			// No language instructions for this lang (list returns [])
-			vi.mocked(listAvailableInstructions).mockResolvedValue([]);
+		// Language without instructions now still resolves templates dirs for tooling/skills mapping,
+		// so we only assert that no language-category instructions are written.
+		it("should not write language instructions when language has no instruction", async () => {
+			vi.mocked(listAvailableInstructions).mockImplementation((category) => {
+				if (category === InstructionCategory.LANGUAGE)
+					return Promise.resolve([]);
+				return Promise.resolve([]);
+			});
+			vi.mocked(resolveTemplatesDir)
+				.mockResolvedValueOnce("/templates/no-lang") // lang
+				.mockResolvedValueOnce("/templates/no-lang/package") // project-spec
+				.mockResolvedValueOnce("/templates/no-lang/package/basic"); // template
+			vi.mocked(readToolingInstructionsMapping).mockResolvedValue([]);
+			vi.mocked(readSkillsMapping).mockResolvedValue([]);
 
 			await addPackageInstructions("/target", {
 				lang: "no-lang" as Language,
@@ -176,8 +189,18 @@ describe("resources/package/setup", () => {
 				instructionsIdeFormat: "cursor",
 			});
 
-			expect(getInstructionWithFrontmatter).not.toHaveBeenCalled();
-			expect(writeInstructionToFile).not.toHaveBeenCalled();
+			expect(
+				vi
+					.mocked(listAvailableInstructions)
+					.mock.calls.find(([cat]) => cat === InstructionCategory.LANGUAGE),
+			).toBeTruthy();
+			expect(
+				vi
+					.mocked(writeInstructionToFile)
+					.mock.calls.find(
+						([, , , , cat]) => cat === InstructionCategory.LANGUAGE,
+					),
+			).toBeUndefined();
 		});
 
 		it("should write instruction when config is complete", async () => {
@@ -186,6 +209,12 @@ describe("resources/package/setup", () => {
 				paths: ["**/*.ts", "**/*.tsx"],
 				alwaysApply: false,
 			};
+			vi.mocked(resolveTemplatesDir)
+				.mockResolvedValueOnce("/templates/typescript") // lang
+				.mockResolvedValueOnce("/templates/typescript/package") // project-spec
+				.mockResolvedValueOnce("/templates/typescript/package/basic"); // template
+			vi.mocked(readToolingInstructionsMapping).mockResolvedValue([]);
+			vi.mocked(readSkillsMapping).mockResolvedValue([]);
 			vi.mocked(listAvailableInstructions).mockImplementation(
 				(category, context) => {
 					if (
@@ -239,6 +268,12 @@ describe("resources/package/setup", () => {
 				paths: ["**/*"],
 				alwaysApply: true,
 			};
+			vi.mocked(resolveTemplatesDir)
+				.mockResolvedValueOnce("/templates/typescript") // lang
+				.mockResolvedValueOnce("/templates/typescript/package") // project-spec
+				.mockResolvedValueOnce("/templates/typescript/package/basic"); // template
+			vi.mocked(readToolingInstructionsMapping).mockResolvedValue([]);
+			vi.mocked(readSkillsMapping).mockResolvedValue([]);
 			vi.mocked(listAvailableInstructions).mockImplementation((category) => {
 				if (category === InstructionCategory.ESSENTIAL) {
 					return Promise.resolve(["essential-rule"]);
@@ -287,6 +322,12 @@ describe("resources/package/setup", () => {
 				paths: ["package.json"],
 				alwaysApply: false,
 			};
+			vi.mocked(resolveTemplatesDir)
+				.mockResolvedValueOnce("/templates/typescript") // lang
+				.mockResolvedValueOnce("/templates/typescript/package") // project-spec
+				.mockResolvedValueOnce("/templates/typescript/package/basic"); // template
+			vi.mocked(readToolingInstructionsMapping).mockResolvedValue([]);
+			vi.mocked(readSkillsMapping).mockResolvedValue([]);
 			vi.mocked(listAvailableInstructions).mockImplementation(
 				(category, context) => {
 					if (category === InstructionCategory.ESSENTIAL) {
@@ -385,9 +426,9 @@ describe("resources/package/setup", () => {
 			);
 		});
 
-		it("should write situational instructions from yehle.yaml when available", async () => {
+		it("should write tooling instructions from yehle.yaml across scopes when available", async () => {
 			const metadata = {
-				description: "Situational rules",
+				description: "Tooling rules",
 				paths: ["**/*.ts"],
 				alwaysApply: false,
 			};
@@ -404,23 +445,25 @@ describe("resources/package/setup", () => {
 				if (category === InstructionCategory.TEMPLATE) {
 					return Promise.resolve([]);
 				}
-				if (category === InstructionCategory.SITUATIONAL) {
-					return Promise.resolve(["situational-rule"]);
+				if (category === InstructionCategory.TOOLING) {
+					return Promise.resolve(["tooling-rule"]);
 				}
 				return Promise.resolve([]);
 			});
-			vi.mocked(resolveTemplatesDir).mockResolvedValue(
-				"/templates/typescript/package/basic",
-			);
-			vi.mocked(readSituationalInstructionsMapping).mockResolvedValue([
-				"situational-rule",
-			]);
+			vi.mocked(resolveTemplatesDir)
+				.mockResolvedValueOnce("/templates/typescript") // lang
+				.mockResolvedValueOnce("/templates/typescript/package") // project-spec
+				.mockResolvedValueOnce("/templates/typescript/package/basic"); // template
+			vi.mocked(readToolingInstructionsMapping)
+				.mockResolvedValueOnce(["tooling-rule"]) // lang
+				.mockResolvedValueOnce([]) // project-spec
+				.mockResolvedValueOnce(["tooling-rule"]); // template (duplicate)
 			vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
-				content: "# Situational",
+				content: "# Tooling",
 				frontmatter: metadata,
 			});
 			vi.mocked(writeInstructionToFile).mockResolvedValue(
-				"/target/.cursor/rules/situational-rule.mdc",
+				"/target/.cursor/rules/tooling-rule.mdc",
 			);
 
 			await addPackageInstructions("/target", {
@@ -434,10 +477,65 @@ describe("resources/package/setup", () => {
 
 			expect(writeInstructionToFile).toHaveBeenCalledWith(
 				"/target",
-				"situational-rule",
-				"# Situational",
+				"tooling-rule",
+				"# Tooling",
 				"cursor",
-				InstructionCategory.SITUATIONAL,
+				InstructionCategory.TOOLING,
+				metadata,
+			);
+		});
+
+		it("should write skills instructions from template yehle.yaml when available", async () => {
+			const metadata = {
+				description: "Skills rules",
+				paths: ["**/*.ts"],
+				alwaysApply: false,
+			};
+			vi.mocked(listAvailableInstructions).mockImplementation((category) => {
+				if (category === InstructionCategory.ESSENTIAL) {
+					return Promise.resolve([]);
+				}
+				if (category === InstructionCategory.LANGUAGE) {
+					return Promise.resolve([]);
+				}
+				if (category === InstructionCategory.PROJECT_SPEC) {
+					return Promise.resolve([]);
+				}
+				if (category === InstructionCategory.TEMPLATE) {
+					return Promise.resolve([]);
+				}
+				if (category === InstructionCategory.SKILLS) {
+					return Promise.resolve(["skills-react"]);
+				}
+				return Promise.resolve([]);
+			});
+			vi.mocked(resolveTemplatesDir).mockResolvedValue(
+				"/templates/typescript/package/basic",
+			);
+			vi.mocked(readSkillsMapping).mockResolvedValue(["skills-react"]);
+			vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
+				content: "# React skills",
+				frontmatter: metadata,
+			});
+			vi.mocked(writeInstructionToFile).mockResolvedValue(
+				"/target/.cursor/rules/skills-react.mdc",
+			);
+
+			await addPackageInstructions("/target", {
+				lang: Language.TYPESCRIPT,
+				name: "pkg",
+				template: "basic",
+				public: false,
+				includeInstructions: true,
+				instructionsIdeFormat: "cursor",
+			});
+
+			expect(writeInstructionToFile).toHaveBeenCalledWith(
+				"/target",
+				"skills-react",
+				"# React skills",
+				"cursor",
+				InstructionCategory.SKILLS,
 				metadata,
 			);
 		});
@@ -724,6 +822,10 @@ describe("resources/package/setup", () => {
 				"package/basic",
 			);
 			expect(copyDirSafeAsync).toHaveBeenCalledTimes(4);
+			expect(removeFilesByBasename).toHaveBeenCalledWith(targetDir, [
+				"instructions",
+				"yehle.yaml",
+			]);
 		});
 
 		it("should add MIT license if package is public and authorName is provided", async () => {

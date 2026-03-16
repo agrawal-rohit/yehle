@@ -18,14 +18,18 @@ const TEMPLATES_SEGMENT = "templates";
 /**
  * Instruction categories:
  * - essential: Essential instructions like code style, testing patterns, etc.
- * - situational: Situational instructions like react best practices, sonarqube best practices, etc. Anything extra based on project setup
- * - language: Language-specific instructions (e.g. typescript, python, etc.)
- * - project-spec: Project-spec-specific instructions (e.g. package, app, monorepo, etc.)
+ * - tooling: Tool/framework-specific best-practice rules that apply when extra tools are present in the repo
+ *            (e.g. React/Next.js/Vue conventions, Snyk/SonarQube usage, tracing/monitoring tools, CI providers).
+ * - language: Language-specific instructions (e.g. typescript, python, etc.).
+ * - project-spec: Project-spec-specific instructions (e.g. package, app, monorepo, etc.).
  * - template: Template-specific instructions like folder structure, commands, workflows, etc.
+ * - skills: Specialised, multi-step workflows that describe how to execute complex tasks end-to-end
+ *           (e.g. versioned deploy flows, performance optimisation loops, incident playbooks, migrations).
  */
 export enum InstructionCategory {
 	ESSENTIAL = "essential",
-	SITUATIONAL = "situational",
+	TOOLING = "tooling",
+	SKILLS = "skills",
 	LANGUAGE = "language",
 	PROJECT_SPEC = "project-spec",
 	TEMPLATE = "template",
@@ -41,7 +45,7 @@ export type InstructionContext = {
 /** File extensions for instruction rules (.md and .mdc). */
 const INSTRUCTION_EXTENSIONS = [".mdc", ".md"] as const;
 
-/** Frontmatter for a rule */
+/** Frontmatter for a rule (non-skill instructions). */
 export type RuleFrontmatter = {
 	description?: string;
 	paths?: string[];
@@ -141,8 +145,11 @@ function getInstructionsSubpath(
 		case InstructionCategory.ESSENTIAL:
 			return `${TEMPLATES_SEGMENT}/${INSTRUCTIONS_PATH}/${InstructionCategory.ESSENTIAL}`;
 
-		case InstructionCategory.SITUATIONAL:
-			return `${TEMPLATES_SEGMENT}/${INSTRUCTIONS_PATH}/${InstructionCategory.SITUATIONAL}`;
+		case InstructionCategory.TOOLING:
+			return `${TEMPLATES_SEGMENT}/${INSTRUCTIONS_PATH}/${InstructionCategory.TOOLING}`;
+
+		case InstructionCategory.SKILLS:
+			return `${TEMPLATES_SEGMENT}/${INSTRUCTIONS_PATH}/${InstructionCategory.SKILLS}`;
 
 		case InstructionCategory.LANGUAGE:
 			if (!context?.lang)
@@ -279,12 +286,13 @@ export async function getInstructionWithFrontmatter(
 }
 
 /**
- * Read the situational instructions mapping from a template or project-spec directory.
- * Looks for yehle.yaml with situationalInstructions: string[]. No file or invalid/missing array returns [].
+ * Read the tooling instructions mapping from a template or project-spec directory.
+ * Looks for yehle.yaml with toolingInstructions: string[].
+ * No file or invalid/missing array returns [].
  * @param templateOrProjectSpecDir - Absolute path to the template dir (e.g. .../package/react) or project-spec dir.
- * @returns Promise resolving to the list of situational instruction names to apply; empty if not found or invalid.
+ * @returns Promise resolving to the list of tooling instruction names to apply; empty if not found or invalid.
  */
-export async function readSituationalInstructionsMapping(
+export async function readToolingInstructionsMapping(
 	templateOrProjectSpecDir: string,
 ): Promise<string[]> {
 	const filePath = path.join(
@@ -296,7 +304,35 @@ export async function readSituationalInstructionsMapping(
 		const raw = await fs.promises.readFile(filePath, "utf8");
 		const data = parseYaml(raw) as unknown;
 		if (data && typeof data === "object") {
-			const list = (data as YehleConfiguration).situationalInstructions;
+			const cfg = data as YehleConfiguration;
+			if (Array.isArray(cfg.toolingInstructions))
+				return cfg.toolingInstructions;
+		}
+	} catch {
+		// No file or invalid YAML
+	}
+	return [];
+}
+
+/**
+ * Read the skills mapping from a template or project-spec directory.
+ * Looks for yehle.yaml with skills: string[]. No file or invalid/missing array returns [].
+ * @param templateOrProjectSpecDir - Absolute path to the template dir (e.g. .../package/react) or project-spec dir.
+ * @returns Promise resolving to the list of skill instruction names to apply; empty if not found or invalid.
+ */
+export async function readSkillsMapping(
+	templateOrProjectSpecDir: string,
+): Promise<string[]> {
+	const filePath = path.join(
+		templateOrProjectSpecDir,
+		YEHLE_CONFIGURATION_FILENAME,
+	);
+
+	try {
+		const raw = await fs.promises.readFile(filePath, "utf8");
+		const data = parseYaml(raw) as unknown;
+		if (data && typeof data === "object") {
+			const list = (data as YehleConfiguration).skills;
 			if (Array.isArray(list)) return list;
 		}
 	} catch {

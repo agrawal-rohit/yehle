@@ -13,10 +13,10 @@ vi.mock("../../cli/prompts", () => ({
 vi.mock("../../core/instructions", () => ({
 	InstructionCategory: {
 		ESSENTIAL: "essential",
-		SITUATIONAL: "situational",
+		TOOLING: "tooling",
+		SKILLS: "skills",
 		LANGUAGE: "language",
 		PROJECT_SPEC: "project-spec",
-		TEMPLATE: "template",
 	},
 	getInstructionWithFrontmatter: vi.fn(),
 	listAvailableInstructions: vi.fn(),
@@ -46,11 +46,7 @@ import {
 	InstructionCategory,
 	listAvailableInstructions,
 } from "../../core/instructions";
-import {
-	listAvailableTemplates,
-	listLanguageNames,
-	listProjectSpecNames,
-} from "../../core/templates";
+import { listLanguageNames, listProjectSpecNames } from "../../core/templates";
 import {
 	getGenerateInstructionsConfiguration,
 	getIdeFormatSelection,
@@ -71,8 +67,8 @@ describe("resources/instructions/config", () => {
 				InstructionCategory.ESSENTIAL,
 				InstructionCategory.LANGUAGE,
 				InstructionCategory.PROJECT_SPEC,
-				InstructionCategory.TEMPLATE,
-				InstructionCategory.SITUATIONAL,
+				InstructionCategory.TOOLING,
+				InstructionCategory.SKILLS,
 			]);
 		});
 	});
@@ -215,20 +211,15 @@ describe("resources/instructions/config", () => {
 		});
 
 		it("should return project-spec and template selections when user selects them", async () => {
-			// Call order: ESSENTIAL, LANGUAGE (per lang), PROJECT_SPEC names, TEMPLATE names, SITUATIONAL
+			// Call order: ESSENTIAL, LANGUAGE (per lang), PROJECT_SPEC names
 			vi.mocked(listAvailableInstructions)
 				.mockResolvedValueOnce([]) // essential
 				.mockResolvedValueOnce([]) // LANGUAGE for typescript (no lang-specific instructions)
-				.mockResolvedValueOnce(["ts-package"]) // PROJECT_SPEC
-				.mockResolvedValueOnce(["basic-setup"]) // TEMPLATE
-				.mockResolvedValueOnce([]); // situational
+				.mockResolvedValueOnce(["ts-package"]); // PROJECT_SPEC
 			vi.mocked(listLanguageNames).mockResolvedValue(["typescript"]);
 			vi.mocked(listProjectSpecNames).mockResolvedValue(["package"]);
-			vi.mocked(listAvailableTemplates).mockResolvedValue(["basic"]);
 			mockMultiselectInput.mockResolvedValueOnce(["typescript"]); // language
-			mockSelectInput
-				.mockResolvedValueOnce("package") // project-spec
-				.mockResolvedValueOnce("basic"); // template
+			mockSelectInput.mockResolvedValueOnce("package"); // project-spec
 			vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
 				content: "body",
 				frontmatter: {},
@@ -242,20 +233,10 @@ describe("resources/instructions/config", () => {
 				(s: InstructionSelection) =>
 					s.category === InstructionCategory.PROJECT_SPEC,
 			);
-			const templateSelections = result.selections.filter(
-				(s: InstructionSelection) =>
-					s.category === InstructionCategory.TEMPLATE,
-			);
 			expect(projectSpecSelections.length).toBeGreaterThan(0);
 			expect(projectSpecSelections[0].context).toEqual({
 				lang: "typescript",
 				projectSpec: "package",
-			});
-			expect(templateSelections.length).toBeGreaterThan(0);
-			expect(templateSelections[0].context).toEqual({
-				lang: "typescript",
-				projectSpec: "package",
-				template: "basic",
 			});
 		});
 
@@ -277,20 +258,16 @@ describe("resources/instructions/config", () => {
 				(s: InstructionSelection) =>
 					s.category === InstructionCategory.PROJECT_SPEC,
 			);
-			const templateSelections = result.selections.filter(
-				(s: InstructionSelection) =>
-					s.category === InstructionCategory.TEMPLATE,
-			);
 			expect(projectSpecSelections).toHaveLength(0);
-			expect(templateSelections).toHaveLength(0);
 		});
 
-		it("should return situational selections when user selects from situational list", async () => {
+		it("should return tooling selections when user selects from tooling list", async () => {
 			vi.mocked(listAvailableInstructions).mockImplementation(
 				(cat: InstructionCategory) => {
 					if (cat === InstructionCategory.ESSENTIAL) return Promise.resolve([]);
-					if (cat === InstructionCategory.SITUATIONAL)
+					if (cat === InstructionCategory.TOOLING)
 						return Promise.resolve(["react", "sonarqube"]);
+					if (cat === InstructionCategory.SKILLS) return Promise.resolve([]);
 					return Promise.resolve([]);
 				},
 			);
@@ -309,14 +286,48 @@ describe("resources/instructions/config", () => {
 				ideFormat: "cursor",
 			});
 
-			const situationalSelections = result.selections.filter(
-				(s: InstructionSelection) =>
-					s.category === InstructionCategory.SITUATIONAL,
+			const toolingSelections = result.selections.filter(
+				(s: InstructionSelection) => s.category === InstructionCategory.TOOLING,
 			);
-			expect(situationalSelections).toHaveLength(1);
-			expect(situationalSelections[0]).toMatchObject({
-				category: InstructionCategory.SITUATIONAL,
+			expect(toolingSelections).toHaveLength(1);
+			expect(toolingSelections[0]).toMatchObject({
+				category: InstructionCategory.TOOLING,
 				instruction: "react",
+			});
+		});
+
+		it("should return skills selections when user selects from skills list", async () => {
+			vi.mocked(listAvailableInstructions).mockImplementation(
+				(cat: InstructionCategory) => {
+					if (cat === InstructionCategory.ESSENTIAL) return Promise.resolve([]);
+					if (cat === InstructionCategory.TOOLING) return Promise.resolve([]);
+					if (cat === InstructionCategory.SKILLS)
+						return Promise.resolve(["deploy-skill", "migrate-db"]);
+					return Promise.resolve([]);
+				},
+			);
+			vi.mocked(listLanguageNames).mockResolvedValue([]);
+			mockMultiselectInput.mockImplementation((msg: string) => {
+				if (msg.includes("skills or workflows"))
+					return Promise.resolve(["deploy-skill"]);
+				return Promise.resolve([]);
+			});
+			vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
+				content: "body",
+				frontmatter: {},
+			});
+
+			const result = await getGenerateInstructionsConfiguration({
+				ideFormat: "cursor",
+			});
+
+			const skillSelections = result.selections.filter(
+				(s: InstructionSelection) => s.category === InstructionCategory.SKILLS,
+			);
+			expect(skillSelections).toHaveLength(1);
+			expect(skillSelections[0]).toMatchObject({
+				category: InstructionCategory.SKILLS,
+				instruction: "deploy-skill",
 			});
 		});
 

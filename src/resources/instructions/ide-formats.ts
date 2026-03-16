@@ -11,16 +11,9 @@ export const IDE_FORMATS = [
 	{ label: "Windsurf", value: "windsurf" },
 	{ label: "Cline", value: "cline" },
 	{ label: "Claude Code", value: "claude" },
-	{ label: "GitHub Copilot", value: "copilot" },
 ] as const;
 
 export type IdeFormat = (typeof IDE_FORMATS)[number]["value"];
-
-/** Comment prepended to written instructions (yehle registry). */
-const YEHLE_REGISTRY_URL =
-	"https://github.com/agrawal-rohit/yehle/blob/main/instructions/";
-
-const YEHLE_REGISTRY_COMMENT = `<!-- This instruction is part of the "yehle" instruction registry: ${YEHLE_REGISTRY_URL} -->\n\n`;
 
 /** Paths array for frontmatter. */
 function getPathsArray(frontmatter: RuleFrontmatter): string[] {
@@ -60,33 +53,21 @@ function claudeFrontmatter(frontmatter: RuleFrontmatter): string {
 	return frontmatterWithPathsArray(getPathsArray(frontmatter));
 }
 
-/** Build Copilot path-specific .instructions.md frontmatter. */
-function copilotFrontmatter(frontmatter: RuleFrontmatter): string {
-	const paths = getPathsArray(frontmatter);
-	const applyTo = paths.join(", ");
-	return `---
-applyTo: "${applyTo}"
----
-
-`;
-}
-
-/** Copilot repo-wide. */
-function copilotRepoWide(_frontmatter: RuleFrontmatter): string {
-	return "";
-}
-
-/** Path templates per IDE. */
-const IDE_PATH_TEMPLATES: Record<IdeFormat, string> = {
+/** Path templates per IDE for rules. */
+const IDE_RULE_PATH_TEMPLATES: Record<IdeFormat, string> = {
 	cursor: ".cursor/rules/{{ruleName}}.mdc",
 	windsurf: ".windsurf/rules/{{ruleName}}.md",
 	cline: ".clinerules/{{ruleName}}.mdc",
 	claude: ".claude/rules/{{ruleName}}.md",
-	copilot: ".github/instructions/{{ruleName}}.instructions.md",
 };
 
-/** Copilot repo-wide single file. */
-const COPILOT_REPO_WIDE_PATH = ".github/copilot-instructions.md";
+/** Path templates per IDE for skills. */
+const IDE_SKILL_PATH_TEMPLATES: Record<IdeFormat, string> = {
+	cursor: ".cursor/skills/{{ruleName}}/SKILL.md",
+	windsurf: ".windsurf/skills/{{ruleName}}/SKILL.md",
+	cline: ".cline/skills/{{ruleName}}/SKILL.md",
+	claude: ".claude/skills/{{ruleName}}/SKILL.md",
+};
 
 /**
  * Get the transform function for the given IDE and category (adds frontmatter or passes through).
@@ -99,19 +80,8 @@ function getTransformForIde(
 	ideFormat: IdeFormat,
 	category: InstructionCategory,
 ): ((content: string, frontmatter: RuleFrontmatter) => string) | undefined {
-	// Copilot repo-wide.
-	if (ideFormat === "copilot" && category === InstructionCategory.ESSENTIAL)
-		return (content, fm) => copilotRepoWide(fm) + content;
-
-	// Copilot path-specific.
-	if (
-		ideFormat === "copilot" &&
-		(category === InstructionCategory.SITUATIONAL ||
-			category === InstructionCategory.LANGUAGE ||
-			category === InstructionCategory.PROJECT_SPEC ||
-			category === InstructionCategory.TEMPLATE)
-	)
-		return (content, fm) => copilotFrontmatter(fm) + content;
+	// Skills: keep author-provided frontmatter/body as-is for all IDEs).
+	if (category === InstructionCategory.SKILLS) return undefined;
 
 	// Cursor
 	if (ideFormat === "cursor")
@@ -142,12 +112,17 @@ export function resolveOutputPath(
 	cwd: string,
 	category: InstructionCategory,
 ): string {
-	// Copilot repo-wide.
-	if (ideFormat === "copilot" && category === InstructionCategory.ESSENTIAL)
-		return path.resolve(cwd, COPILOT_REPO_WIDE_PATH);
+	// Skills: per-IDE skills directory.
+	if (category === InstructionCategory.SKILLS) {
+		const relSkillPath = IDE_SKILL_PATH_TEMPLATES[ideFormat].replaceAll(
+			"{{ruleName}}",
+			ruleName,
+		);
+		return path.resolve(cwd, relSkillPath);
+	}
 
-	// Path-specific.
-	const relPath = IDE_PATH_TEMPLATES[ideFormat].replaceAll(
+	// Rules: per-IDE rules directory.
+	const relPath = IDE_RULE_PATH_TEMPLATES[ideFormat].replaceAll(
 		"{{ruleName}}",
 		ruleName,
 	);
@@ -156,7 +131,7 @@ export function resolveOutputPath(
 
 /**
  * Transform raw instruction content for the given IDE format.
- * @param content - Raw markdown body (may already include registry comment).
+ * @param content - Raw markdown body.
  * @param ideFormat - Target IDE format.
  * @param category - Instruction category.
  * @param frontmatter - Rule frontmatter from the instruction file.
@@ -193,9 +168,8 @@ export async function writeInstructionToFile(
 	frontmatter: RuleFrontmatter,
 ): Promise<string> {
 	const outputPath = resolveOutputPath(ideFormat, ruleName, cwd, category);
-	const contentWithRegistryComment = YEHLE_REGISTRY_COMMENT + content;
 	const transformedContent = transformContentForIde(
-		contentWithRegistryComment,
+		content,
 		ideFormat,
 		category,
 		frontmatter,

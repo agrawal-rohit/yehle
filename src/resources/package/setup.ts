@@ -14,7 +14,8 @@ import {
 	InstructionCategory,
 	type InstructionContext,
 	listAvailableInstructions,
-	readSituationalInstructionsMapping,
+	readSkillsMapping,
+	readToolingInstructionsMapping,
 } from "../../core/instructions";
 import { resolveTemplatesDir } from "../../core/templates";
 import { writeInstructionToFile } from "../instructions/ide-formats";
@@ -91,7 +92,7 @@ export async function applyTemplateModifications(
 
 /**
  * Add agent instructions to the package when includeInstructions is true and instructionsIdeFormat is set.
- * Applies in order: essential → language → project-spec (package) → template → mapped situational (from yehle.yaml).
+ * Applies in order: essential → language → project-spec (package) → template → mapped tooling (from yehle.yaml) → mapped skills (from yehle.yaml).
  * @param targetDir - Absolute path to the package root directory.
  * @param generateConfig - Generate configuration (must have includeInstructions, instructionsIdeFormat, and lang).
  * @returns Promise that resolves when all instruction files have been written, or immediately when instructions are disabled.
@@ -204,12 +205,11 @@ export async function addPackageInstructions(
 		);
 	}
 
-	// Add all situational instructions listed in yehle.yaml (e.g. templates/typescript/package/<template>/yehle.yaml)
-	const situationalNames =
-		await readSituationalInstructionsMapping(templateDir);
-	for (const name of situationalNames) {
+	// Add all tooling instructions listed in yehle.yaml for the chosen template.
+	const toolingNames = await readToolingInstructionsMapping(templateDir);
+	for (const name of toolingNames) {
 		const { content, frontmatter } = await getInstructionWithFrontmatter(
-			InstructionCategory.SITUATIONAL,
+			InstructionCategory.TOOLING,
 			name,
 		);
 		await writeInstructionToFile(
@@ -217,7 +217,24 @@ export async function addPackageInstructions(
 			name,
 			content,
 			ideFormat,
-			InstructionCategory.SITUATIONAL,
+			InstructionCategory.TOOLING,
+			frontmatter,
+		);
+	}
+
+	// Add all skills instructions listed in yehle.yaml for the chosen template.
+	const skillNames = await readSkillsMapping(templateDir);
+	for (const name of skillNames) {
+		const { content, frontmatter } = await getInstructionWithFrontmatter(
+			InstructionCategory.SKILLS,
+			name,
+		);
+		await writeInstructionToFile(
+			targetDir,
+			name,
+			content,
+			ideFormat,
+			InstructionCategory.SKILLS,
 			frontmatter,
 		);
 	}
@@ -290,6 +307,9 @@ export async function writePackageTemplateFiles(
 		`package/${generateConfig.template}`,
 	);
 	await copyDirSafeAsync(chosenTemplateDir, targetDir);
+
+	// Strip out template-only instruction sources and configuration that should not ship in the generated package.
+	await removeFilesByBasename(targetDir, ["instructions", "yehle.yaml"]);
 
 	// Add MIT license
 	if (generateConfig.public && generateConfig.authorName) {

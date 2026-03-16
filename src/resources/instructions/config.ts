@@ -1,5 +1,4 @@
 import prompts from "../../cli/prompts";
-import type { Language } from "../../core/constants";
 import {
 	getInstructionWithFrontmatter,
 	InstructionCategory,
@@ -7,11 +6,7 @@ import {
 	listAvailableInstructions,
 	type RuleFrontmatter,
 } from "../../core/instructions";
-import {
-	listAvailableTemplates,
-	listLanguageNames,
-	listProjectSpecNames,
-} from "../../core/templates";
+import { listLanguageNames, listProjectSpecNames } from "../../core/templates";
 import { capitalizeFirstLetter } from "../../core/utils";
 import { IDE_FORMATS, type IdeFormat } from "./ide-formats";
 
@@ -19,7 +14,7 @@ import { IDE_FORMATS, type IdeFormat } from "./ide-formats";
 const SKIP_OPTION_VALUE = "";
 
 /** Label for the skip option in multi-select prompts. */
-const SKIP_OPTION_LABEL = "None (skip this step)";
+const SKIP_OPTION_LABEL = "None";
 
 /** A single instruction selection with frontmatter for writing to disk. */
 export type InstructionSelection = {
@@ -46,8 +41,8 @@ export const INSTRUCTION_CATEGORIES: InstructionCategory[] = [
 	InstructionCategory.ESSENTIAL,
 	InstructionCategory.LANGUAGE,
 	InstructionCategory.PROJECT_SPEC,
-	InstructionCategory.TEMPLATE,
-	InstructionCategory.SITUATIONAL,
+	InstructionCategory.TOOLING,
+	InstructionCategory.SKILLS,
 ];
 
 /**
@@ -85,14 +80,11 @@ async function getGranularInstructionsSelections(): Promise<
 	);
 	all.push(...projectSpecResult.selections);
 
-	const templateSelections = await promptTemplateSelections(
-		projectSpecResult.projectSpecLang,
-		projectSpecResult.chosenProjectSpec,
-	);
-	all.push(...templateSelections);
+	const tooling = await promptToolingSelections();
+	all.push(...tooling);
 
-	const situational = await promptSituationalSelections();
-	all.push(...situational);
+	const skills = await promptSkillsSelections();
+	all.push(...skills);
 
 	return all;
 }
@@ -233,68 +225,9 @@ async function promptProjectSpecSelections(
 	};
 }
 
-/** Prompt for template (single, scoped by language + project-spec). User may select None to skip. */
-async function promptTemplateSelections(
-	projectSpecLang: string | undefined,
-	chosenProjectSpec: string | undefined,
-): Promise<InstructionSelection[]> {
-	if (!projectSpecLang || !chosenProjectSpec) return [];
-
-	const templateNames = await listAvailableTemplates(
-		projectSpecLang as Language,
-		chosenProjectSpec,
-	);
-	if (templateNames.length === 0) return [];
-
-	const options = [
-		{ label: SKIP_OPTION_LABEL, value: SKIP_OPTION_VALUE },
-		...templateNames.map((name) => ({
-			label: capitalizeFirstLetter(name.replaceAll("-", " ")),
-			value: name,
-		})),
-	];
-	const chosenTemplate = await prompts.selectInput(
-		"Which template applies? (we'll add instructions for your stack's folder setup, commands, workflows)",
-		{ options },
-		SKIP_OPTION_VALUE,
-	);
-	if (!chosenTemplate || chosenTemplate === SKIP_OPTION_VALUE) return [];
-
-	const names = await listAvailableInstructions(InstructionCategory.TEMPLATE, {
-		lang: projectSpecLang,
-		projectSpec: chosenProjectSpec,
-		template: chosenTemplate,
-	});
-	const selections: InstructionSelection[] = [];
-	for (const name of names) {
-		const { frontmatter } = await getInstructionWithFrontmatter(
-			InstructionCategory.TEMPLATE,
-			name,
-			{
-				lang: projectSpecLang,
-				projectSpec: chosenProjectSpec,
-				template: chosenTemplate,
-			},
-		);
-		selections.push({
-			category: InstructionCategory.TEMPLATE,
-			instruction: name,
-			frontmatter,
-			context: {
-				lang: projectSpecLang,
-				projectSpec: chosenProjectSpec,
-				template: chosenTemplate,
-			},
-		});
-	}
-	return selections;
-}
-
-/** Prompt for situational instructions (multi-select). User may select None to skip. */
-async function promptSituationalSelections(): Promise<InstructionSelection[]> {
-	const names = await listAvailableInstructions(
-		InstructionCategory.SITUATIONAL,
-	);
+/** Prompt for tooling instructions (multi-select). User may select None to skip. */
+async function promptToolingSelections(): Promise<InstructionSelection[]> {
+	const names = await listAvailableInstructions(InstructionCategory.TOOLING);
 	if (names.length === 0) return [];
 	const options = [
 		{ label: SKIP_OPTION_LABEL, value: SKIP_OPTION_VALUE },
@@ -304,18 +237,49 @@ async function promptSituationalSelections(): Promise<InstructionSelection[]> {
 		})),
 	];
 	const raw = await prompts.multiselectInput(
-		"Are you using any of these tools or frameworks? (we'll add extra instructions for your project based on your tools and frameworks)",
+		"Which tools or frameworks are you using in this repo? (we'll add best-practice instructions for each tool)",
 		{ options },
 	);
 	const chosen = raw.filter((v) => v !== SKIP_OPTION_VALUE);
 	const selections: InstructionSelection[] = [];
 	for (const name of chosen) {
 		const { frontmatter } = await getInstructionWithFrontmatter(
-			InstructionCategory.SITUATIONAL,
+			InstructionCategory.TOOLING,
 			name,
 		);
 		selections.push({
-			category: InstructionCategory.SITUATIONAL,
+			category: InstructionCategory.TOOLING,
+			instruction: name,
+			frontmatter,
+		});
+	}
+	return selections;
+}
+
+/** Prompt for skills (multi-select). User may select None to skip. */
+async function promptSkillsSelections(): Promise<InstructionSelection[]> {
+	const names = await listAvailableInstructions(InstructionCategory.SKILLS);
+	if (names.length === 0) return [];
+	const options = [
+		{ label: SKIP_OPTION_LABEL, value: SKIP_OPTION_VALUE },
+		...names.map((name) => ({
+			label: capitalizeFirstLetter(name.replaceAll("-", " ")),
+			value: name,
+		})),
+	];
+	const raw = await prompts.multiselectInput(
+		"Which skills or workflows do you want to add? (we'll add multi-step workflows like deployment flows, documentation generation, etc.)",
+		{ options },
+	);
+	const chosen = raw.filter((v) => v !== SKIP_OPTION_VALUE);
+	const selections: InstructionSelection[] = [];
+	for (const name of chosen) {
+		const { frontmatter } = await getInstructionWithFrontmatter(
+			InstructionCategory.SKILLS,
+			name,
+		);
+		selections.push({
+			category: InstructionCategory.SKILLS,
 			instruction: name,
 			frontmatter,
 		});

@@ -281,14 +281,14 @@ describe("resources/instructions/command", () => {
 			];
 			vi.mocked(getGenerateInstructionsConfiguration).mockResolvedValue({
 				selections: selections as InstructionSelection[],
-				ideFormat: "copilot",
+				ideFormat: "cursor",
 			});
 			vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
 				content: "# Main",
 				frontmatter: selections[0].frontmatter,
 			});
 			vi.mocked(writeInstructionToFile).mockResolvedValue(
-				"/test/cwd/.github/copilot-instructions.md",
+				"/test/cwd/.cursor/rules/main.mdc",
 			);
 			vi.mocked(tasks.runWithTasks).mockImplementation(async (_, __, tasks) => {
 				for (const t of tasks ?? []) {

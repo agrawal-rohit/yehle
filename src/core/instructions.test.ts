@@ -58,7 +58,8 @@ import {
 	getInstructionWithFrontmatter,
 	InstructionCategory,
 	listAvailableInstructions,
-	readSituationalInstructionsMapping,
+	readSkillsMapping,
+	readToolingInstructionsMapping,
 	resolveInstructionsDir,
 } from "./instructions";
 import { getLocalRoot, resolveLocalTemplatesSubpath } from "./registry.local";
@@ -73,7 +74,8 @@ describe("core/instructions", () => {
 	describe("InstructionCategory", () => {
 		it("should define expected category values", () => {
 			expect(InstructionCategory.ESSENTIAL).toBe("essential");
-			expect(InstructionCategory.SITUATIONAL).toBe("situational");
+			expect(InstructionCategory.TOOLING).toBe("tooling");
+			expect(InstructionCategory.SKILLS).toBe("skills");
 			expect(InstructionCategory.LANGUAGE).toBe("language");
 			expect(InstructionCategory.PROJECT_SPEC).toBe("project-spec");
 			expect(InstructionCategory.TEMPLATE).toBe("template");
@@ -129,7 +131,7 @@ describe("core/instructions", () => {
 			});
 
 			it("should resolve ESSENTIAL instructions dir", async () => {
-				vi.mocked(resolveLocalTemplatesSubpath).mockResolvedValue(
+				vi.mocked(resolveLocalTemplatesSubpath).mockResolvedValueOnce(
 					"/local/templates/instructions/essential",
 				);
 				vi.mocked(isDirAsync).mockResolvedValue(true);
@@ -144,20 +146,34 @@ describe("core/instructions", () => {
 				expect(result).toBe("/local/templates/instructions/essential");
 			});
 
-			it("should resolve SITUATIONAL instructions dir", async () => {
-				vi.mocked(resolveLocalTemplatesSubpath).mockResolvedValue(
-					"/local/templates/instructions/situational",
+			it("should resolve SKILLS instructions dir", async () => {
+				vi.mocked(resolveLocalTemplatesSubpath).mockResolvedValueOnce(
+					"/local/templates/instructions/skills",
+				);
+				vi.mocked(isDirAsync).mockResolvedValue(true);
+
+				const result = await resolveInstructionsDir(InstructionCategory.SKILLS);
+
+				expect(resolveLocalTemplatesSubpath).toHaveBeenCalledWith(
+					"templates/instructions/skills",
+				);
+				expect(result).toBe("/local/templates/instructions/skills");
+			});
+
+			it("should resolve TOOLING instructions dir", async () => {
+				vi.mocked(resolveLocalTemplatesSubpath).mockResolvedValueOnce(
+					"/local/templates/instructions/tooling",
 				);
 				vi.mocked(isDirAsync).mockResolvedValue(true);
 
 				const result = await resolveInstructionsDir(
-					InstructionCategory.SITUATIONAL,
+					InstructionCategory.TOOLING,
 				);
 
 				expect(resolveLocalTemplatesSubpath).toHaveBeenCalledWith(
-					"templates/instructions/situational",
+					"templates/instructions/tooling",
 				);
-				expect(result).toBe("/local/templates/instructions/situational");
+				expect(result).toBe("/local/templates/instructions/tooling");
 			});
 
 			it("should resolve LANGUAGE instructions dir with context", async () => {
@@ -521,12 +537,11 @@ describe("core/instructions", () => {
 		});
 	});
 
-	describe("readSituationalInstructionsMapping", () => {
+	describe("readToolingInstructionsMapping", () => {
 		it("should return empty array when file does not exist", async () => {
 			mockReadFile.mockRejectedValue(new Error("ENOENT"));
 
-			const result =
-				await readSituationalInstructionsMapping("/some/template/dir");
+			const result = await readToolingInstructionsMapping("/some/template/dir");
 
 			expect(result).toEqual([]);
 		});
@@ -534,32 +549,29 @@ describe("core/instructions", () => {
 		it("should return empty array when YAML is invalid", async () => {
 			mockReadFile.mockResolvedValue("not: valid: yaml: [");
 
-			const result =
-				await readSituationalInstructionsMapping("/some/template/dir");
+			const result = await readToolingInstructionsMapping("/some/template/dir");
 
 			expect(result).toEqual([]);
 		});
 
-		it("should return empty array when no situationalInstructions key", async () => {
+		it("should return empty array when no toolingInstructions key", async () => {
 			mockReadFile.mockResolvedValue("otherKey: value");
 			vi.mocked(parseYaml).mockReturnValue({ otherKey: "value" });
 
-			const result =
-				await readSituationalInstructionsMapping("/some/template/dir");
+			const result = await readToolingInstructionsMapping("/some/template/dir");
 
 			expect(result).toEqual([]);
 		});
 
-		it("should return situationalInstructions array when present", async () => {
+		it("should return toolingInstructions array when present", async () => {
 			mockReadFile.mockResolvedValue(
-				"situationalInstructions:\n  - react\n  - sonarqube",
+				"toolingInstructions:\n  - react\n  - sonarqube",
 			);
 			vi.mocked(parseYaml).mockReturnValue({
-				situationalInstructions: ["react", "sonarqube"],
+				toolingInstructions: ["react", "sonarqube"],
 			});
 
-			const result =
-				await readSituationalInstructionsMapping("/some/template/dir");
+			const result = await readToolingInstructionsMapping("/some/template/dir");
 
 			expect(mockReadFile).toHaveBeenCalledWith(
 				"/some/template/dir/yehle.yaml",
@@ -568,14 +580,66 @@ describe("core/instructions", () => {
 			expect(result).toEqual(["react", "sonarqube"]);
 		});
 
-		it("should return empty array when situationalInstructions is not an array", async () => {
-			mockReadFile.mockResolvedValue("situationalInstructions: react");
+		it("should return empty array when toolingInstructions is not an array", async () => {
+			mockReadFile.mockResolvedValue("toolingInstructions: react");
 			vi.mocked(parseYaml).mockReturnValue({
-				situationalInstructions: "react",
+				toolingInstructions: "react",
 			});
 
-			const result =
-				await readSituationalInstructionsMapping("/some/template/dir");
+			const result = await readToolingInstructionsMapping("/some/template/dir");
+
+			expect(result).toEqual([]);
+		});
+	});
+
+	describe("readSkillsMapping", () => {
+		it("should return empty array when file does not exist", async () => {
+			mockReadFile.mockRejectedValue(new Error("ENOENT"));
+
+			const result = await readSkillsMapping("/some/template/dir");
+
+			expect(result).toEqual([]);
+		});
+
+		it("should return empty array when YAML is invalid", async () => {
+			mockReadFile.mockResolvedValue("not: valid: yaml: [");
+
+			const result = await readSkillsMapping("/some/template/dir");
+
+			expect(result).toEqual([]);
+		});
+
+		it("should return empty array when no skills key", async () => {
+			mockReadFile.mockResolvedValue("otherKey: value");
+			vi.mocked(parseYaml).mockReturnValue({ otherKey: "value" });
+
+			const result = await readSkillsMapping("/some/template/dir");
+
+			expect(result).toEqual([]);
+		});
+
+		it("should return skills array when present", async () => {
+			mockReadFile.mockResolvedValue("skills:\n  - react\n  - terraform");
+			vi.mocked(parseYaml).mockReturnValue({
+				skills: ["react", "terraform"],
+			});
+
+			const result = await readSkillsMapping("/some/template/dir");
+
+			expect(mockReadFile).toHaveBeenCalledWith(
+				"/some/template/dir/yehle.yaml",
+				"utf8",
+			);
+			expect(result).toEqual(["react", "terraform"]);
+		});
+
+		it("should return empty array when skills is not an array", async () => {
+			mockReadFile.mockResolvedValue("skills: react");
+			vi.mocked(parseYaml).mockReturnValue({
+				skills: "react",
+			});
+
+			const result = await readSkillsMapping("/some/template/dir");
 
 			expect(result).toEqual([]);
 		});

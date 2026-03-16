@@ -11,7 +11,8 @@ vi.mock("../../core/instructions", () => ({
 		LANGUAGE: "language",
 		PROJECT_SPEC: "project_spec",
 		TEMPLATE: "template",
-		SITUATIONAL: "situational",
+		TOOLING: "tooling",
+		SKILLS: "skills",
 	},
 }));
 
@@ -35,13 +36,12 @@ describe("resources/instructions/ide-formats", () => {
 
 	describe("IDE_FORMATS", () => {
 		it("should contain all supported IDE formats", () => {
-			expect(IDE_FORMATS).toHaveLength(5);
+			expect(IDE_FORMATS).toHaveLength(4);
 			expect(IDE_FORMATS.map((f) => f.value)).toEqual([
 				"cursor",
 				"windsurf",
 				"cline",
 				"claude",
-				"copilot",
 			]);
 		});
 	});
@@ -86,27 +86,47 @@ describe("resources/instructions/ide-formats", () => {
 			);
 			expect(result).toBe("/project/.claude/rules/my-rule.md");
 		});
+	});
 
-		it("should resolve path for copilot non-essential format", () => {
+	describe("resolveOutputPath for skills", () => {
+		it("should resolve skills path for cursor", () => {
 			const result = resolveOutputPath(
-				"copilot",
-				"my-rule",
+				"cursor",
+				"deploy-skill",
 				"/project",
-				InstructionCategory.LANGUAGE,
+				InstructionCategory.SKILLS,
 			);
-			expect(result).toBe(
-				"/project/.github/instructions/my-rule.instructions.md",
-			);
+			expect(result).toBe("/project/.cursor/skills/deploy-skill/SKILL.md");
 		});
 
-		it("should resolve repo-wide path for copilot essential format", () => {
+		it("should resolve skills path for windsurf", () => {
 			const result = resolveOutputPath(
-				"copilot",
-				"my-rule",
+				"windsurf",
+				"deploy-skill",
 				"/project",
-				InstructionCategory.ESSENTIAL,
+				InstructionCategory.SKILLS,
 			);
-			expect(result).toBe("/project/.github/copilot-instructions.md");
+			expect(result).toBe("/project/.windsurf/skills/deploy-skill/SKILL.md");
+		});
+
+		it("should resolve skills path for cline", () => {
+			const result = resolveOutputPath(
+				"cline",
+				"deploy-skill",
+				"/project",
+				InstructionCategory.SKILLS,
+			);
+			expect(result).toBe("/project/.cline/skills/deploy-skill/SKILL.md");
+		});
+
+		it("should resolve skills path for claude", () => {
+			const result = resolveOutputPath(
+				"claude",
+				"deploy-skill",
+				"/project",
+				InstructionCategory.SKILLS,
+			);
+			expect(result).toBe("/project/.claude/skills/deploy-skill/SKILL.md");
 		});
 	});
 
@@ -156,50 +176,6 @@ describe("resources/instructions/ide-formats", () => {
 			expect(result).toContain('  - "**/*.ts"');
 		});
 
-		it("should add copilot frontmatter for copilot project_spec format", () => {
-			const content = "# Test content";
-			const result = transformContentForIde(
-				content,
-				"copilot",
-				InstructionCategory.PROJECT_SPEC,
-				frontmatter,
-			);
-			expect(result).toContain('applyTo: "**/*.ts, **/*.tsx"');
-		});
-
-		it("should add copilot frontmatter for copilot template format", () => {
-			const content = "# Test content";
-			const result = transformContentForIde(
-				content,
-				"copilot",
-				InstructionCategory.TEMPLATE,
-				frontmatter,
-			);
-			expect(result).toContain('applyTo: "**/*.ts, **/*.tsx"');
-		});
-
-		it("should add copilot frontmatter for copilot situational format", () => {
-			const content = "# Test content";
-			const result = transformContentForIde(
-				content,
-				"copilot",
-				InstructionCategory.SITUATIONAL,
-				frontmatter,
-			);
-			expect(result).toContain('applyTo: "**/*.ts, **/*.tsx"');
-		});
-
-		it("should not add frontmatter for copilot essential format", () => {
-			const content = "# Test content";
-			const result = transformContentForIde(
-				content,
-				"copilot",
-				InstructionCategory.ESSENTIAL,
-				frontmatter,
-			);
-			expect(result).toBe(content);
-		});
-
 		it("should not add frontmatter for windsurf format (pass through)", () => {
 			const content = "# Test content";
 			const result = transformContentForIde(
@@ -228,7 +204,7 @@ describe("resources/instructions/ide-formats", () => {
 	});
 
 	describe("writeInstructionToFile", () => {
-		it("should write file with registry comment and transformed content for cursor", async () => {
+		it("should write file with transformed content for cursor", async () => {
 			const frontmatter: RuleFrontmatter = {
 				description: "Test rule",
 				paths: ["**/*.ts"],
@@ -252,34 +228,7 @@ describe("resources/instructions/ide-formats", () => {
 			expect(writeFileAsync).toHaveBeenCalled();
 			const writtenContent = (writeFileAsync as ReturnType<typeof vi.fn>).mock
 				.calls[0]?.[1];
-			expect(writtenContent).toContain(
-				"https://github.com/agrawal-rohit/yehle/blob/main/instructions/",
-			);
 			expect(writtenContent).toContain('description: "Test rule"');
-		});
-
-		it("should write file for copilot essential category without frontmatter", async () => {
-			const frontmatter: RuleFrontmatter = {
-				description: "Essential",
-				alwaysApply: true,
-			};
-
-			vi.mocked(ensureDirAsync).mockResolvedValue();
-			vi.mocked(writeFileAsync).mockResolvedValue();
-
-			await writeInstructionToFile(
-				"/project",
-				"essential-rule",
-				"# Essential content",
-				"copilot",
-				InstructionCategory.ESSENTIAL,
-				frontmatter,
-			);
-
-			expect(writeFileAsync).toHaveBeenCalledWith(
-				"/project/.github/copilot-instructions.md",
-				expect.any(String),
-			);
 		});
 
 		it("should write file for windsurf without frontmatter transformation", async () => {
@@ -304,6 +253,34 @@ describe("resources/instructions/ide-formats", () => {
 				.calls[0]?.[1];
 			expect(writtenContent).not.toContain("description:");
 			expect(writtenContent).toContain("# Windsurf content");
+		});
+
+		it("should write skills file to skills directory without extra frontmatter", async () => {
+			const frontmatter: RuleFrontmatter = {
+				description: "Skill",
+				alwaysApply: true,
+			};
+
+			vi.mocked(ensureDirAsync).mockResolvedValue();
+			vi.mocked(writeFileAsync).mockResolvedValue();
+
+			const result = await writeInstructionToFile(
+				"/project",
+				"deploy-skill",
+				"# Skill content",
+				"cursor",
+				InstructionCategory.SKILLS,
+				frontmatter,
+			);
+
+			expect(result).toBe("/project/.cursor/skills/deploy-skill/SKILL.md");
+			expect(ensureDirAsync).toHaveBeenCalledWith(
+				"/project/.cursor/skills/deploy-skill",
+			);
+			const writtenContent = (writeFileAsync as ReturnType<typeof vi.fn>).mock
+				.calls[0]?.[1];
+			// No Cursor rule frontmatter should be added for skills.
+			expect(writtenContent).not.toContain("globs:");
 		});
 	});
 });

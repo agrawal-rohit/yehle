@@ -5,8 +5,10 @@ export enum Language {
 
 /** Schema for yehle.yaml. */
 export type YehleConfiguration = {
-	/** Situational instructions to apply for this template or project-spec. */
-	situationalInstructions?: string[];
+	/** Tooling instructions (tool/framework best-practice rules) to apply for this template or project-spec. */
+	toolingInstructions?: string[];
+	/** Workflow skills to apply for this template or project-spec (e.g. deploy-versioned-release, optimise-api-performance). */
+	skills?: string[];
 };
 
 /** Filename for the yehle configuration file in a template or project-spec dir. */

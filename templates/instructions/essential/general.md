@@ -12,7 +12,6 @@ alwaysApply: true
 - Write code for humans first, machines second
 - Prefer explicit over implicit
 - Fail fast with clear error messages
-- Keep functions small and focused
 - Avoid premature optimization
 
 ## Naming
