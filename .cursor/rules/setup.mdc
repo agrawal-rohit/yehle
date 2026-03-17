@@ -1,0 +1,27 @@
+---
+description: "Setup and layout of the yehle scaffolding CLI"
+alwaysApply: true
+---
+
+# Setup
+
+## Purpose
+
+TypeScript CLI that scaffolds new projects using opinionated templates, tooling, and best practices.
+
+## Structure
+
+- `src/index.ts`: main entrypoint that registers CLI commands and wires up resources.
+- `src/cli/`: CLI helpers for logging, prompts, task orchestration, and the animated intro.
+- `src/core/`: shared domain and infrastructure modules for template/registry resolution, instructions, filesystem helpers, package manager, Git, shell, and utilities.
+- `src/resources/`: command implementations (for example, `resources/package` and `resources/instructions`).
+- `templates/`: template content and instruction files that the CLI consumes (for example, TypeScript package templates and essential/tooling/security rules).
+- Co‑located tests under `src/**` (for example, `*.test.ts`) using Vitest.
+
+## Tooling
+
+- **Build**: `pnpm build` (uses `tsc` to emit compiled JS into `dist/`).
+- **Tests**: `pnpm test` (Vitest test runner).
+- **Type checking**: `pnpm typecheck` (`tsc --noEmit`).
+- **Lint/format/check**: `pnpm lint`, `pnpm format`, and `pnpm check` for Biome linting/formatting and combined checks.
+- **Release packaging**: `pnpm pack` builds the `yehle` tarball for local testing or publishing.

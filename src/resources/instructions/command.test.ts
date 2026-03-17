@@ -197,7 +197,7 @@ describe("resources/instructions/command", () => {
 				frontmatter: selections[0].frontmatter,
 			});
 			vi.mocked(writeInstructionToFile).mockResolvedValue(
-				"/test/cwd/.clinerules/typescript.mdc",
+				"/test/cwd/.clinerules/typescript.md",
 			);
 			vi.mocked(tasks.runWithTasks).mockImplementation(async (_, __, tasks) => {
 				for (const t of tasks ?? []) {

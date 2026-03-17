@@ -1,0 +1,38 @@
+---
+description: "High-level overview and goals for the yehle scaffolding CLI"
+alwaysApply: true
+---
+
+# Project overview
+
+This repo contains **yehle**, an opinionated scaffolding CLI that bootstraps modern software projects using curated templates, tooling, and best practices.
+
+## What this project is about
+
+- Provide a fast way to start new projects with:
+  - Common tooling already wired up (tests, linting/formatting, CI, release workflows).
+  - Opinionated but extensible defaults for folder structure and configuration.
+- Encode personal and team‑level preferences as reusable **instructions** and **skills** that IDEs and AI agents can apply.
+
+## Scope and non-goals
+
+- Focuses on **scaffolding** and initial project setup, not on being a full build system or framework.
+- Provides templates and guidance for selected stacks (for example, TypeScript packages and React component libraries); it is **not** a generic “works for every language and framework” generator yet.
+- Aims to keep templates opinionated but understandable; it is not a kitchen sink of options and toggles.
+
+## Key features and tooling
+
+- Generates projects with:
+  - CI workflows (GitHub Actions) for builds, tests, and releases.
+  - Dependabot configuration for automated dependency upgrades.
+  - Linting/formatting (Biome), testing (Vitest), and mutation testing (Stryker) for TypeScript templates.
+  - Bundling via `tsdown` for TypeScript libraries.
+  - Utility‑first styling (Tailwind) and React playgrounds for React templates.
+- Creates documentation and community files:
+  - README with shields.io badges.
+  - MIT license and standard community health files (CONTRIBUTING, issue/PR templates).
+
+## How to use it
+
+- Use `npx yehle package` (or the published CLI) to generate a new project from an available template.
+- Use `npx yehle instructions` (or the published CLI) to generate instructions for an existing project.

@@ -238,6 +238,31 @@ export async function addPackageInstructions(
 			frontmatter,
 		);
 	}
+
+	// Add a placeholder overview instruction to encourage documenting the project's purpose and scope.
+	const projectOverviewFrontmatter = {
+		description:
+			"Describe the project goal, scope, and non-technical product requirements",
+		alwaysApply: true,
+	} as const;
+	const projectOverviewContent = `# Project overview
+
+Briefly describe:
+
+- What this project is about and who it is for.
+- The core features and behaviours that are in scope.
+- Important non-goals (what this project is explicitly not supposed to do).
+- Any key constraints (performance, compliance, integration boundaries).
+- How you will know this project is successful (metrics or outcomes).
+`;
+	await writeInstructionToFile(
+		targetDir,
+		"overview",
+		projectOverviewContent,
+		ideFormat,
+		InstructionCategory.ESSENTIAL,
+		projectOverviewFrontmatter,
+	);
 }
 
 /**

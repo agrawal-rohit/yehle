@@ -57,7 +57,7 @@ function claudeFrontmatter(frontmatter: RuleFrontmatter): string {
 const IDE_RULE_PATH_TEMPLATES: Record<IdeFormat, string> = {
 	cursor: ".cursor/rules/{{ruleName}}.mdc",
 	windsurf: ".windsurf/rules/{{ruleName}}.md",
-	cline: ".clinerules/{{ruleName}}.mdc",
+	cline: ".clinerules/{{ruleName}}.md",
 	claude: ".claude/rules/{{ruleName}}.md",
 };
 

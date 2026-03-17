@@ -74,7 +74,7 @@ describe("resources/instructions/ide-formats", () => {
 				"/project",
 				InstructionCategory.LANGUAGE,
 			);
-			expect(result).toBe("/project/.clinerules/my-rule.mdc");
+			expect(result).toBe("/project/.clinerules/my-rule.md");
 		});
 
 		it("should resolve path for claude format", () => {
