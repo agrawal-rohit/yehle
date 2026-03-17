@@ -41,6 +41,7 @@ I would usually spend hours re-configuring the _"same old tooling and workflow s
   * [Examples](#examples)
 * [Commands Reference](#commands-reference)
   * [`package`](#package)
+  * [`instructions`](#instructions)
 * [Contributing](#contributing)
 * [License](#license)
 
@@ -55,6 +56,7 @@ I would usually spend hours re-configuring the _"same old tooling and workflow s
 * Automatically generated community files _(contribution guidelines, issue templates, and pull request checklists)_
 * A pre-configured [release process](CONTRIBUTING.md#release-process) for preview and production releases
 * Opinionated [templates][] that cover common use cases encountered in modern software development
+* A collection of helpful **agent instructions and skills** that can be applied to new or existing projects.
 
 [github-actions]: https://github.com/features/actions
 [shields]: https://shields.io/
@@ -149,13 +151,15 @@ npx yehle package
 
 Once you're acquainted, you can skip through most prompts by providing the values through the CLI flags directly.
 
-  ```bash
-  npx yehle package \
-    --name my-lib \
-    --lang typescript \
-    --template default \
-    --public
-  ```
+```bash
+npx yehle package \
+  --name my-lib \
+  --lang typescript \
+  --template default \
+  --public \
+  --include-instructions \
+  --instructions-ide-format cursor
+```
 
 **Supported Flags**
 
@@ -163,6 +167,26 @@ Once you're acquainted, you can skip through most prompts by providing the value
 - `--lang <language>`: Programming language that the package is built for _(for example, `typescript`)_.
 - `--template <template-name>`: The starter template for this package _(for example, `default`, `react`, etc.)_
 - `--public`: Whether the package should be optimised for publishing and contributions _(sets up public registry configuration, release workflows, and community files for open-source collaboration)_.
+- `--include-instructions`: When set, also add agent instructions for the chosen template.
+- `--instructions-ide-format <format>`: Target IDE format for generated instructions (for example, `cursor`, `windsurf`, `cline`, `claude`).
+
+#### <span id="instructions"></span>`instructions`
+
+Add IDE‑specific agent instructions to an **existing** project using the shared `templates/instructions/**` registry.
+
+```bash
+npx yehle instructions
+```
+
+Once you're acquainted, you can skip the IDE selection prompt by providing the format directly:
+
+```bash
+npx yehle instructions --ide-format cursor
+```
+
+**Supported Flags**
+
+- `--ide-format <format>`: Target IDE format for generated instructions (for example, `cursor`, `windsurf`, `cline`, `claude`).
 
 ## Contributing
 

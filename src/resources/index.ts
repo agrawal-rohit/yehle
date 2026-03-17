@@ -35,6 +35,14 @@ export async function registerResourcesCli(app: CAC) {
 			"Public package (will setup for publishing to a package registry)",
 		)
 		.option("--template <template>", "Starter template for the package")
+		.option(
+			"--include-instructions",
+			"Add agent instructions for the chosen template and IDE",
+		)
+		.option(
+			"--instructions-ide-format <format>",
+			`Target IDE format for package instructions (${IDE_FORMATS.map((f) => f.value).join(", ")})`,
+		)
 		.action(async (options: Partial<GeneratePackageConfiguration>) => {
 			try {
 				const publicFlag = options.public ? Boolean(options.public) : undefined;
