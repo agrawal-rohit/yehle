@@ -12,13 +12,7 @@ globs:
 alwaysApply: false
 ---
 
-# TypeScript and JavaScript Standards
-
-## Naming
-
-- Use **camelCase** for variables, functions, and non‑React components.
-- Use **PascalCase** for classes, interfaces, types, and React components.
-- Use **SCREAMING_SNAKE_CASE** for constants that represent configuration or static values.
+# TypeScript and JavaScript standards
 
 ## File naming
 
@@ -31,8 +25,3 @@ alwaysApply: false
 - Prefer `interface` over `type` for object shapes when extending or being implemented.
 - Use `unknown` instead of `any` when the type is truly unknown; narrow it as close to the boundary as possible.
 - Prefer `const` assertions and `satisfies` to help the compiler infer accurate types.
-
-## Imports and exports
-
-- Keep imports at the top of the file; avoid inline `require`/dynamic imports unless strictly necessary.
-- Group related exports from a single entry point when possible (e.g. `src/index.ts`) to keep the public API clear.

@@ -19,9 +19,13 @@ coverage/
 reports/
 
 # Agent instructions
-.cursor/
+.cursor/*
+!.cursor/agents
+!.cursor/agents/*.md
 .windsurf/
 .cline/
-.claude/
+.claude/*
+!.claude/agents
+!.claude/agents/*.md
 AGENTS.md
 AGENT.md

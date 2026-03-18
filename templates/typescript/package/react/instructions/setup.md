@@ -26,3 +26,9 @@ TypeScript package that ships React components and includes a React + Vite playg
 - Playground: `pnpm playground` (Vite dev server using `playground/vite.config.ts`).
 - Type checking: `pnpm typecheck`.
 - Lint/format: `pnpm lint`, `pnpm format`, and `pnpm check`.
+
+## Builds and distribution
+
+- Produce ESM (and CJS if required) builds with type definitions.
+- Keep internal utilities and implementation details in internal modules; do not export them from the main entry.
+- Avoid bundling dependencies that are intended to be peer or external; treat React, Node, or framework runtimes as peers where appropriate.

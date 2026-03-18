@@ -97,6 +97,7 @@ async function getGranularInstructionsSelections(): Promise<
 async function promptEssentialSelections(): Promise<InstructionSelection[]> {
 	const names = await listAvailableInstructions(InstructionCategory.ESSENTIAL);
 	if (names.length === 0) return [];
+
 	const options = [
 		{ label: SKIP_OPTION_LABEL, value: SKIP_OPTION_VALUE },
 		...names.map((name) => ({
@@ -141,6 +142,31 @@ async function promptLanguageSelections(): Promise<{
 	if (languageNames.length === 0)
 		return { selections: [], chosenLangs: [], langOptions: [] };
 
+	// Pre-check whether any language has available language-category
+	// instruction choices. If not, skip prompting entirely (but keep
+	// `langOptions` for project-spec scoping).
+	const instructionNamesByLang = await Promise.all(
+		languageNames.map(async (lang) => ({
+			lang,
+			names: await listAvailableInstructions(InstructionCategory.LANGUAGE, {
+				lang,
+			}),
+		})),
+	);
+	const hasAnyLanguageInstructionChoices = instructionNamesByLang.some(
+		(v) => v.names.length > 0,
+	);
+	const langOptionsWithoutSkip = langOptions.filter(
+		(o) => o.value !== SKIP_OPTION_VALUE,
+	);
+	if (!hasAnyLanguageInstructionChoices) {
+		return {
+			selections: [],
+			chosenLangs: [],
+			langOptions: langOptionsWithoutSkip,
+		};
+	}
+
 	const raw = await prompts.multiselectInput(
 		"Which languages are you using? (we'll add best-practice instructions for each)",
 		{ options: langOptions },
@@ -148,10 +174,8 @@ async function promptLanguageSelections(): Promise<{
 	const chosenLangs = raw.filter((v) => v !== SKIP_OPTION_VALUE);
 	const selections: InstructionSelection[] = [];
 	for (const lang of chosenLangs) {
-		const names = await listAvailableInstructions(
-			InstructionCategory.LANGUAGE,
-			{ lang },
-		);
+		const names =
+			instructionNamesByLang.find((v) => v.lang === lang)?.names ?? [];
 		for (const name of names) {
 			const { frontmatter } = await getInstructionWithFrontmatter(
 				InstructionCategory.LANGUAGE,
@@ -189,11 +213,33 @@ async function promptProjectSpecSelections(
 	const projectSpecNames = await listProjectSpecNames(projectSpecLang);
 	if (projectSpecNames.length === 0) return { selections: [] };
 
+	// Only prompt when there are actual project-spec instruction choices.
+	// This prevents a confusing "What are you building?" prompt when no
+	// instructions exist for the candidates.
+	const projectSpecInstructionNames = await Promise.all(
+		projectSpecNames.map(async (projectSpec) => ({
+			projectSpec,
+			names: await listAvailableInstructions(InstructionCategory.PROJECT_SPEC, {
+				lang: projectSpecLang,
+				projectSpec,
+			}),
+		})),
+	);
+	const availableProjectSpecs = projectSpecInstructionNames.filter(
+		(v) => v.names.length > 0,
+	);
+	if (availableProjectSpecs.length === 0)
+		return {
+			selections: [],
+			projectSpecLang,
+			chosenProjectSpec: undefined,
+		};
+
 	const options = [
 		{ label: SKIP_OPTION_LABEL, value: SKIP_OPTION_VALUE },
-		...projectSpecNames.map((name) => ({
-			label: capitalizeFirstLetter(name.replaceAll("-", " ")),
-			value: name,
+		...availableProjectSpecs.map((v) => ({
+			label: capitalizeFirstLetter(v.projectSpec.replaceAll("-", " ")),
+			value: v.projectSpec,
 		})),
 	];
 	const chosenProjectSpec = await prompts.selectInput(
@@ -204,10 +250,13 @@ async function promptProjectSpecSelections(
 	if (!chosenProjectSpec || chosenProjectSpec === SKIP_OPTION_VALUE)
 		return { selections: [], projectSpecLang, chosenProjectSpec: undefined };
 
-	const names = await listAvailableInstructions(
-		InstructionCategory.PROJECT_SPEC,
-		{ lang: projectSpecLang, projectSpec: chosenProjectSpec },
-	);
+	const names =
+		availableProjectSpecs.find((v) => v.projectSpec === chosenProjectSpec)
+			?.names ??
+		(await listAvailableInstructions(InstructionCategory.PROJECT_SPEC, {
+			lang: projectSpecLang,
+			projectSpec: chosenProjectSpec,
+		}));
 	const selections: InstructionSelection[] = [];
 	for (const name of names) {
 		const { frontmatter } = await getInstructionWithFrontmatter(
@@ -233,6 +282,7 @@ async function promptProjectSpecSelections(
 async function promptToolingSelections(): Promise<InstructionSelection[]> {
 	const names = await listAvailableInstructions(InstructionCategory.TOOLING);
 	if (names.length === 0) return [];
+
 	const options = [
 		{ label: SKIP_OPTION_LABEL, value: SKIP_OPTION_VALUE },
 		...names.map((name) => ({
@@ -264,6 +314,7 @@ async function promptToolingSelections(): Promise<InstructionSelection[]> {
 async function promptSkillsSelections(): Promise<InstructionSelection[]> {
 	const names = await listAvailableInstructions(InstructionCategory.SKILLS);
 	if (names.length === 0) return [];
+
 	const options = [
 		{ label: SKIP_OPTION_LABEL, value: SKIP_OPTION_VALUE },
 		...names.map((name) => ({

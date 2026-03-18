@@ -263,6 +263,69 @@ describe("resources/instructions/config", () => {
 			expect(projectSpecSelections).toHaveLength(0);
 		});
 
+		it("should fall back to fetching project-spec instructions when selected spec isn't in available options", async () => {
+			let projectSpecAppCalls = 0;
+			vi.mocked(listAvailableInstructions).mockImplementation(
+				(cat: InstructionCategory, ctx?: unknown) => {
+					if (cat === InstructionCategory.ESSENTIAL) return Promise.resolve([]);
+					if (cat === InstructionCategory.LANGUAGE) return Promise.resolve([]); // ensure language prompt is skipped
+					if (cat === InstructionCategory.PROJECT_SPEC) {
+						const projectSpec = (ctx as { projectSpec?: string })?.projectSpec;
+						if (projectSpec === "package") {
+							return Promise.resolve(["ts-package"]);
+						}
+						if (projectSpec === "app") {
+							// First call is during pre-filtering (should be excluded);
+							// second call is during fallback (should be included).
+							projectSpecAppCalls += 1;
+							return Promise.resolve(
+								projectSpecAppCalls >= 2 ? ["app-package"] : [],
+							);
+						}
+						return Promise.resolve([]);
+					}
+					if (
+						cat === InstructionCategory.TOOLING ||
+						cat === InstructionCategory.SUBAGENTS ||
+						cat === InstructionCategory.SKILLS
+					)
+						return Promise.resolve([]);
+					return Promise.resolve([]);
+				},
+			);
+
+			vi.mocked(listLanguageNames).mockResolvedValue(["typescript"]);
+			vi.mocked(listProjectSpecNames).mockResolvedValue(["package", "app"]);
+			// Select a project spec that isn't in the pre-filtered options.
+			mockSelectInput.mockResolvedValueOnce("app");
+
+			vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
+				content: "body",
+				frontmatter: {},
+			});
+
+			const result = await getGenerateInstructionsConfiguration({
+				ideFormat: "cursor",
+			});
+
+			const projectSpecSelections = result.selections.filter(
+				(s: InstructionSelection) =>
+					s.category === InstructionCategory.PROJECT_SPEC,
+			);
+
+			expect(projectSpecSelections).toHaveLength(1);
+			expect(projectSpecSelections[0]).toMatchObject({
+				category: InstructionCategory.PROJECT_SPEC,
+				instruction: "app-package",
+				context: { lang: "typescript", projectSpec: "app" },
+			});
+			expect(getInstructionWithFrontmatter).toHaveBeenCalledWith(
+				InstructionCategory.PROJECT_SPEC,
+				"app-package",
+				{ lang: "typescript", projectSpec: "app" },
+			);
+		});
+
 		it("should return tooling selections when user selects from tooling list", async () => {
 			vi.mocked(listAvailableInstructions).mockImplementation(
 				(cat: InstructionCategory) => {
