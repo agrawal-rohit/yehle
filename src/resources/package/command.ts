@@ -10,18 +10,17 @@ import {
 	LANGUAGE_PACKAGE_MANAGER,
 	type PackageManager,
 } from "../../core/pkg-manager";
+import {
+	createProjectDirectory,
+	getRequiredGithubSecrets,
+	writeTemplateFiles,
+} from "../../core/setup";
 import { toSlug } from "../../core/utils";
 import {
 	type GeneratePackageConfiguration,
 	getGeneratePackageConfiguration,
 } from "./config";
-import {
-	addPackageInstructions,
-	applyTemplateModifications,
-	createPackageDirectory,
-	getRequiredGithubSecrets,
-	writePackageTemplateFiles,
-} from "./setup";
+import { addPackageInstructions, applyTemplateModifications } from "./setup";
 
 /**
  * Generate a new package: gather config (or use options), run preflight checks, create directory, write templates, apply modifications, optionally add instructions, init git, and print next steps.
@@ -34,7 +33,6 @@ export async function generatePackage(
 ): Promise<void> {
 	await logger.intro("generating package...");
 
-	// Gather configuration (skip prompts when options are provided)
 	const generateConfig = await getGeneratePackageConfiguration({
 		lang: options.lang,
 		name: options.name,
@@ -50,10 +48,8 @@ export async function generatePackage(
 		toSlug(generateConfig.name),
 	);
 
-	// Preflight checks
 	console.log();
 	await tasks.runWithTasks("Preflight checks", async () => {
-		// Check target directory
 		let isEmpty = true;
 		if (fs.existsSync(resolvedTargetDir)) {
 			try {
@@ -67,17 +63,15 @@ export async function generatePackage(
 		if (!isEmpty)
 			throw new Error(`Target directory is not empty: ${resolvedTargetDir}`);
 
-		// Check package manager availability
 		packageManagerVersion = await ensurePackageManager(packageManager);
 	});
 
-	// Create the package
 	let targetDir = "";
 	await tasks.runWithTasks("Preparing package", undefined, [
 		{
 			title: "Create package directory",
 			task: async () => {
-				targetDir = await createPackageDirectory(
+				targetDir = await createProjectDirectory(
 					process.cwd(),
 					toSlug(generateConfig.name),
 				);
@@ -86,7 +80,15 @@ export async function generatePackage(
 		{
 			title: `Add "${generateConfig.template}" template`,
 			task: async () => {
-				await writePackageTemplateFiles(targetDir, generateConfig);
+				await writeTemplateFiles(targetDir, {
+					lang: generateConfig.lang,
+					projectSpec: "package",
+					template: generateConfig.template,
+					license:
+						generateConfig.public && generateConfig.authorName
+							? { public: true, authorName: generateConfig.authorName }
+							: undefined,
+				});
 			},
 		},
 		{
