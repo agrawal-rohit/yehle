@@ -87,16 +87,12 @@ vi.mock("../../cli/tasks", () => ({
 	},
 }));
 
-import fs from "node:fs";
 import { Language } from "../../core/constants";
 import {
-	copyDirSafeAsync,
-	ensureDirAsync,
 	isDirAsync,
 	removeFilesByBasename,
 	renderMustacheTemplates,
 	stripJsonKey,
-	writeFileAsync,
 } from "../../core/fs";
 import { resolveTemplatesDir } from "../../core/templates";
 
@@ -124,13 +120,7 @@ import {
 } from "../../core/instructions";
 import { writeInstructionToFile } from "../instructions/ide-formats";
 // Import after mocks
-import {
-	addPackageInstructions,
-	applyTemplateModifications,
-	createPackageDirectory,
-	getRequiredGithubSecrets,
-	writePackageTemplateFiles,
-} from "./setup";
+import { addPackageInstructions, applyTemplateModifications } from "./setup";
 
 describe("resources/package/setup", () => {
 	beforeEach(() => {
@@ -543,21 +533,6 @@ describe("resources/package/setup", () => {
 		});
 	});
 
-	describe("createPackageDirectory", () => {
-		it("should create the package directory and return the absolute path", async () => {
-			const cwd = "/home/user";
-			const packageName = "my-package";
-			const expectedPath = "/home/user/my-package";
-
-			vi.mocked(ensureDirAsync).mockResolvedValue();
-
-			const result = await createPackageDirectory(cwd, packageName);
-
-			expect(ensureDirAsync).toHaveBeenCalledWith(expectedPath);
-			expect(result).toBe(expectedPath);
-		});
-	});
-
 	describe("applyTemplateModifications", () => {
 		it("should render mustache templates with metadata", async () => {
 			const targetDir = "/path/to/package";
@@ -723,157 +698,6 @@ describe("resources/package/setup", () => {
 				"/path/to/package/biome.json",
 				"root",
 			);
-		});
-	});
-
-	describe("getRequiredGithubSecrets", () => {
-		it("should return an empty array if no workflows directory exists", async () => {
-			const targetDir = "/path/to/package";
-
-			vi.mocked(fs.promises.readdir).mockRejectedValue(new Error("ENOENT"));
-
-			const result = await getRequiredGithubSecrets(targetDir);
-
-			expect(result).toEqual([]);
-		});
-
-		it("should extract and return sorted unique secrets from workflow files", async () => {
-			const targetDir = "/path/to/package";
-			const workflowsDir = "/path/to/package/.github/workflows";
-
-			vi.mocked(fs.promises.readdir).mockResolvedValue([
-				{ name: "ci.yml", isFile: () => true, isDirectory: () => false },
-				{ name: "release.yml", isFile: () => true, isDirectory: () => false },
-			] as never);
-			vi.mocked(fs.promises.readFile)
-				.mockResolvedValueOnce("secrets.NPM_TOKEN and secrets.GITHUB_TOKEN")
-				.mockResolvedValueOnce("secrets.CODECOV_TOKEN");
-
-			const result = await getRequiredGithubSecrets(targetDir);
-
-			expect(fs.promises.readdir).toHaveBeenCalledWith(workflowsDir, {
-				withFileTypes: true,
-			});
-			expect(fs.promises.readFile).toHaveBeenCalledTimes(2);
-			expect(result).toEqual(["CODECOV_TOKEN", "NPM_TOKEN"]);
-		});
-
-		it("should ignore GITHUB_TOKEN secrets", async () => {
-			const targetDir = "/path/to/package";
-
-			vi.mocked(fs.promises.readdir).mockResolvedValue([
-				{ name: "ci.yml", isFile: () => true, isDirectory: () => false },
-			] as never);
-			vi.mocked(fs.promises.readFile).mockResolvedValue("secrets.GITHUB_TOKEN");
-
-			const result = await getRequiredGithubSecrets(targetDir);
-
-			expect(result).toEqual([]);
-		});
-	});
-
-	describe("writePackageTemplateFiles", () => {
-		it("should copy template directories", async () => {
-			const targetDir = "/path/to/package";
-			const generateConfig = {
-				lang: Language.TYPESCRIPT,
-				name: "test-package",
-				template: "basic",
-				public: false,
-			};
-
-			vi.mocked(resolveTemplatesDir)
-				.mockResolvedValueOnce("/templates/shared")
-				.mockResolvedValueOnce("/templates/typescript/shared")
-				.mockResolvedValueOnce("/templates/typescript/package/shared")
-				.mockResolvedValueOnce("/templates/typescript/package/basic");
-			vi.mocked(copyDirSafeAsync).mockResolvedValue();
-
-			await writePackageTemplateFiles(targetDir, generateConfig);
-
-			expect(resolveTemplatesDir).toHaveBeenCalledWith("shared");
-			expect(resolveTemplatesDir).toHaveBeenCalledWith(
-				Language.TYPESCRIPT,
-				"shared",
-			);
-			expect(resolveTemplatesDir).toHaveBeenCalledWith(
-				Language.TYPESCRIPT,
-				"package/shared",
-			);
-			expect(resolveTemplatesDir).toHaveBeenCalledWith(
-				Language.TYPESCRIPT,
-				"package/basic",
-			);
-			expect(copyDirSafeAsync).toHaveBeenCalledTimes(4);
-			expect(removeFilesByBasename).toHaveBeenCalledWith(targetDir, [
-				"instructions",
-				"yehle.yaml",
-			]);
-		});
-
-		it("should add MIT license if package is public and authorName is provided", async () => {
-			const targetDir = "/path/to/package";
-			const generateConfig = {
-				lang: Language.TYPESCRIPT,
-				name: "test-package",
-				template: "basic",
-				public: true,
-				authorName: "John Doe",
-			};
-
-			vi.mocked(resolveTemplatesDir).mockResolvedValue("/templates/dir");
-			vi.mocked(copyDirSafeAsync).mockResolvedValue();
-			vi.mocked(writeFileAsync).mockResolvedValue();
-
-			// Mock Date
-			const mockDate = new Date(2023, 0, 1);
-			vi.spyOn(globalThis, "Date").mockImplementation(
-				() => mockDate as unknown as Date,
-			);
-
-			await writePackageTemplateFiles(targetDir, generateConfig);
-
-			expect(writeFileAsync).toHaveBeenCalledWith(
-				"/path/to/package/LICENSE",
-				"MIT License\n\nCopyright (c) 2023 John Doe\n\nPermission is hereby granted...",
-			);
-
-			vi.restoreAllMocks();
-		});
-
-		it("should not add license if package is not public", async () => {
-			const targetDir = "/path/to/package";
-			const generateConfig = {
-				lang: Language.TYPESCRIPT,
-				name: "test-package",
-				template: "basic",
-				public: false,
-			};
-
-			vi.mocked(resolveTemplatesDir).mockResolvedValue("/templates/dir");
-			vi.mocked(copyDirSafeAsync).mockResolvedValue();
-
-			await writePackageTemplateFiles(targetDir, generateConfig);
-
-			expect(writeFileAsync).not.toHaveBeenCalled();
-		});
-
-		it("should not add license if authorName is not provided", async () => {
-			const targetDir = "/path/to/package";
-			const generateConfig = {
-				lang: Language.TYPESCRIPT,
-				name: "test-package",
-				template: "basic",
-				public: true,
-				authorName: undefined,
-			};
-
-			vi.mocked(resolveTemplatesDir).mockResolvedValue("/templates/dir");
-			vi.mocked(copyDirSafeAsync).mockResolvedValue();
-
-			await writePackageTemplateFiles(targetDir, generateConfig);
-
-			expect(writeFileAsync).not.toHaveBeenCalled();
 		});
 	});
 });

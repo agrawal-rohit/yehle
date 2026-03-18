@@ -114,6 +114,18 @@ describe("core/fs", () => {
 
 			await expect(stripJsonKey(file, "root")).resolves.toBeUndefined();
 		});
+
+		it("leaves JSON unchanged when key does not exist", async () => {
+			const root = makeTempDir();
+			const file = path.join(root, "config.json");
+			const original = { foo: "bar", baz: 42 };
+			fs.writeFileSync(file, JSON.stringify(original, null, "\t"), "utf8");
+
+			await stripJsonKey(file, "nonexistent");
+
+			const data = JSON.parse(fs.readFileSync(file, "utf8"));
+			expect(data).toEqual(original);
+		});
 	});
 
 	describe("copyFileSafeAsync", () => {

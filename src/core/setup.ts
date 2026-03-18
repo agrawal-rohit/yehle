@@ -1,8 +1,3 @@
-/**
- * Shared project setup utilities used across project types (package, chrome-extension, monorepo, etc.).
- * Extracts common scaffolding logic so each project type only implements its specific configuration.
- */
-
 import fs from "node:fs";
 import path from "node:path";
 import mitLicense from "spdx-license-list/licenses/MIT.json";
@@ -29,6 +24,39 @@ import { resolveTemplatesDir } from "./templates";
 /** Basenames to remove from generated projects (template-only sources). */
 const DEFAULT_FILES_TO_REMOVE_AFTER_COPY = ["instructions", "yehle.yaml"];
 
+export type WriteTemplateFilesOptions = {
+	lang: string;
+	projectSpec: string;
+	template: string;
+	filesToRemoveAfterCopy?: string[];
+	license?: { public: boolean; authorName?: string };
+};
+
+export type ApplyTemplateModificationsOptions = {
+	targetDir: string;
+	metadata: Record<string, unknown>;
+	isPublic: boolean;
+	publicOnlyFiles: string[];
+	stripJsonKeys?: Array<{ file: string; key: string }>;
+};
+
+export type WriteInstructionFn = (
+	targetDir: string,
+	name: string,
+	content: string,
+	ideFormat: string,
+	category: InstructionCategory,
+	frontmatter: RuleFrontmatter,
+) => Promise<string>;
+
+export type AddProjectInstructionsContext = {
+	lang: string;
+	projectSpec: string;
+	template: string;
+	includeInstructions?: boolean;
+	instructionsIdeFormat?: string;
+};
+
 /**
  * Creates the project directory based on the provided project name.
  * @param cwd - Current working directory (e.g., process.cwd()).
@@ -43,23 +71,6 @@ export async function createProjectDirectory(
 	await ensureDirAsync(targetDir);
 	return targetDir;
 }
-
-/**
- * Options for writing template files following the standard hierarchy:
- * shared → lang/shared → projectSpec/shared → projectSpec/template.
- */
-export type WriteTemplateFilesOptions = {
-	/** Programming language (e.g. typescript). */
-	lang: string;
-	/** Project type (e.g. package, chrome-extension, monorepo). */
-	projectSpec: string;
-	/** Template name within the project spec. */
-	template: string;
-	/** Additional basenames to remove after copy; merged with defaults (instructions, yehle.yaml). */
-	filesToRemoveAfterCopy?: string[];
-	/** When set, write MIT LICENSE when public is true and authorName is provided. */
-	license?: { public: boolean; authorName?: string };
-};
 
 /**
  * Write template files into the target directory following the hierarchy:
@@ -111,22 +122,6 @@ export async function writeTemplateFiles(
 }
 
 /**
- * Options for applying template modifications (mustache render, file removal, config tweaks).
- */
-export type ApplyTemplateModificationsOptions = {
-	/** Absolute path to the project root. */
-	targetDir: string;
-	/** Metadata for mustache interpolation. */
-	metadata: Record<string, unknown>;
-	/** When false, remove the listed public-only files. */
-	isPublic: boolean;
-	/** Basenames of files to remove when not public. */
-	publicOnlyFiles: string[];
-	/** Optional: file path (relative to targetDir) and key to strip from JSON (e.g. biome.json, "root"). */
-	stripJsonKeys?: Array<{ file: string; key: string }>;
-};
-
-/**
  * Apply template modifications: render mustache templates, remove public-only files when not public,
  * and optionally strip keys from JSON config files.
  *
@@ -136,43 +131,15 @@ export type ApplyTemplateModificationsOptions = {
 export async function applyTemplateModifications(
 	options: ApplyTemplateModificationsOptions,
 ): Promise<void> {
-	const { targetDir, metadata, isPublic, publicOnlyFiles, stripJsonKeys } =
-		options;
+	await renderMustacheTemplates(options.targetDir, options.metadata);
 
-	await renderMustacheTemplates(targetDir, metadata);
+	if (!options.isPublic && options.publicOnlyFiles.length > 0)
+		await removeFilesByBasename(options.targetDir, options.publicOnlyFiles);
 
-	if (!isPublic && publicOnlyFiles.length > 0) {
-		await removeFilesByBasename(targetDir, publicOnlyFiles);
-	}
-
-	for (const { file, key } of stripJsonKeys ?? []) {
-		await stripJsonKey(path.join(targetDir, file), key);
+	for (const { file, key } of options.stripJsonKeys ?? []) {
+		await stripJsonKey(path.join(options.targetDir, file), key);
 	}
 }
-
-/**
- * Callback to write an instruction file to the project.
- * Matches the signature of writeInstructionToFile from resources/instructions/ide-formats.
- */
-export type WriteInstructionFn = (
-	targetDir: string,
-	name: string,
-	content: string,
-	ideFormat: string,
-	category: InstructionCategory,
-	frontmatter: RuleFrontmatter,
-) => Promise<string>;
-
-/**
- * Context for adding project instructions. Shared across package, chrome-extension, monorepo, etc.
- */
-export type AddProjectInstructionsContext = {
-	lang: string;
-	projectSpec: string;
-	template: string;
-	includeInstructions?: boolean;
-	instructionsIdeFormat?: string;
-};
 
 /**
  * Add agent instructions to a project when includeInstructions is true and instructionsIdeFormat is set.

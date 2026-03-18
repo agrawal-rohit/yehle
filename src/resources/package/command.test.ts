@@ -78,12 +78,15 @@ vi.mock("../../resources/package/config", () => ({
 	Language: { TYPESCRIPT: "typescript" },
 }));
 
+vi.mock("../../core/setup", () => ({
+	createProjectDirectory: vi.fn(),
+	getRequiredGithubSecrets: vi.fn(),
+	writeTemplateFiles: vi.fn(),
+}));
+
 vi.mock("../../resources/package/setup", () => ({
 	addPackageInstructions: vi.fn(),
 	applyTemplateModifications: vi.fn(),
-	createPackageDirectory: vi.fn(),
-	getRequiredGithubSecrets: vi.fn(),
-	writePackageTemplateFiles: vi.fn(),
 }));
 
 import fs from "node:fs";
@@ -94,21 +97,19 @@ import tasks from "../../cli/tasks";
 import { Language } from "../../core/constants";
 import { initGitRepo, makeInitialCommit } from "../../core/git";
 import { ensurePackageManager, getInstallScript } from "../../core/pkg-manager";
+import {
+	createProjectDirectory,
+	getRequiredGithubSecrets,
+	writeTemplateFiles,
+} from "../../core/setup";
 import { toSlug } from "../../core/utils";
-
 // Import after mocks
 import { generatePackage } from "./command";
 import {
 	type GeneratePackageConfiguration,
 	getGeneratePackageConfiguration,
 } from "./config";
-import {
-	addPackageInstructions,
-	applyTemplateModifications,
-	createPackageDirectory,
-	getRequiredGithubSecrets,
-	writePackageTemplateFiles,
-} from "./setup";
+import { addPackageInstructions, applyTemplateModifications } from "./setup";
 
 describe("resources/package/command", () => {
 	beforeEach(() => {
@@ -135,10 +136,10 @@ describe("resources/package/command", () => {
 			vi.mocked(path.resolve).mockReturnValue("/path/to/test-package");
 			vi.mocked(fs.existsSync).mockReturnValue(false);
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue(
+			vi.mocked(createProjectDirectory).mockResolvedValue(
 				"/path/to/test-package",
 			);
-			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
+			vi.mocked(writeTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
 			vi.mocked(makeInitialCommit).mockResolvedValue(undefined);
@@ -169,10 +170,10 @@ describe("resources/package/command", () => {
 			vi.mocked(path.resolve).mockReturnValue("/path/to/my-package");
 			vi.mocked(fs.existsSync).mockReturnValue(false);
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue(
+			vi.mocked(createProjectDirectory).mockResolvedValue(
 				"/path/to/my-package",
 			);
-			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
+			vi.mocked(writeTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
 			vi.mocked(makeInitialCommit).mockResolvedValue(undefined);
@@ -222,10 +223,10 @@ describe("resources/package/command", () => {
 				throw new Error("Permission denied");
 			});
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue(
+			vi.mocked(createProjectDirectory).mockResolvedValue(
 				"/path/to/test-package",
 			);
-			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
+			vi.mocked(writeTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
 			vi.mocked(makeInitialCommit).mockResolvedValue(undefined);
@@ -249,10 +250,10 @@ describe("resources/package/command", () => {
 			vi.mocked(path.resolve).mockReturnValue("/path/to/test-package");
 			vi.mocked(fs.existsSync).mockReturnValue(false);
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue(
+			vi.mocked(createProjectDirectory).mockResolvedValue(
 				"/path/to/test-package",
 			);
-			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
+			vi.mocked(writeTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
 			vi.mocked(makeInitialCommit).mockResolvedValue(undefined);
@@ -283,10 +284,10 @@ describe("resources/package/command", () => {
 			vi.mocked(path.resolve).mockReturnValue("/path/to/test-package");
 			vi.mocked(fs.existsSync).mockReturnValue(false);
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue(
+			vi.mocked(createProjectDirectory).mockResolvedValue(
 				"/path/to/test-package",
 			);
-			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
+			vi.mocked(writeTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
 			vi.mocked(makeInitialCommit).mockResolvedValue(undefined);
@@ -308,13 +309,17 @@ describe("resources/package/command", () => {
 					}),
 				]),
 			);
-			expect(createPackageDirectory).toHaveBeenCalledWith(
+			expect(createProjectDirectory).toHaveBeenCalledWith(
 				process.cwd(),
 				"test-package",
 			);
-			expect(writePackageTemplateFiles).toHaveBeenCalledWith(
+			expect(writeTemplateFiles).toHaveBeenCalledWith(
 				"/path/to/test-package",
-				mockConfig,
+				expect.objectContaining({
+					lang: mockConfig.lang,
+					projectSpec: "package",
+					template: mockConfig.template,
+				}),
 			);
 			expect(applyTemplateModifications).toHaveBeenCalledWith(
 				"/path/to/test-package",
@@ -336,10 +341,10 @@ describe("resources/package/command", () => {
 			vi.mocked(path.resolve).mockReturnValue("/path/to/test-package");
 			vi.mocked(fs.existsSync).mockReturnValue(false);
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue(
+			vi.mocked(createProjectDirectory).mockResolvedValue(
 				"/path/to/test-package",
 			);
-			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
+			vi.mocked(writeTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
 			vi.mocked(makeInitialCommit).mockResolvedValue(undefined);
@@ -380,10 +385,10 @@ describe("resources/package/command", () => {
 			vi.mocked(path.resolve).mockReturnValue("/path/to/test-package");
 			vi.mocked(fs.existsSync).mockReturnValue(false);
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue(
+			vi.mocked(createProjectDirectory).mockResolvedValue(
 				"/path/to/test-package",
 			);
-			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
+			vi.mocked(writeTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
 			vi.mocked(makeInitialCommit).mockResolvedValue(undefined);
@@ -429,10 +434,10 @@ describe("resources/package/command", () => {
 			vi.mocked(path.resolve).mockReturnValue("/path/to/test-package");
 			vi.mocked(fs.existsSync).mockReturnValue(false);
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue(
+			vi.mocked(createProjectDirectory).mockResolvedValue(
 				"/path/to/test-package",
 			);
-			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
+			vi.mocked(writeTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
 			vi.mocked(makeInitialCommit).mockResolvedValue(undefined);
@@ -461,10 +466,10 @@ describe("resources/package/command", () => {
 			vi.mocked(path.resolve).mockReturnValue("/path/to/test-package");
 			vi.mocked(fs.existsSync).mockReturnValue(false);
 			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
-			vi.mocked(createPackageDirectory).mockResolvedValue(
+			vi.mocked(createProjectDirectory).mockResolvedValue(
 				"/path/to/test-package",
 			);
-			vi.mocked(writePackageTemplateFiles).mockResolvedValue(undefined);
+			vi.mocked(writeTemplateFiles).mockResolvedValue(undefined);
 			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
 			vi.mocked(initGitRepo).mockResolvedValue(undefined);
 			vi.mocked(makeInitialCommit).mockResolvedValue(undefined);
