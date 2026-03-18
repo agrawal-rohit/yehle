@@ -18,7 +18,7 @@ export function toSlug(value: string): string {
 	// Normalize case/whitespace and extract last path-like segment (supports URLs and Windows paths)
 	const normalized = value.trim().toLowerCase();
 	const segments = normalized.split(/[\\/]+/).filter(Boolean);
-	let base = segments.length ? segments[segments.length - 1] : normalized;
+	let base = segments.at(-1) ?? normalized;
 
 	// Handle npm scopes like "@scope/name" (base will typically be "name", but keep safe)
 	base = base.replace(/^@/, "");

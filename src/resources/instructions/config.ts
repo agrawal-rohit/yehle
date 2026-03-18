@@ -1,4 +1,6 @@
 import prompts from "../../cli/prompts";
+import tasks from "../../cli/tasks";
+import { IS_LOCAL_MODE } from "../../core/constants";
 import {
 	getInstructionWithFrontmatter,
 	InstructionCategory,
@@ -15,6 +17,108 @@ const SKIP_OPTION_VALUE = "";
 
 /** Label for the skip option in multi-select prompts. */
 const SKIP_OPTION_LABEL = "None";
+
+type SelectOption = { label: string; value: string };
+
+/**
+ * Runs a potentially slow async operation inside the CLI task renderer
+ * (remote mode only) so the terminal doesn't appear "stuck".
+ * @param goalTitle - Title shown by listr2 while the operation runs.
+ * @param fn - Async function to run.
+ * @returns The resolved value of `fn`.
+ */
+async function withLoadingTask<T>(
+	goalTitle: string,
+	fn: () => Promise<T>,
+): Promise<T> {
+	if (IS_LOCAL_MODE) return fn();
+
+	let result!: T;
+	await tasks.runWithTasks(goalTitle, async () => {
+		result = await fn();
+	});
+	return result;
+}
+
+/**
+ * Builds select options including the common "None" skip option.
+ * @param names - Option values to include (order preserved).
+ * @param toLabel - Maps a name to its human-readable label.
+ * @returns Options suitable for `prompts.selectInput` / `prompts.multiselectInput`.
+ */
+function buildSkipAndOptions(
+	names: readonly string[],
+	toLabel: (name: string) => string,
+): SelectOption[] {
+	return [
+		{ label: SKIP_OPTION_LABEL, value: SKIP_OPTION_VALUE },
+		...names.map((name) => ({ label: toLabel(name), value: name })),
+	];
+}
+
+/**
+ * Convert an instruction basename into its human label.
+ * @param name - Instruction basename (kebab-case).
+ * @returns Human readable label (Title Case words).
+ */
+function instructionNameToOptionLabel(name: string): string {
+	return capitalizeFirstLetter(name.replaceAll("-", " "));
+}
+
+/**
+ * Create `InstructionSelection` objects for instruction names.
+ * Fetches all frontmatters concurrently.
+ * @param category - Instruction category.
+ * @param names - Instruction basenames (order preserved).
+ * @param context - Optional context used for category scoping.
+ * @returns Array of instruction selections in `names` order.
+ */
+async function getInstructionSelectionsForNames(
+	category: InstructionCategory,
+	names: readonly string[],
+	context?: InstructionContext,
+): Promise<InstructionSelection[]> {
+	const fetched = await Promise.all(
+		names.map(async (instruction) => {
+			const { frontmatter } = context
+				? await getInstructionWithFrontmatter(category, instruction, context)
+				: await getInstructionWithFrontmatter(category, instruction);
+			return { instruction, frontmatter };
+		}),
+	);
+
+	return fetched.map(({ instruction, frontmatter }) => ({
+		category,
+		instruction,
+		frontmatter,
+		...(context ? { context } : {}),
+	}));
+}
+
+/**
+ * Prompt for multi-select of an unscoped instruction category
+ * (essential/tooling/skills/subagents).
+ * @param category - Instruction category.
+ * @param message - Prompt message.
+ * @returns Chosen instruction selections with normalized frontmatter.
+ */
+async function promptUnscopedMultiSelectInstructionSelections(
+	category: InstructionCategory,
+	message: string,
+): Promise<InstructionSelection[]> {
+	const names = await listAvailableInstructions(category);
+	if (names.length === 0) return [];
+
+	const options = buildSkipAndOptions(names, instructionNameToOptionLabel);
+	const raw = await prompts.multiselectInput(message, { options });
+	const chosen = raw.filter((v) => v !== SKIP_OPTION_VALUE);
+	if (chosen.length === 0) return [];
+
+	return await withLoadingTask(
+		`Processing ${category} instruction choices`,
+		async () => await getInstructionSelectionsForNames(category, chosen),
+	);
+}
 
 /** A single instruction selection with frontmatter for writing to disk. */
 export type InstructionSelection = {
@@ -69,7 +173,10 @@ async function getGranularInstructionsSelections(): Promise<
 > {
 	const all: InstructionSelection[] = [];
 
-	const essential = await promptEssentialSelections();
+	const essential = await promptUnscopedMultiSelectInstructionSelections(
+		InstructionCategory.ESSENTIAL,
+		"Which recommended instructions do you want? (we'll add always-on security + coding principles + SDLC workflow guidance for most projects)",
+	);
 	all.push(...essential);
 
 	const langResult = await promptLanguageSelections();
@@ -81,48 +188,25 @@ async function getGranularInstructionsSelections(): Promise<
 	);
 	all.push(...projectSpecResult.selections);
 
-	const tooling = await promptToolingSelections();
+	const tooling = await promptUnscopedMultiSelectInstructionSelections(
+		InstructionCategory.TOOLING,
+		"Which tools or frameworks are you using in this repo? (we'll add best-practice instructions for each tool)",
+	);
 	all.push(...tooling);
 
-	const agents = await promptAgentsSelections();
+	const agents = await promptUnscopedMultiSelectInstructionSelections(
+		InstructionCategory.SUBAGENTS,
+		"Which subagents do you want to add? (we'll add helpful subagents like researcher, planner, implementer, verifier)",
+	);
 	all.push(...agents);
 
-	const skills = await promptSkillsSelections();
+	const skills = await promptUnscopedMultiSelectInstructionSelections(
+		InstructionCategory.SKILLS,
+		"Which skills or workflows do you want to add? (we'll add multi-step workflows like deployment flows, incident playbooks, migrations, etc.)",
+	);
 	all.push(...skills);
 
 	return all;
-}
-
-/** Prompt for essential instructions (multi-select). User may select None to skip. */
-async function promptEssentialSelections(): Promise<InstructionSelection[]> {
-	const names = await listAvailableInstructions(InstructionCategory.ESSENTIAL);
-	if (names.length === 0) return [];
-
-	const options = [
-		{ label: SKIP_OPTION_LABEL, value: SKIP_OPTION_VALUE },
-		...names.map((name) => ({
-			label: capitalizeFirstLetter(name.replaceAll("-", " ")),
-			value: name,
-		})),
-	];
-	const raw = await prompts.multiselectInput(
-		"Which recommended instructions do you want? (we'll add always-on security + coding principles + SDLC workflow guidance for most projects)",
-		{ options },
-	);
-	const chosen = raw.filter((v) => v !== SKIP_OPTION_VALUE);
-	const selections: InstructionSelection[] = [];
-	for (const name of chosen) {
-		const { frontmatter } = await getInstructionWithFrontmatter(
-			InstructionCategory.ESSENTIAL,
-			name,
-		);
-		selections.push({
-			category: InstructionCategory.ESSENTIAL,
-			instruction: name,
-			frontmatter,
-		});
-	}
-	return selections;
 }
 
 /** Prompt for languages (multi-select) and return language instructions for selected langs. User may select None to skip. */
@@ -132,13 +216,9 @@ async function promptLanguageSelections(): Promise<{
 	langOptions: { label: string; value: string }[];
 }> {
 	const languageNames = await listLanguageNames();
-	const langOptions = [
-		{ label: SKIP_OPTION_LABEL, value: SKIP_OPTION_VALUE },
-		...languageNames.map((name) => ({
-			label: capitalizeFirstLetter(name),
-			value: name,
-		})),
-	];
+	const langOptions = buildSkipAndOptions(languageNames, (name) =>
+		capitalizeFirstLetter(name),
+	);
 	if (languageNames.length === 0)
 		return { selections: [], chosenLangs: [], langOptions: [] };
 
@@ -172,24 +252,27 @@ async function promptLanguageSelections(): Promise<{
 		{ options: langOptions },
 	);
 	const chosenLangs = raw.filter((v) => v !== SKIP_OPTION_VALUE);
-	const selections: InstructionSelection[] = [];
-	for (const lang of chosenLangs) {
-		const names =
-			instructionNamesByLang.find((v) => v.lang === lang)?.names ?? [];
-		for (const name of names) {
-			const { frontmatter } = await getInstructionWithFrontmatter(
-				InstructionCategory.LANGUAGE,
-				name,
-				{ lang },
-			);
-			selections.push({
-				category: InstructionCategory.LANGUAGE,
-				instruction: name,
-				frontmatter,
-				context: { lang },
-			});
-		}
-	}
+	const selections =
+		chosenLangs.length === 0
+			? []
+			: await withLoadingTask(
+					"Processing language instruction choices",
+					async () => {
+						const selectionsByLang = await Promise.all(
+							chosenLangs.map(async (lang) => {
+								const names =
+									instructionNamesByLang.find((v) => v.lang === lang)?.names ??
+									[];
+								return await getInstructionSelectionsForNames(
+									InstructionCategory.LANGUAGE,
+									names,
+									{ lang },
+								);
+							}),
+						);
+						return selectionsByLang.flat();
+					},
+				);
 	return {
 		selections,
 		chosenLangs,
@@ -235,13 +318,10 @@ async function promptProjectSpecSelections(
 			chosenProjectSpec: undefined,
 		};
 
-	const options = [
-		{ label: SKIP_OPTION_LABEL, value: SKIP_OPTION_VALUE },
-		...availableProjectSpecs.map((v) => ({
-			label: capitalizeFirstLetter(v.projectSpec.replaceAll("-", " ")),
-			value: v.projectSpec,
-		})),
-	];
+	const options = buildSkipAndOptions(
+		availableProjectSpecs.map((v) => v.projectSpec),
+		(spec) => capitalizeFirstLetter(spec.replaceAll("-", " ")),
+	);
 	const chosenProjectSpec = await prompts.selectInput(
 		"What are you building? (we'll add instructions based on your project constraints and architecture)",
 		{ options },
@@ -257,122 +337,27 @@ async function promptProjectSpecSelections(
 			lang: projectSpecLang,
 			projectSpec: chosenProjectSpec,
 		}));
-	const selections: InstructionSelection[] = [];
-	for (const name of names) {
-		const { frontmatter } = await getInstructionWithFrontmatter(
-			InstructionCategory.PROJECT_SPEC,
-			name,
-			{ lang: projectSpecLang, projectSpec: chosenProjectSpec },
-		);
-		selections.push({
-			category: InstructionCategory.PROJECT_SPEC,
-			instruction: name,
-			frontmatter,
-			context: { lang: projectSpecLang, projectSpec: chosenProjectSpec },
-		});
-	}
+	const context: InstructionContext = {
+		lang: projectSpecLang,
+		projectSpec: chosenProjectSpec,
+	};
+	const selections =
+		names.length === 0
+			? []
+			: await withLoadingTask(
+					"Processing project-spec instruction choices",
+					async () =>
+						await getInstructionSelectionsForNames(
+							InstructionCategory.PROJECT_SPEC,
+							names,
+							context,
+						),
+				);
 	return {
 		selections,
 		projectSpecLang,
 		chosenProjectSpec,
 	};
-}
-
-/** Prompt for tooling instructions (multi-select). User may select None to skip. */
-async function promptToolingSelections(): Promise<InstructionSelection[]> {
-	const names = await listAvailableInstructions(InstructionCategory.TOOLING);
-	if (names.length === 0) return [];
-
-	const options = [
-		{ label: SKIP_OPTION_LABEL, value: SKIP_OPTION_VALUE },
-		...names.map((name) => ({
-			label: capitalizeFirstLetter(name.replaceAll("-", " ")),
-			value: name,
-		})),
-	];
-	const raw = await prompts.multiselectInput(
-		"Which tools or frameworks are you using in this repo? (we'll add best-practice instructions for each tool)",
-		{ options },
-	);
-	const chosen = raw.filter((v) => v !== SKIP_OPTION_VALUE);
-	const selections: InstructionSelection[] = [];
-	for (const name of chosen) {
-		const { frontmatter } = await getInstructionWithFrontmatter(
-			InstructionCategory.TOOLING,
-			name,
-		);
-		selections.push({
-			category: InstructionCategory.TOOLING,
-			instruction: name,
-			frontmatter,
-		});
-	}
-	return selections;
-}
-
-/** Prompt for skills (multi-select). User may select None to skip. */
-async function promptSkillsSelections(): Promise<InstructionSelection[]> {
-	const names = await listAvailableInstructions(InstructionCategory.SKILLS);
-	if (names.length === 0) return [];
-
-	const options = [
-		{ label: SKIP_OPTION_LABEL, value: SKIP_OPTION_VALUE },
-		...names.map((name) => ({
-			label: capitalizeFirstLetter(name.replaceAll("-", " ")),
-			value: name,
-		})),
-	];
-	const raw = await prompts.multiselectInput(
-		"Which skills or workflows do you want to add? (we'll add multi-step workflows like deployment flows, incident playbooks, migrations, etc.)",
-		{ options },
-	);
-	const chosen = raw.filter((v) => v !== SKIP_OPTION_VALUE);
-	const selections: InstructionSelection[] = [];
-	for (const name of chosen) {
-		const { frontmatter } = await getInstructionWithFrontmatter(
-			InstructionCategory.SKILLS,
-			name,
-		);
-		selections.push({
-			category: InstructionCategory.SKILLS,
-			instruction: name,
-			frontmatter,
-		});
-	}
-	return selections;
-}
-
-/** Prompt for subagents (multi-select). User may select None to skip. */
-async function promptAgentsSelections(): Promise<InstructionSelection[]> {
-	const names = await listAvailableInstructions(InstructionCategory.SUBAGENTS);
-	if (names.length === 0) return [];
-
-	const options = [
-		{ label: SKIP_OPTION_LABEL, value: SKIP_OPTION_VALUE },
-		...names.map((name) => ({
-			label: capitalizeFirstLetter(name.replaceAll("-", " ")),
-			value: name,
-		})),
-	];
-
-	const raw = await prompts.multiselectInput(
-		"Which subagents do you want to add? (we'll add helpful subagents like researcher, planner, implementer, verifier)",
-		{ options },
-	);
-	const chosen = raw.filter((v) => v !== SKIP_OPTION_VALUE);
-	const selections: InstructionSelection[] = [];
-	for (const name of chosen) {
-		const { frontmatter } = await getInstructionWithFrontmatter(
-			InstructionCategory.SUBAGENTS,
-			name,
-		);
-		selections.push({
-			category: InstructionCategory.SUBAGENTS,
-			instruction: name,
-			frontmatter,
-		});
-	}
-	return selections;
 }
 
 /**

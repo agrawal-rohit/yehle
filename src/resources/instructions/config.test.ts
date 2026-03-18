@@ -10,6 +10,16 @@ vi.mock("../../cli/prompts", () => ({
 	},
 }));
 
+vi.mock("../../cli/tasks", () => ({
+	default: {
+		runWithTasks: vi.fn(
+			async (_goalTitle: string, task?: () => Promise<void>) => {
+				if (task) await task();
+			},
+		),
+	},
+}));
+
 vi.mock("../../core/instructions", () => ({
 	InstructionCategory: {
 		ESSENTIAL: "essential",
@@ -212,6 +222,72 @@ describe("resources/instructions/config", () => {
 			});
 		});
 
+		it("should return no language selections when user selects None", async () => {
+			vi.mocked(listAvailableInstructions).mockImplementation((cat) => {
+				if (cat === InstructionCategory.LANGUAGE)
+					return Promise.resolve(["typescript-best-practices"]);
+				return Promise.resolve([]);
+			});
+			vi.mocked(listLanguageNames).mockResolvedValue(["typescript"]);
+			vi.mocked(listProjectSpecNames).mockResolvedValue([]);
+			mockMultiselectInput.mockImplementation((msg: string) => {
+				if (msg.includes("languages")) return Promise.resolve([""]);
+				return Promise.resolve([]);
+			});
+			vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
+				content: "body",
+				frontmatter: {},
+			});
+
+			const result = await getGenerateInstructionsConfiguration({
+				ideFormat: "cursor",
+			});
+
+			const langSelections = result.selections.filter(
+				(s: InstructionSelection) =>
+					s.category === InstructionCategory.LANGUAGE,
+			);
+			expect(langSelections).toHaveLength(0);
+			expect(getInstructionWithFrontmatter).not.toHaveBeenCalled();
+		});
+
+		it("should fall back to empty language names when selected lang has no precomputed choices", async () => {
+			vi.mocked(listAvailableInstructions).mockImplementation(
+				(cat: InstructionCategory, ctx?: unknown) => {
+					if (cat === InstructionCategory.ESSENTIAL) return Promise.resolve([]);
+					if (
+						cat === InstructionCategory.LANGUAGE &&
+						(ctx as { lang?: string })?.lang === "typescript"
+					)
+						return Promise.resolve(["typescript-best-practices"]);
+					if (cat === InstructionCategory.LANGUAGE) return Promise.resolve([]);
+					return Promise.resolve([]);
+				},
+			);
+			vi.mocked(listLanguageNames).mockResolvedValue(["typescript"]);
+			vi.mocked(listProjectSpecNames).mockResolvedValue([]);
+			mockMultiselectInput.mockImplementation((msg: string) => {
+				if (msg.includes("languages")) return Promise.resolve(["unknown-lang"]);
+				return Promise.resolve([]);
+			});
+
+			vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
+				content: "body",
+				frontmatter: {},
+			});
+
+			const result = await getGenerateInstructionsConfiguration({
+				ideFormat: "cursor",
+			});
+
+			const langSelections = result.selections.filter(
+				(s: InstructionSelection) =>
+					s.category === InstructionCategory.LANGUAGE,
+			);
+			expect(langSelections).toHaveLength(0);
+			expect(getInstructionWithFrontmatter).not.toHaveBeenCalled();
+		});
+
 		it("should return project-spec and template selections when user selects them", async () => {
 			// Call order: ESSENTIAL, LANGUAGE (per lang), PROJECT_SPEC names
 			vi.mocked(listAvailableInstructions)
@@ -324,6 +400,43 @@ describe("resources/instructions/config", () => {
 				"app-package",
 				{ lang: "typescript", projectSpec: "app" },
 			);
+		});
+
+		it("should return no project-spec selections when selected spec has no instruction names", async () => {
+			vi.mocked(listAvailableInstructions).mockImplementation(
+				(cat: InstructionCategory, ctx?: unknown) => {
+					if (cat === InstructionCategory.ESSENTIAL) return Promise.resolve([]);
+					if (cat === InstructionCategory.LANGUAGE) return Promise.resolve([]);
+					if (cat === InstructionCategory.PROJECT_SPEC) {
+						const projectSpec = (ctx as { projectSpec?: string })?.projectSpec;
+						if (projectSpec === "package")
+							return Promise.resolve(["ts-package"]);
+						// For the selected spec ("app"), there are no instructions.
+						return Promise.resolve([]);
+					}
+					return Promise.resolve([]);
+				},
+			);
+			vi.mocked(listLanguageNames).mockResolvedValue(["typescript"]);
+			vi.mocked(listProjectSpecNames).mockResolvedValue(["package", "app"]);
+			// Select a spec that's not in the filtered options.
+			mockSelectInput.mockResolvedValueOnce("app");
+
+			vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
+				content: "body",
+				frontmatter: {},
+			});
+
+			const result = await getGenerateInstructionsConfiguration({
+				ideFormat: "cursor",
+			});
+
+			const projectSpecSelections = result.selections.filter(
+				(s: InstructionSelection) =>
+					s.category === InstructionCategory.PROJECT_SPEC,
+			);
+			expect(projectSpecSelections).toHaveLength(0);
+			expect(getInstructionWithFrontmatter).not.toHaveBeenCalled();
 		});
 
 		it("should return tooling selections when user selects from tooling list", async () => {
