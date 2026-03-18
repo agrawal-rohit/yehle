@@ -12,6 +12,7 @@ import {
 	removeFilesByBasename,
 	removeMatchingFilesRecursively,
 	renderMustacheTemplates,
+	stripJsonKey,
 	writeFileAsync,
 } from "./fs";
 
@@ -87,6 +88,31 @@ describe("core/fs", () => {
 
 			const data = fs.readFileSync(file, "utf8");
 			expect(data).toBe("new");
+		});
+	});
+
+	describe("stripJsonKey", () => {
+		it("removes the specified key from a JSON file", async () => {
+			const root = makeTempDir();
+			const file = path.join(root, "config.json");
+			fs.writeFileSync(
+				file,
+				JSON.stringify({ root: false, other: "value" }, null, "\t"),
+				"utf8",
+			);
+
+			await stripJsonKey(file, "root");
+
+			const data = JSON.parse(fs.readFileSync(file, "utf8"));
+			expect(data).toEqual({ other: "value" });
+			expect(data.root).toBeUndefined();
+		});
+
+		it("no-ops when file does not exist", async () => {
+			const root = makeTempDir();
+			const file = path.join(root, "missing.json");
+
+			await expect(stripJsonKey(file, "root")).resolves.toBeUndefined();
 		});
 	});
 

@@ -33,6 +33,7 @@ vi.mock("../../core/fs", () => ({
 	isDirAsync: vi.fn(),
 	removeFilesByBasename: vi.fn(),
 	renderMustacheTemplates: vi.fn(),
+	stripJsonKey: vi.fn(),
 	writeFileAsync: vi.fn(),
 }));
 
@@ -94,6 +95,7 @@ import {
 	isDirAsync,
 	removeFilesByBasename,
 	renderMustacheTemplates,
+	stripJsonKey,
 	writeFileAsync,
 } from "../../core/fs";
 import { resolveTemplatesDir } from "../../core/templates";
@@ -681,24 +683,11 @@ describe("resources/package/setup", () => {
 			};
 			const packageManagerVersion = "pnpm@9.0.0";
 			const biomeJsonPath = "/path/to/package/biome.json";
-			const originalConfig = {
-				root: false,
-				$schema: "https://biomejs.dev/schemas/2.3.10/schema.json",
-				formatter: { enabled: true },
-			};
-			const expectedConfig = {
-				$schema: "https://biomejs.dev/schemas/2.3.10/schema.json",
-				formatter: { enabled: true },
-			};
 
 			vi.mocked(resolveTemplatesDir).mockResolvedValue("/template/dir");
 			vi.mocked(isDirAsync).mockResolvedValue(false);
 			vi.mocked(renderMustacheTemplates).mockResolvedValue();
-			vi.mocked(fs.promises.access).mockResolvedValue();
-			vi.mocked(fs.promises.readFile).mockResolvedValue(
-				JSON.stringify(originalConfig, null, "\t"),
-			);
-			vi.mocked(fs.promises.writeFile).mockResolvedValue();
+			vi.mocked(stripJsonKey).mockResolvedValue();
 
 			await applyTemplateModifications(
 				targetDir,
@@ -706,15 +695,10 @@ describe("resources/package/setup", () => {
 				packageManagerVersion,
 			);
 
-			expect(fs.promises.access).toHaveBeenCalledWith(biomeJsonPath);
-			expect(fs.promises.readFile).toHaveBeenCalledWith(biomeJsonPath, "utf8");
-			expect(fs.promises.writeFile).toHaveBeenCalledWith(
-				biomeJsonPath,
-				`${JSON.stringify(expectedConfig, null, "\t")}\n`,
-			);
+			expect(stripJsonKey).toHaveBeenCalledWith(biomeJsonPath, "root");
 		});
 
-		it("should do nothing if biome.json does not exist", async () => {
+		it("should call stripJsonKey for biome.json even when file does not exist", async () => {
 			const targetDir = "/path/to/package";
 			const generateConfig = {
 				lang: Language.TYPESCRIPT,
@@ -727,7 +711,7 @@ describe("resources/package/setup", () => {
 			vi.mocked(resolveTemplatesDir).mockResolvedValue("/template/dir");
 			vi.mocked(isDirAsync).mockResolvedValue(false);
 			vi.mocked(renderMustacheTemplates).mockResolvedValue();
-			vi.mocked(fs.promises.access).mockRejectedValue(new Error("ENOENT"));
+			vi.mocked(stripJsonKey).mockResolvedValue();
 
 			await applyTemplateModifications(
 				targetDir,
@@ -735,11 +719,10 @@ describe("resources/package/setup", () => {
 				packageManagerVersion,
 			);
 
-			expect(fs.promises.access).toHaveBeenCalledWith(
+			expect(stripJsonKey).toHaveBeenCalledWith(
 				"/path/to/package/biome.json",
+				"root",
 			);
-			expect(fs.promises.readFile).not.toHaveBeenCalled();
-			expect(fs.promises.writeFile).not.toHaveBeenCalled();
 		});
 	});
 

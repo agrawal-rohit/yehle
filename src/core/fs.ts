@@ -147,6 +147,31 @@ export async function removeFilesByBasename(
 }
 
 /**
+ * Read a JSON file, remove a key from the root object if present, and write it back.
+ * No-op when the file does not exist or is invalid JSON.
+ * @param filePath - Absolute path to the JSON file.
+ * @param key - Key to remove from the root object.
+ * @returns Promise that resolves when the file has been updated, or when the file is missing/invalid.
+ */
+export async function stripJsonKey(
+	filePath: string,
+	key: string,
+): Promise<void> {
+	try {
+		await fs.promises.access(filePath);
+		const content = await fs.promises.readFile(filePath, "utf8");
+		const config = JSON.parse(content) as Record<string, unknown>;
+		delete config[key];
+		await fs.promises.writeFile(
+			filePath,
+			`${JSON.stringify(config, null, "\t")}\n`,
+		);
+	} catch {
+		// File missing or invalid JSON; ignore
+	}
+}
+
+/**
  * Recursively find all *.mustache.* files in targetDir, render them using the provided data,
  * write the rendered content to the same path with ".mustache." removed, and remove the original.
  * Example: package.mustache.json -> package.json, config.mustache.ts -> config.ts
