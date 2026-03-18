@@ -42,6 +42,7 @@ export const INSTRUCTION_CATEGORIES: InstructionCategory[] = [
 	InstructionCategory.LANGUAGE,
 	InstructionCategory.PROJECT_SPEC,
 	InstructionCategory.TOOLING,
+	InstructionCategory.SUBAGENTS,
 	InstructionCategory.SKILLS,
 ];
 
@@ -83,6 +84,9 @@ async function getGranularInstructionsSelections(): Promise<
 	const tooling = await promptToolingSelections();
 	all.push(...tooling);
 
+	const agents = await promptAgentsSelections();
+	all.push(...agents);
+
 	const skills = await promptSkillsSelections();
 	all.push(...skills);
 
@@ -101,7 +105,7 @@ async function promptEssentialSelections(): Promise<InstructionSelection[]> {
 		})),
 	];
 	const raw = await prompts.multiselectInput(
-		"Which recommended instructions do you want? (we'll add common for most projects like coding style, testing patterns, etc.)",
+		"Which recommended instructions do you want? (we'll add always-on security + coding principles + SDLC workflow guidance for most projects)",
 		{ options },
 	);
 	const chosen = raw.filter((v) => v !== SKIP_OPTION_VALUE);
@@ -268,7 +272,7 @@ async function promptSkillsSelections(): Promise<InstructionSelection[]> {
 		})),
 	];
 	const raw = await prompts.multiselectInput(
-		"Which skills or workflows do you want to add? (we'll add multi-step workflows like deployment flows, documentation generation, etc.)",
+		"Which skills or workflows do you want to add? (we'll add multi-step workflows like deployment flows, incident playbooks, migrations, etc.)",
 		{ options },
 	);
 	const chosen = raw.filter((v) => v !== SKIP_OPTION_VALUE);
@@ -280,6 +284,39 @@ async function promptSkillsSelections(): Promise<InstructionSelection[]> {
 		);
 		selections.push({
 			category: InstructionCategory.SKILLS,
+			instruction: name,
+			frontmatter,
+		});
+	}
+	return selections;
+}
+
+/** Prompt for subagents (multi-select). User may select None to skip. */
+async function promptAgentsSelections(): Promise<InstructionSelection[]> {
+	const names = await listAvailableInstructions(InstructionCategory.SUBAGENTS);
+	if (names.length === 0) return [];
+
+	const options = [
+		{ label: SKIP_OPTION_LABEL, value: SKIP_OPTION_VALUE },
+		...names.map((name) => ({
+			label: capitalizeFirstLetter(name.replaceAll("-", " ")),
+			value: name,
+		})),
+	];
+
+	const raw = await prompts.multiselectInput(
+		"Which subagents do you want to add? (we'll add helpful subagents like researcher, planner, implementer, verifier)",
+		{ options },
+	);
+	const chosen = raw.filter((v) => v !== SKIP_OPTION_VALUE);
+	const selections: InstructionSelection[] = [];
+	for (const name of chosen) {
+		const { frontmatter } = await getInstructionWithFrontmatter(
+			InstructionCategory.SUBAGENTS,
+			name,
+		);
+		selections.push({
+			category: InstructionCategory.SUBAGENTS,
 			instruction: name,
 			frontmatter,
 		});

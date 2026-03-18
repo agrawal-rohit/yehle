@@ -59,6 +59,7 @@ import {
 	InstructionCategory,
 	listAvailableInstructions,
 	readSkillsMapping,
+	readSubagentsMapping,
 	readToolingInstructionsMapping,
 	resolveInstructionsDir,
 } from "./instructions";
@@ -158,6 +159,22 @@ describe("core/instructions", () => {
 					"templates/instructions/skills",
 				);
 				expect(result).toBe("/local/templates/instructions/skills");
+			});
+
+			it("should resolve SUBAGENTS instructions dir", async () => {
+				vi.mocked(resolveLocalTemplatesSubpath).mockResolvedValueOnce(
+					"/local/templates/instructions/subagents",
+				);
+				vi.mocked(isDirAsync).mockResolvedValue(true);
+
+				const result = await resolveInstructionsDir(
+					InstructionCategory.SUBAGENTS,
+				);
+
+				expect(resolveLocalTemplatesSubpath).toHaveBeenCalledWith(
+					"templates/instructions/subagents",
+				);
+				expect(result).toBe("/local/templates/instructions/subagents");
 			});
 
 			it("should resolve TOOLING instructions dir", async () => {
@@ -642,6 +659,61 @@ describe("core/instructions", () => {
 			const result = await readSkillsMapping("/some/template/dir");
 
 			expect(result).toEqual([]);
+		});
+
+		describe("readSubagentsMapping", () => {
+			it("should return empty array when file does not exist", async () => {
+				mockReadFile.mockRejectedValue(new Error("ENOENT"));
+
+				const result = await readSubagentsMapping("/some/template/dir");
+
+				expect(result).toEqual([]);
+			});
+
+			it("should return empty array when YAML is invalid", async () => {
+				mockReadFile.mockResolvedValue("not: valid: yaml: [");
+
+				const result = await readSubagentsMapping("/some/template/dir");
+
+				expect(result).toEqual([]);
+			});
+
+			it("should return empty array when no subagents key", async () => {
+				mockReadFile.mockResolvedValue("otherKey: value");
+				vi.mocked(parseYaml).mockReturnValue({ otherKey: "value" });
+
+				const result = await readSubagentsMapping("/some/template/dir");
+
+				expect(result).toEqual([]);
+			});
+
+			it("should return subagents array when present", async () => {
+				mockReadFile.mockResolvedValue(
+					"subagents:\n  - researcher\n  - verifier",
+				);
+				vi.mocked(parseYaml).mockReturnValue({
+					subagents: ["researcher", "verifier"],
+				});
+
+				const result = await readSubagentsMapping("/some/template/dir");
+
+				expect(mockReadFile).toHaveBeenCalledWith(
+					"/some/template/dir/yehle.yaml",
+					"utf8",
+				);
+				expect(result).toEqual(["researcher", "verifier"]);
+			});
+
+			it("should return empty array when subagents is not an array", async () => {
+				mockReadFile.mockResolvedValue("subagents: researcher");
+				vi.mocked(parseYaml).mockReturnValue({
+					subagents: "researcher",
+				});
+
+				const result = await readSubagentsMapping("/some/template/dir");
+
+				expect(result).toEqual([]);
+			});
 		});
 	});
 });

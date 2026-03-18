@@ -14,6 +14,7 @@ vi.mock("../../core/instructions", () => ({
 	InstructionCategory: {
 		ESSENTIAL: "essential",
 		TOOLING: "tooling",
+		SUBAGENTS: "subagents",
 		SKILLS: "skills",
 		LANGUAGE: "language",
 		PROJECT_SPEC: "project-spec",
@@ -68,6 +69,7 @@ describe("resources/instructions/config", () => {
 				InstructionCategory.LANGUAGE,
 				InstructionCategory.PROJECT_SPEC,
 				InstructionCategory.TOOLING,
+				InstructionCategory.SUBAGENTS,
 				InstructionCategory.SKILLS,
 			]);
 		});
@@ -328,6 +330,46 @@ describe("resources/instructions/config", () => {
 			expect(skillSelections[0]).toMatchObject({
 				category: InstructionCategory.SKILLS,
 				instruction: "deploy-skill",
+			});
+		});
+
+		it("should return subagent selections when user selects from subagents list", async () => {
+			vi.mocked(listAvailableInstructions).mockImplementation(
+				(cat: InstructionCategory) => {
+					if (cat === InstructionCategory.SUBAGENTS)
+						return Promise.resolve(["researcher"]);
+					return Promise.resolve([]);
+				},
+			);
+			vi.mocked(listLanguageNames).mockResolvedValue([]);
+			vi.mocked(listProjectSpecNames).mockResolvedValue([]);
+
+			mockMultiselectInput.mockImplementation((msg: string) => {
+				if (msg.includes("subagents do you want to add")) {
+					return Promise.resolve(["researcher"]);
+				}
+				return Promise.resolve([]);
+			});
+
+			vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
+				content: "body",
+				frontmatter: { description: "Researcher" },
+			});
+
+			const result = await getGenerateInstructionsConfiguration({
+				ideFormat: "cursor",
+			});
+
+			const subagentSelections = result.selections.filter(
+				(s: InstructionSelection) =>
+					s.category === InstructionCategory.SUBAGENTS,
+			);
+
+			expect(subagentSelections).toHaveLength(1);
+			expect(subagentSelections[0]).toMatchObject({
+				category: InstructionCategory.SUBAGENTS,
+				instruction: "researcher",
+				frontmatter: { description: "Researcher" },
 			});
 		});
 

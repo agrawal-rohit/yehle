@@ -25,10 +25,13 @@ const TEMPLATES_SEGMENT = "templates";
  * - template: Template-specific instructions like folder structure, commands, workflows, etc.
  * - skills: Specialised, multi-step workflows that describe how to execute complex tasks end-to-end
  *           (e.g. versioned deploy flows, performance optimisation loops, incident playbooks, migrations).
+ * - subagents: Subagents are agents that are used to execute complex tasks end-to-end.
+ *              (e.g. researcher, planner, implementer, verifier).
  */
 export enum InstructionCategory {
 	ESSENTIAL = "essential",
 	TOOLING = "tooling",
+	SUBAGENTS = "subagents",
 	SKILLS = "skills",
 	LANGUAGE = "language",
 	PROJECT_SPEC = "project-spec",
@@ -50,6 +53,8 @@ export type RuleFrontmatter = {
 	description?: string;
 	paths?: string[];
 	alwaysApply?: boolean;
+	model?: string;
+	readonly?: boolean;
 };
 
 /** Result of reading an instruction file: content and frontmatter.*/
@@ -106,6 +111,12 @@ function parseInstructionFile(raw: string): InstructionWithFrontmatter {
 	if (fm.alwaysApply === true || fm.alwaysApply === false)
 		frontmatter.alwaysApply = fm.alwaysApply;
 
+	// Model configuration (used by subagents in some IDE formats)
+	if (typeof fm.model === "string") frontmatter.model = fm.model;
+
+	// Readonly capability (used by subagents in some IDE formats)
+	if (typeof fm.readonly === "boolean") frontmatter.readonly = fm.readonly;
+
 	return { content: content.trim(), frontmatter };
 }
 
@@ -147,6 +158,9 @@ function getInstructionsSubpath(
 
 		case InstructionCategory.TOOLING:
 			return `${TEMPLATES_SEGMENT}/${INSTRUCTIONS_PATH}/${InstructionCategory.TOOLING}`;
+
+		case InstructionCategory.SUBAGENTS:
+			return `${TEMPLATES_SEGMENT}/${INSTRUCTIONS_PATH}/${InstructionCategory.SUBAGENTS}`;
 
 		case InstructionCategory.SKILLS:
 			return `${TEMPLATES_SEGMENT}/${INSTRUCTIONS_PATH}/${InstructionCategory.SKILLS}`;
@@ -333,6 +347,35 @@ export async function readSkillsMapping(
 		const data = parseYaml(raw) as unknown;
 		if (data && typeof data === "object") {
 			const list = (data as YehleConfiguration).skills;
+			if (Array.isArray(list)) return list;
+		}
+	} catch {
+		// No file or invalid YAML
+	}
+	return [];
+}
+
+/**
+ * Read the subagents mapping from a template or project-spec directory.
+ * Looks for yehle.yaml with subagents: string[].
+ * No file or invalid/missing array returns [].
+ * @param templateOrProjectSpecDir - Absolute path to the template dir (e.g. .../package/react) or project-spec dir.
+ * @returns Promise resolving to the list of agent instruction names to apply; empty if not found or invalid.
+ */
+export async function readSubagentsMapping(
+	templateOrProjectSpecDir: string,
+): Promise<string[]> {
+	const filePath = path.join(
+		templateOrProjectSpecDir,
+		YEHLE_CONFIGURATION_FILENAME,
+	);
+
+	try {
+		const raw = await fs.promises.readFile(filePath, "utf8");
+		const data = parseYaml(raw) as unknown;
+		if (data && typeof data === "object") {
+			const cfg = data as YehleConfiguration;
+			const list = cfg.subagents;
 			if (Array.isArray(list)) return list;
 		}
 	} catch {

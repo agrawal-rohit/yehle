@@ -187,6 +187,49 @@ describe("resources/package/command", () => {
 			expect(getGeneratePackageConfiguration).toHaveBeenCalledWith(options);
 		});
 
+		it("should include LICENSE info when generating a public package with authorName", async () => {
+			// Arrange
+			const options: Partial<GeneratePackageConfiguration> = {
+				lang: Language.TYPESCRIPT,
+				name: "my-package",
+			};
+			const mockConfig: GeneratePackageConfiguration = {
+				lang: Language.TYPESCRIPT,
+				name: "my-package",
+				template: "advanced",
+				public: true,
+				authorName: "Jane Doe",
+			};
+			vi.mocked(getGeneratePackageConfiguration).mockResolvedValue(mockConfig);
+			vi.mocked(toSlug).mockReturnValue("my-package");
+			vi.mocked(path.resolve).mockReturnValue("/path/to/my-package");
+			vi.mocked(fs.existsSync).mockReturnValue(false);
+			vi.mocked(ensurePackageManager).mockResolvedValue("1.0.0");
+			vi.mocked(createProjectDirectory).mockResolvedValue(
+				"/path/to/my-package",
+			);
+			vi.mocked(writeTemplateFiles).mockResolvedValue(undefined);
+			vi.mocked(applyTemplateModifications).mockResolvedValue(undefined);
+			vi.mocked(initGitRepo).mockResolvedValue(undefined);
+			vi.mocked(makeInitialCommit).mockResolvedValue(undefined);
+			vi.mocked(getRequiredGithubSecrets).mockResolvedValue([]);
+			vi.mocked(getInstallScript).mockReturnValue("npm install");
+
+			// Act
+			await generatePackage(options);
+
+			// Assert
+			expect(writeTemplateFiles).toHaveBeenCalledWith(
+				"/path/to/my-package",
+				expect.objectContaining({
+					lang: mockConfig.lang,
+					projectSpec: "package",
+					template: mockConfig.template,
+					license: { public: true, authorName: "Jane Doe" },
+				}),
+			);
+		});
+
 		it("should throw an error if target directory is not empty", async () => {
 			// Arrange
 			const mockConfig: GeneratePackageConfiguration = {

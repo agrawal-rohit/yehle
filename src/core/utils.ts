@@ -60,3 +60,15 @@ export function truncate(s: string, max: number): string {
 	if (raw.length <= max) return s;
 	return `${raw.slice(0, Math.max(0, max - 3))}...`;
 }
+
+/**
+ * Escape a string for safe embedding in YAML double-quoted values.
+ * Ensures backslashes and double quotes are escaped for YAML parsers.
+ * @param value - Raw string value to embed.
+ * @returns The escaped string safe to include inside YAML double quotes.
+ */
+export function escapeYamlDoubleQuoted(value: string): string {
+	return value
+		.replaceAll(String.raw`\\`, String.raw`\\\\`)
+		.replaceAll('"', String.raw`\"`);
+}

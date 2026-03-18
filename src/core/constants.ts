@@ -9,6 +9,8 @@ export type YehleConfiguration = {
 	toolingInstructions?: string[];
 	/** Workflow skills to apply for this template or project-spec (e.g. deploy-versioned-release, optimise-api-performance). */
 	skills?: string[];
+	/** Subagents to apply for this template or project-spec (e.g. researcher, planner, implementer, verifier). */
+	subagents?: string[];
 };
 
 /** Filename for the yehle configuration file in a template or project-spec dir. */

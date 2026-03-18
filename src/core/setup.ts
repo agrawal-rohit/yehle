@@ -17,6 +17,7 @@ import {
 	listAvailableInstructions,
 	type RuleFrontmatter,
 	readSkillsMapping,
+	readSubagentsMapping,
 	readToolingInstructionsMapping,
 } from "./instructions";
 import { resolveTemplatesDir } from "./templates";
@@ -149,14 +150,12 @@ export async function applyTemplateModifications(
  * @param targetDir - Absolute path to the project root directory.
  * @param ctx - Context with lang, projectSpec, template, and instruction options.
  * @param writeInstruction - Callback to write each instruction (e.g. from resources/instructions/ide-formats).
- * @param projectOverviewContent - Optional custom content for the overview instruction; uses default when omitted.
  * @returns Promise that resolves when all instruction files have been written, or immediately when instructions are disabled.
  */
 export async function addProjectInstructions(
 	targetDir: string,
 	ctx: AddProjectInstructionsContext,
 	writeInstruction: WriteInstructionFn,
-	projectOverviewContent?: string,
 ): Promise<void> {
 	if (!ctx.includeInstructions || !ctx.instructionsIdeFormat) return;
 
@@ -290,32 +289,22 @@ export async function addProjectInstructions(
 		);
 	}
 
-	// Placeholder overview instruction
-	const projectOverviewFrontmatter: RuleFrontmatter = {
-		description:
-			"Describe the project goal, scope, and non-technical product requirements",
-		alwaysApply: true,
-	};
-	const overviewContent =
-		projectOverviewContent ??
-		`# Project overview
-
-Briefly describe:
-
-- What this project is about and who it is for.
-- The core features and behaviours that are in scope.
-- Important non-goals (what this project is explicitly not supposed to do).
-- Any key constraints (performance, compliance, integration boundaries).
-- How you will know this project is successful (metrics or outcomes).
-`;
-	await writeInstruction(
-		targetDir,
-		"overview",
-		overviewContent,
-		ideFormat,
-		InstructionCategory.ESSENTIAL,
-		projectOverviewFrontmatter,
-	);
+	// Subagents from yehle.yaml
+	const subagentNames = await readSubagentsMapping(templateDir);
+	for (const name of subagentNames) {
+		const { content, frontmatter } = await getInstructionWithFrontmatter(
+			InstructionCategory.SUBAGENTS,
+			name,
+		);
+		await writeInstruction(
+			targetDir,
+			name,
+			content,
+			ideFormat,
+			InstructionCategory.SUBAGENTS,
+			frontmatter,
+		);
+	}
 }
 
 /**

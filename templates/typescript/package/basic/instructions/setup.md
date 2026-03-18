@@ -1,6 +1,6 @@
 ---
 description: "Package setup and layout"
-alwaysApply: true
+alwaysApply: false
 ---
 
 # Setup

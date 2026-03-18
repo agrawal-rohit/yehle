@@ -41,11 +41,13 @@ vi.mock("./instructions", () => ({
 		PROJECT_SPEC: "project-spec",
 		TEMPLATE: "template",
 		TOOLING: "tooling",
+		SUBAGENTS: "subagents",
 		SKILLS: "skills",
 	},
 	getInstructionWithFrontmatter: vi.fn(),
 	listAvailableInstructions: vi.fn(() => Promise.resolve([])),
 	readSkillsMapping: vi.fn(() => Promise.resolve([])),
+	readSubagentsMapping: vi.fn(() => Promise.resolve([])),
 	readToolingInstructionsMapping: vi.fn(() => Promise.resolve([])),
 }));
 
@@ -53,8 +55,27 @@ vi.mock("./templates", () => ({
 	resolveTemplatesDir: vi.fn(),
 }));
 
-import { ensureDirAsync } from "./fs";
-import { createProjectDirectory, getRequiredGithubSecrets } from "./setup";
+import {
+	copyDirSafeAsync,
+	ensureDirAsync,
+	removeFilesByBasename,
+	writeFileAsync,
+} from "./fs";
+import {
+	getInstructionWithFrontmatter,
+	InstructionCategory,
+	listAvailableInstructions,
+	readSkillsMapping,
+	readSubagentsMapping,
+	readToolingInstructionsMapping,
+} from "./instructions";
+import {
+	addProjectInstructions,
+	createProjectDirectory,
+	getRequiredGithubSecrets,
+	writeTemplateFiles,
+} from "./setup";
+import { resolveTemplatesDir } from "./templates";
 
 describe("core/setup", () => {
 	beforeEach(() => {
@@ -122,6 +143,102 @@ describe("core/setup", () => {
 			const result = await getRequiredGithubSecrets(targetDir);
 
 			expect(result).toEqual([]);
+		});
+	});
+
+	describe("writeTemplateFiles", () => {
+		it("writes LICENSE when license.public and license.authorName are provided", async () => {
+			vi.mocked(resolveTemplatesDir).mockImplementation((...args) => {
+				return Promise.resolve(`/resolved/${args.join("/")}`);
+			});
+			vi.mocked(copyDirSafeAsync).mockResolvedValue();
+			vi.mocked(removeFilesByBasename).mockResolvedValue();
+			vi.mocked(writeFileAsync).mockResolvedValue();
+
+			const targetDir = "/target";
+			const lang = "typescript";
+			const projectSpec = "package";
+			const template = "basic";
+			const authorName = "Rohit Agrawal";
+
+			const result = await writeTemplateFiles(targetDir, {
+				lang,
+				projectSpec,
+				template,
+				license: { public: true, authorName },
+			});
+
+			expect(result).toBeUndefined();
+
+			expect(copyDirSafeAsync).toHaveBeenNthCalledWith(
+				1,
+				`/resolved/shared`,
+				targetDir,
+			);
+			expect(copyDirSafeAsync).toHaveBeenNthCalledWith(
+				2,
+				`/resolved/${lang}/shared`,
+				targetDir,
+			);
+			expect(copyDirSafeAsync).toHaveBeenNthCalledWith(
+				3,
+				`/resolved/${lang}/${projectSpec}/shared`,
+				targetDir,
+			);
+			expect(copyDirSafeAsync).toHaveBeenNthCalledWith(
+				4,
+				`/resolved/${lang}/${projectSpec}/${template}`,
+				targetDir,
+			);
+
+			expect(removeFilesByBasename).toHaveBeenCalledWith(
+				targetDir,
+				expect.any(Array),
+			);
+
+			expect(writeFileAsync).toHaveBeenCalledTimes(1);
+			const writtenLicenseText = vi.mocked(writeFileAsync).mock.calls[0]?.[1];
+			const year = new Date().getFullYear().toString();
+			expect(writtenLicenseText).toContain(year);
+			expect(writtenLicenseText).toContain(authorName);
+		});
+	});
+
+	describe("addProjectInstructions", () => {
+		it("writes subagent instructions listed in yehle.yaml", async () => {
+			vi.mocked(resolveTemplatesDir).mockResolvedValue("/templateDir");
+			vi.mocked(listAvailableInstructions).mockResolvedValue([]);
+			vi.mocked(readToolingInstructionsMapping).mockResolvedValue([]);
+			vi.mocked(readSkillsMapping).mockResolvedValue([]);
+			vi.mocked(readSubagentsMapping).mockResolvedValue(["researcher"]);
+			vi.mocked(getInstructionWithFrontmatter).mockResolvedValue({
+				content: "subagent content",
+				frontmatter: { description: "Researcher" },
+			});
+
+			const writeInstruction = vi.fn(async () => "/written/path");
+
+			await addProjectInstructions(
+				"/target",
+				{
+					lang: "typescript",
+					projectSpec: "package",
+					template: "basic",
+					includeInstructions: true,
+					instructionsIdeFormat: "cursor",
+				},
+				writeInstruction,
+			);
+
+			expect(writeInstruction).toHaveBeenCalledTimes(1);
+			expect(writeInstruction).toHaveBeenCalledWith(
+				"/target",
+				"researcher",
+				"subagent content",
+				"cursor",
+				InstructionCategory.SUBAGENTS,
+				{ description: "Researcher" },
+			);
 		});
 	});
 });

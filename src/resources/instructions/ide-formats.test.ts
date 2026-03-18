@@ -12,6 +12,7 @@ vi.mock("../../core/instructions", () => ({
 		PROJECT_SPEC: "project_spec",
 		TEMPLATE: "template",
 		TOOLING: "tooling",
+		SUBAGENTS: "subagents",
 		SKILLS: "skills",
 	},
 }));
@@ -130,6 +131,48 @@ describe("resources/instructions/ide-formats", () => {
 		});
 	});
 
+	describe("resolveOutputPath for agents", () => {
+		it("should resolve agents path for cursor format", () => {
+			const result = resolveOutputPath(
+				"cursor",
+				"deploy-agent",
+				"/project",
+				InstructionCategory.SUBAGENTS,
+			);
+			expect(result).toBe("/project/.cursor/agents/deploy-agent.md");
+		});
+
+		it("should resolve agents path as skills on windsurf", () => {
+			const result = resolveOutputPath(
+				"windsurf",
+				"deploy-agent",
+				"/project",
+				InstructionCategory.SUBAGENTS,
+			);
+			expect(result).toBe("/project/.windsurf/skills/deploy-agent/SKILL.md");
+		});
+
+		it("should resolve agents path as skills on cline", () => {
+			const result = resolveOutputPath(
+				"cline",
+				"deploy-agent",
+				"/project",
+				InstructionCategory.SUBAGENTS,
+			);
+			expect(result).toBe("/project/.cline/skills/deploy-agent/SKILL.md");
+		});
+
+		it("should resolve agents path for claude format", () => {
+			const result = resolveOutputPath(
+				"claude",
+				"deploy-agent",
+				"/project",
+				InstructionCategory.SUBAGENTS,
+			);
+			expect(result).toBe("/project/.claude/agents/deploy-agent.md");
+		});
+	});
+
 	describe("transformContentForIde", () => {
 		const frontmatter: RuleFrontmatter = {
 			description: "Test rule",
@@ -143,6 +186,7 @@ describe("resources/instructions/ide-formats", () => {
 				content,
 				"cursor",
 				InstructionCategory.LANGUAGE,
+				"my-rule",
 				frontmatter,
 			);
 			expect(result).toContain('description: "Test rule"');
@@ -158,6 +202,7 @@ describe("resources/instructions/ide-formats", () => {
 				content,
 				"cline",
 				InstructionCategory.LANGUAGE,
+				"my-rule",
 				frontmatter,
 			);
 			expect(result).toContain("paths:");
@@ -170,6 +215,7 @@ describe("resources/instructions/ide-formats", () => {
 				content,
 				"claude",
 				InstructionCategory.LANGUAGE,
+				"my-rule",
 				frontmatter,
 			);
 			expect(result).toContain("paths:");
@@ -182,6 +228,7 @@ describe("resources/instructions/ide-formats", () => {
 				content,
 				"windsurf",
 				InstructionCategory.LANGUAGE,
+				"my-rule",
 				frontmatter,
 			);
 			expect(result).toBe(content);
@@ -197,9 +244,130 @@ describe("resources/instructions/ide-formats", () => {
 				content,
 				"cursor",
 				InstructionCategory.LANGUAGE,
+				"my-rule",
 				fmNoPaths,
 			);
 			expect(result).toContain('  - "**/*"');
+		});
+
+		it("should add cursor subagent frontmatter for SUBAGENTS", () => {
+			const content = "# Agent body";
+			const agentFrontmatter: RuleFrontmatter = {
+				description: "Agent description",
+				model: "fast",
+				readonly: true,
+			};
+			const result = transformContentForIde(
+				content,
+				"cursor",
+				InstructionCategory.SUBAGENTS,
+				"researcher",
+				agentFrontmatter,
+			);
+			expect(result).toContain("name: researcher");
+			expect(result).toContain("model: fast");
+			expect(result).toContain("readonly: true");
+			expect(result).toContain("# Agent body");
+		});
+
+		it("should omit readonly line for cursor subagents when readonly is not set", () => {
+			const content = "# Agent body";
+			const agentFrontmatter: RuleFrontmatter = {
+				description: "Agent description",
+				model: "fast",
+			};
+			const result = transformContentForIde(
+				content,
+				"cursor",
+				InstructionCategory.SUBAGENTS,
+				"researcher",
+				agentFrontmatter,
+			);
+			expect(result).toContain("name: researcher");
+			expect(result).toContain("model: fast");
+			expect(result).not.toContain("readonly:");
+			expect(result).toContain("# Agent body");
+		});
+
+		it("should add claude agent frontmatter for SUBAGENTS", () => {
+			const content = "# Agent body";
+			const agentFrontmatter: RuleFrontmatter = {
+				description: "Agent description",
+				model: "fast",
+				readonly: true,
+			};
+			const result = transformContentForIde(
+				content,
+				"claude",
+				InstructionCategory.SUBAGENTS,
+				"researcher",
+				agentFrontmatter,
+			);
+			expect(result).toContain("name: researcher");
+			expect(result).toContain('description: "Agent description"');
+			expect(result).toContain("model: fast");
+			expect(result).toContain("permissionMode: plan");
+			expect(result).not.toContain("readonly:");
+			expect(result).toContain("# Agent body");
+		});
+
+		it("should omit model and permissionMode for claude subagents when model/readonly are not set", () => {
+			const content = "# Agent body";
+			const agentFrontmatter: RuleFrontmatter = {
+				description: "Agent description",
+			};
+			const result = transformContentForIde(
+				content,
+				"claude",
+				InstructionCategory.SUBAGENTS,
+				"researcher",
+				agentFrontmatter,
+			);
+			expect(result).toContain("name: researcher");
+			expect(result).toContain('description: "Agent description"');
+			expect(result).not.toContain("model:");
+			expect(result).not.toContain("permissionMode:");
+			expect(result).toContain("# Agent body");
+		});
+
+		it("should add skill frontmatter for SUBAGENTS on windsurf", () => {
+			const content = "# Agent body";
+			const agentFrontmatter: RuleFrontmatter = {
+				description: "Agent description",
+				model: "fast",
+				readonly: true,
+			};
+			const result = transformContentForIde(
+				content,
+				"windsurf",
+				InstructionCategory.SUBAGENTS,
+				"researcher",
+				agentFrontmatter,
+			);
+			expect(result).toContain("name: researcher");
+			expect(result).toContain('description: "Agent description"');
+			expect(result).not.toContain("model:");
+			expect(result).toContain("# Agent body");
+		});
+
+		it("should add skill frontmatter for SUBAGENTS on cline", () => {
+			const content = "# Agent body";
+			const agentFrontmatter: RuleFrontmatter = {
+				description: "Agent description",
+				model: "fast",
+				readonly: true,
+			};
+			const result = transformContentForIde(
+				content,
+				"cline",
+				InstructionCategory.SUBAGENTS,
+				"researcher",
+				agentFrontmatter,
+			);
+			expect(result).toContain("name: researcher");
+			expect(result).toContain('description: "Agent description"');
+			expect(result).not.toContain("model:");
+			expect(result).toContain("# Agent body");
 		});
 	});
 
@@ -229,6 +397,32 @@ describe("resources/instructions/ide-formats", () => {
 			const writtenContent = (writeFileAsync as ReturnType<typeof vi.fn>).mock
 				.calls[0]?.[1];
 			expect(writtenContent).toContain('description: "Test rule"');
+		});
+
+		it("should render known mustache placeholders in instruction content", async () => {
+			const agentFrontmatter: RuleFrontmatter = {
+				description: "Agent description",
+				model: "fast",
+				readonly: true,
+			};
+
+			vi.mocked(ensureDirAsync).mockResolvedValue();
+			vi.mocked(writeFileAsync).mockResolvedValue();
+
+			await writeInstructionToFile(
+				"/project",
+				"researcher",
+				"# Body {{checkpointDir}} {{ideRoot}}",
+				"cursor",
+				InstructionCategory.SUBAGENTS,
+				agentFrontmatter,
+			);
+
+			const writtenContent = (writeFileAsync as ReturnType<typeof vi.fn>).mock
+				.calls[0]?.[1];
+
+			expect(writtenContent).toContain(".cursor/checkpoints");
+			expect(writtenContent).toContain(".cursor");
 		});
 
 		it("should write file for windsurf without frontmatter transformation", async () => {

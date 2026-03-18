@@ -1,9 +1,11 @@
 import path from "node:path";
+import mustache from "mustache";
 import { ensureDirAsync, writeFileAsync } from "../../core/fs";
 import {
 	InstructionCategory,
 	type RuleFrontmatter,
 } from "../../core/instructions";
+import { escapeYamlDoubleQuoted } from "../../core/utils";
 
 /** IDE format options. */
 export const IDE_FORMATS = [
@@ -15,12 +17,22 @@ export const IDE_FORMATS = [
 
 export type IdeFormat = (typeof IDE_FORMATS)[number]["value"];
 
-/** Paths array for frontmatter. */
+/**
+ * Resolve the `paths` glob list used in IDE-specific rule frontmatter.
+ * Falls back to a broad default (written as `** / *`) when no explicit paths are provided.
+ * @param frontmatter - Parsed instruction frontmatter.
+ * @returns Array of glob patterns to embed in IDE frontmatter.
+ */
 function getPathsArray(frontmatter: RuleFrontmatter): string[] {
 	return frontmatter.paths?.length ? frontmatter.paths : ["**/*"];
 }
 
-/** Build frontmatter block with a YAML `paths:` array. */
+/**
+ * Build a YAML frontmatter block that contains only a `paths:` array.
+ * Used for IDEs that represent rules as simple markdown files with globs.
+ * @param paths - Glob patterns to embed.
+ * @returns Frontmatter string in the expected YAML format for the IDE.
+ */
 function frontmatterWithPathsArray(paths: string[]): string {
 	return `---
 paths:
@@ -30,7 +42,11 @@ ${paths.map((p) => `  - "${p}"`).join("\n")}
 `;
 }
 
-/** Build Cursor .mdc frontmatter: description, globs (YAML array), alwaysApply. */
+/**
+ * Build Cursor (`.mdc`) rule frontmatter.
+ * @param frontmatter - Rule frontmatter including `description`, `alwaysApply`, and optional `paths`.
+ * @returns Frontmatter string appropriate for Cursor rule files.
+ */
 function cursorFrontmatter(frontmatter: RuleFrontmatter): string {
 	const paths = getPathsArray(frontmatter);
 	return `---
@@ -43,31 +59,77 @@ ${paths.map((p) => `  - "${p}"`).join("\n")}
 `;
 }
 
-/** Build Cline .mdc frontmatter: paths (array of glob patterns). */
+/**
+ * Build Cline rule frontmatter (paths only).
+ * @param frontmatter - Rule frontmatter including optional `paths`.
+ * @returns Frontmatter string for Cline rule files.
+ */
 function clineFrontmatter(frontmatter: RuleFrontmatter): string {
 	return frontmatterWithPathsArray(getPathsArray(frontmatter));
 }
 
-/** Build Claude .claude/rules frontmatter: paths (array of glob patterns). */
+/**
+ * Build Claude rule frontmatter (paths only).
+ * @param frontmatter - Rule frontmatter including optional `paths`.
+ * @returns Frontmatter string for Claude rule files.
+ */
 function claudeFrontmatter(frontmatter: RuleFrontmatter): string {
 	return frontmatterWithPathsArray(getPathsArray(frontmatter));
 }
 
+/** Dot-directory root for each IDE format. */
+const IDE_ROOTS: Record<IdeFormat, string> = {
+	cursor: ".cursor",
+	windsurf: ".windsurf",
+	cline: ".cline",
+	claude: ".claude",
+};
+
 /** Path templates per IDE for rules. */
 const IDE_RULE_PATH_TEMPLATES: Record<IdeFormat, string> = {
-	cursor: ".cursor/rules/{{ruleName}}.mdc",
-	windsurf: ".windsurf/rules/{{ruleName}}.md",
-	cline: ".clinerules/{{ruleName}}.md",
-	claude: ".claude/rules/{{ruleName}}.md",
+	cursor: `${IDE_ROOTS.cursor}/rules/{{ruleName}}.mdc`,
+	windsurf: `${IDE_ROOTS.windsurf}/rules/{{ruleName}}.md`,
+	cline: `.clinerules/{{ruleName}}.md`,
+	claude: `${IDE_ROOTS.claude}/rules/{{ruleName}}.md`,
 };
 
 /** Path templates per IDE for skills. */
 const IDE_SKILL_PATH_TEMPLATES: Record<IdeFormat, string> = {
-	cursor: ".cursor/skills/{{ruleName}}/SKILL.md",
-	windsurf: ".windsurf/skills/{{ruleName}}/SKILL.md",
-	cline: ".cline/skills/{{ruleName}}/SKILL.md",
-	claude: ".claude/skills/{{ruleName}}/SKILL.md",
+	cursor: `${IDE_ROOTS.cursor}/skills/{{ruleName}}/SKILL.md`,
+	windsurf: `${IDE_ROOTS.windsurf}/skills/{{ruleName}}/SKILL.md`,
+	cline: `${IDE_ROOTS.cline}/skills/{{ruleName}}/SKILL.md`,
+	claude: `${IDE_ROOTS.claude}/skills/{{ruleName}}/SKILL.md`,
 };
+
+/**
+ * Render known Mustache variables inside instruction bodies.
+ * This keeps instruction templates portable across IDE formats.
+ */
+function renderKnownMustacheVariables(
+	content: string,
+	ideFormat: IdeFormat,
+): string {
+	// Fast path: avoid Mustache rendering when no placeholders exist.
+	if (
+		!content.includes("{{checkpointDir}}") &&
+		!content.includes("{{ideRoot}}")
+	)
+		return content;
+
+	const data = {
+		checkpointDir: `${IDE_ROOTS[ideFormat]}/checkpoints`,
+		ideRoot: IDE_ROOTS[ideFormat],
+	};
+
+	const previousEscape = mustache.escape;
+	try {
+		// Preserve literal markdown characters during rendering.
+		mustache.escape = (s: string) => s;
+		return mustache.render(content, data);
+	} finally {
+		mustache.escape = previousEscape;
+	}
+}
 
 /**
  * Get the transform function for the given IDE and category (adds frontmatter or passes through).
@@ -99,6 +161,83 @@ function getTransformForIde(
 }
 
 /**
+ * Build Cursor YAML frontmatter for agent/subagent files.
+ * @param ruleName - Agent name/identifier.
+ * @param frontmatter - Parsed instruction frontmatter (description, model, readonly).
+ * @returns Frontmatter string suitable for a Cursor agent markdown file.
+ */
+function cursorAgentFrontmatter(
+	ruleName: string,
+	frontmatter: RuleFrontmatter,
+): string {
+	const description = frontmatter.description ?? ruleName;
+	const model = frontmatter.model ?? "inherit";
+
+	const readonlyLine =
+		typeof frontmatter.readonly === "boolean"
+			? `readonly: ${frontmatter.readonly}
+`
+			: "";
+
+	return `---
+name: ${ruleName}
+description: "${escapeYamlDoubleQuoted(description)}"
+model: ${model}
+${readonlyLine}---
+
+`;
+}
+
+/**
+ * Build YAML frontmatter for IDE "skill" representations of agents/subagents.
+ * @param ruleName - Skill identifier (typically matches the agent name).
+ * @param frontmatter - Parsed instruction frontmatter (description is used when present).
+ * @returns Frontmatter string appropriate for skill files.
+ */
+function ideSkillFrontmatter(
+	ruleName: string,
+	frontmatter: RuleFrontmatter,
+): string {
+	const description = frontmatter.description ?? ruleName;
+	return `---
+name: ${ruleName}
+description: "${escapeYamlDoubleQuoted(description)}"
+---
+
+`;
+}
+
+/**
+ * Build YAML frontmatter for Claude Code agent/subagent files.
+ * @param ruleName - Agent name/identifier.
+ * @param frontmatter - Parsed instruction frontmatter (description, model, readonly).
+ * @returns Frontmatter string suitable for Claude Code agent markdown files.
+ */
+function claudeAgentFrontmatter(
+	ruleName: string,
+	frontmatter: RuleFrontmatter,
+): string {
+	const description = frontmatter.description ?? ruleName;
+	const modelLine =
+		typeof frontmatter.model === "string"
+			? `model: ${frontmatter.model}
+`
+			: "";
+	const permissionModeLine =
+		frontmatter.readonly === true
+			? `permissionMode: plan
+`
+			: "";
+
+	return `---
+name: ${ruleName}
+description: "${escapeYamlDoubleQuoted(description)}"
+${modelLine}${permissionModeLine}---
+
+`;
+}
+
+/**
  * Resolve the output path for an instruction given the IDE format, name, and category.
  * @param ideFormat - Target IDE format (determines path template).
  * @param ruleName - Instruction name (replaces {{ruleName}} in template).
@@ -112,6 +251,25 @@ export function resolveOutputPath(
 	cwd: string,
 	category: InstructionCategory,
 ): string {
+	// Subagent: per-IDE subagent directory.
+	if (category === InstructionCategory.SUBAGENTS) {
+		// Cursor: write to `.cursor/agents/*.md`
+		if (ideFormat === "cursor")
+			return path.resolve(cwd, `.cursor/agents/${ruleName}.md`);
+
+		// Claude Code: write to `.claude/agents/*.md`
+		if (ideFormat === "claude") {
+			return path.resolve(cwd, `.claude/agents/${ruleName}.md`);
+		}
+
+		// Other IDEs: write as skills instead (`*/skills/*/SKILL.md`)
+		const relSkillPath = IDE_SKILL_PATH_TEMPLATES[ideFormat].replaceAll(
+			"{{ruleName}}",
+			ruleName,
+		);
+		return path.resolve(cwd, relSkillPath);
+	}
+
 	// Skills: per-IDE skills directory.
 	if (category === InstructionCategory.SKILLS) {
 		const relSkillPath = IDE_SKILL_PATH_TEMPLATES[ideFormat].replaceAll(
@@ -141,8 +299,24 @@ export function transformContentForIde(
 	content: string,
 	ideFormat: IdeFormat,
 	category: InstructionCategory,
+	ruleName: string,
 	frontmatter: RuleFrontmatter,
 ): string {
+	// Subagent instructions
+	if (category === InstructionCategory.SUBAGENTS) {
+		// Cursor
+		if (ideFormat === "cursor")
+			return cursorAgentFrontmatter(ruleName, frontmatter) + content;
+
+		// Claude Code
+		if (ideFormat === "claude")
+			return claudeAgentFrontmatter(ruleName, frontmatter) + content;
+
+		// Use skill format for IDEs that don't support custom subagent files.
+		return ideSkillFrontmatter(ruleName, frontmatter) + content;
+	}
+
+	// Rules, skills, and other categories (apply IDE-specific frontmatter transformations)
 	const transform = getTransformForIde(ideFormat, category);
 	if (transform) return transform(content, frontmatter);
 	return content;
@@ -172,11 +346,16 @@ export async function writeInstructionToFile(
 		content,
 		ideFormat,
 		category,
+		ruleName,
 		frontmatter,
+	);
+	const renderedContent = renderKnownMustacheVariables(
+		transformedContent,
+		ideFormat,
 	);
 
 	await ensureDirAsync(path.dirname(outputPath));
-	await writeFileAsync(outputPath, transformedContent);
+	await writeFileAsync(outputPath, renderedContent);
 
 	return outputPath;
 }

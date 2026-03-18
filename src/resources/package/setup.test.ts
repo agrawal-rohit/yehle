@@ -268,7 +268,7 @@ describe("resources/package/setup", () => {
 			vi.mocked(readSkillsMapping).mockResolvedValue([]);
 			vi.mocked(listAvailableInstructions).mockImplementation((category) => {
 				if (category === InstructionCategory.ESSENTIAL) {
-					return Promise.resolve(["essential-rule"]);
+					return Promise.resolve(["security"]);
 				}
 				if (category === InstructionCategory.LANGUAGE) {
 					return Promise.resolve([]);
@@ -286,7 +286,7 @@ describe("resources/package/setup", () => {
 				frontmatter: metadata,
 			});
 			vi.mocked(writeInstructionToFile).mockResolvedValue(
-				"/target/.cursor/rules/essential-rule.mdc",
+				"/target/.cursor/rules/security.mdc",
 			);
 
 			await addPackageInstructions("/target", {
@@ -300,7 +300,7 @@ describe("resources/package/setup", () => {
 
 			expect(writeInstructionToFile).toHaveBeenCalledWith(
 				"/target",
-				"essential-rule",
+				"security",
 				"# Essential",
 				"cursor",
 				InstructionCategory.ESSENTIAL,
