@@ -30,7 +30,7 @@ vi.mock("./fs", () => ({
 	isDirAsync: vi.fn(),
 	removeFilesByBasename: vi.fn(),
 	renderMustacheTemplates: vi.fn(),
-	stripJsonKey: vi.fn(),
+	stripKeyFromJSONFile: vi.fn(),
 	writeFileAsync: vi.fn(),
 }));
 

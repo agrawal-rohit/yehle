@@ -7,7 +7,7 @@ import {
 	isDirAsync,
 	removeFilesByBasename,
 	renderMustacheTemplates,
-	stripJsonKey,
+	stripKeyFromJSONFile,
 	writeFileAsync,
 } from "./fs";
 import {
@@ -137,7 +137,7 @@ export async function applyTemplateModifications(
 		await removeFilesByBasename(options.targetDir, options.publicOnlyFiles);
 
 	for (const { file, key } of options.stripJsonKeys ?? []) {
-		await stripJsonKey(path.join(options.targetDir, file), key);
+		await stripKeyFromJSONFile(path.join(options.targetDir, file), key);
 	}
 }
 

@@ -153,7 +153,7 @@ export async function removeFilesByBasename(
  * @param key - Key to remove from the root object.
  * @returns Promise that resolves when the file has been updated, or when the file is missing/invalid.
  */
-export async function stripJsonKey(
+export async function stripKeyFromJSONFile(
 	filePath: string,
 	key: string,
 ): Promise<void> {

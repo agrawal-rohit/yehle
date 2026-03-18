@@ -12,7 +12,7 @@ import {
 	removeFilesByBasename,
 	removeMatchingFilesRecursively,
 	renderMustacheTemplates,
-	stripJsonKey,
+	stripKeyFromJSONFile,
 	writeFileAsync,
 } from "./fs";
 
@@ -91,7 +91,7 @@ describe("core/fs", () => {
 		});
 	});
 
-	describe("stripJsonKey", () => {
+	describe("stripKeyFromJSONFile", () => {
 		it("removes the specified key from a JSON file", async () => {
 			const root = makeTempDir();
 			const file = path.join(root, "config.json");
@@ -101,7 +101,7 @@ describe("core/fs", () => {
 				"utf8",
 			);
 
-			await stripJsonKey(file, "root");
+			await stripKeyFromJSONFile(file, "root");
 
 			const data = JSON.parse(fs.readFileSync(file, "utf8"));
 			expect(data).toEqual({ other: "value" });
@@ -112,7 +112,7 @@ describe("core/fs", () => {
 			const root = makeTempDir();
 			const file = path.join(root, "missing.json");
 
-			await expect(stripJsonKey(file, "root")).resolves.toBeUndefined();
+			await expect(stripKeyFromJSONFile(file, "root")).resolves.toBeUndefined();
 		});
 
 		it("leaves JSON unchanged when key does not exist", async () => {
@@ -121,7 +121,7 @@ describe("core/fs", () => {
 			const original = { foo: "bar", baz: 42 };
 			fs.writeFileSync(file, JSON.stringify(original, null, "\t"), "utf8");
 
-			await stripJsonKey(file, "nonexistent");
+			await stripKeyFromJSONFile(file, "nonexistent");
 
 			const data = JSON.parse(fs.readFileSync(file, "utf8"));
 			expect(data).toEqual(original);

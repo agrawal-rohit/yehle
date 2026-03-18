@@ -33,7 +33,7 @@ vi.mock("../../core/fs", () => ({
 	isDirAsync: vi.fn(),
 	removeFilesByBasename: vi.fn(),
 	renderMustacheTemplates: vi.fn(),
-	stripJsonKey: vi.fn(),
+	stripKeyFromJSONFile: vi.fn(),
 	writeFileAsync: vi.fn(),
 }));
 
@@ -92,7 +92,7 @@ import {
 	isDirAsync,
 	removeFilesByBasename,
 	renderMustacheTemplates,
-	stripJsonKey,
+	stripKeyFromJSONFile,
 } from "../../core/fs";
 import { resolveTemplatesDir } from "../../core/templates";
 
@@ -662,7 +662,7 @@ describe("resources/package/setup", () => {
 			vi.mocked(resolveTemplatesDir).mockResolvedValue("/template/dir");
 			vi.mocked(isDirAsync).mockResolvedValue(false);
 			vi.mocked(renderMustacheTemplates).mockResolvedValue();
-			vi.mocked(stripJsonKey).mockResolvedValue();
+			vi.mocked(stripKeyFromJSONFile).mockResolvedValue();
 
 			await applyTemplateModifications(
 				targetDir,
@@ -670,10 +670,10 @@ describe("resources/package/setup", () => {
 				packageManagerVersion,
 			);
 
-			expect(stripJsonKey).toHaveBeenCalledWith(biomeJsonPath, "root");
+			expect(stripKeyFromJSONFile).toHaveBeenCalledWith(biomeJsonPath, "root");
 		});
 
-		it("should call stripJsonKey for biome.json even when file does not exist", async () => {
+		it("should call stripKeyFromJSONFile for biome.json even when file does not exist", async () => {
 			const targetDir = "/path/to/package";
 			const generateConfig = {
 				lang: Language.TYPESCRIPT,
@@ -686,7 +686,7 @@ describe("resources/package/setup", () => {
 			vi.mocked(resolveTemplatesDir).mockResolvedValue("/template/dir");
 			vi.mocked(isDirAsync).mockResolvedValue(false);
 			vi.mocked(renderMustacheTemplates).mockResolvedValue();
-			vi.mocked(stripJsonKey).mockResolvedValue();
+			vi.mocked(stripKeyFromJSONFile).mockResolvedValue();
 
 			await applyTemplateModifications(
 				targetDir,
@@ -694,7 +694,7 @@ describe("resources/package/setup", () => {
 				packageManagerVersion,
 			);
 
-			expect(stripJsonKey).toHaveBeenCalledWith(
+			expect(stripKeyFromJSONFile).toHaveBeenCalledWith(
 				"/path/to/package/biome.json",
 				"root",
 			);
