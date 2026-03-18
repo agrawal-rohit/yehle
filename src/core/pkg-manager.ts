@@ -1,5 +1,5 @@
-import { Language } from "../resources/package/config";
 import { validateTypescriptPackageName } from "../resources/package/typescript";
+import { Language } from "./constants";
 import { commandExistsAsync, runAsync } from "./shell";
 
 /** Type representing the possible package managers. */
@@ -21,10 +21,11 @@ export const LANGUAGE_PACKAGE_REGISTRY = {
 } as const satisfies Record<Language, string>;
 
 /**
- * Validates the given package name based on the language type.
+ * Validate the given package name for the specified language (e.g. npm rules for TypeScript).
  * @param name - The name of the package to validate.
  * @param language - The programming language context to validate against.
- * @throws Will throw an error if the package name is invalid for TypeScript.
+ * @returns void.
+ * @throws Error when the package name is invalid for the language or language is unsupported.
  */
 export function validatePackageName(name: string, language: Language) {
 	switch (language) {
@@ -44,9 +45,10 @@ export function validatePackageName(name: string, language: Language) {
 }
 
 /**
- * Ensure the selected package manager is available on the system
- * and return a packageManager identifier string (e.g., "bun@1.2.0")
- * @param pm - The package manager to verify/resolve.
+ * Ensure the selected package manager is available on the system and return its version string.
+ * @param pm - The package manager to verify (e.g. "pnpm").
+ * @returns Promise resolving to a version string (e.g. "pnpm@9.0.0").
+ * @throws Error when the package manager is not installed or unsupported.
  */
 export async function ensurePackageManager(
 	pm: PackageManager,

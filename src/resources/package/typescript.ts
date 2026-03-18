@@ -1,9 +1,9 @@
 import validatePkg from "validate-npm-package-name";
 
 /**
- * Validates a JavaScript package name to ensure it conforms to NPM package name rules.
- * @param {string} name - The package name to validate.
- * @returns {true | string} true if the name is valid for new packages; otherwise an error string describing the issues.
+ * Validate a package name against npm rules (used for TypeScript packages).
+ * @param name - The package name to validate.
+ * @returns True if the name is valid for new packages; otherwise an error string describing the issues.
  */
 export function validateTypescriptPackageName(name: string): true | string {
 	const res = validatePkg(name);

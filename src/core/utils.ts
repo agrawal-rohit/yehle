@@ -42,6 +42,7 @@ export function toSlug(value: string): string {
 /**
  * Sleep for the specified number of milliseconds.
  * @param ms - The number of milliseconds to sleep.
+ * @returns Promise that resolves after the given delay.
  */
 export function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
@@ -52,6 +53,7 @@ export function sleep(ms: number): Promise<void> {
  * If truncated, appends "...". ANSI styling is not preserved in the truncated section.
  * @param s - The input string to truncate.
  * @param max - The maximum visible length.
+ * @returns The truncated string (with "..." if truncated).
  */
 export function truncate(s: string, max: number): string {
 	const raw = stripAnsi(s);

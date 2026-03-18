@@ -11,6 +11,13 @@
 		"resolveJsonModule": true,
 		"skipLibCheck": true
 	},
-	"include": ["src/**/*"],
-	"exclude": ["node_modules", "templates/**"]
+	"include": ["src"],
+	"exclude": [
+		"node_modules",
+		"templates/**",
+		"**/*.test.ts",
+		"**/*.test.tsx",
+		"**/*.spec.ts",
+		"**/*.spec.tsx"
+	]
 }
