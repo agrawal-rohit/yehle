@@ -138,6 +138,16 @@ npx yehle package \
   --template default
 ```
 
+#### Create a documentation site with Fumadocs
+
+```bash
+npx yehle package \
+  --name my-docs \
+  --lang typescript \
+  --template fumadocs \
+  --public
+```
+
 ## Commands Reference
 
 #### <span id="package"></span>`package`
@@ -165,7 +175,7 @@ npx yehle package \
 
 - `--name <project-name>`: Name of the package
 - `--lang <language>`: Programming language that the package is built for _(for example, `typescript`)_.
-- `--template <template-name>`: The starter template for this package _(for example, `default`, `react`, etc.)_
+- `--template <template-name>`: The starter template for this package _(for example, `default`, `react`, `fumadocs`, etc.)_
 - `--public`: Whether the package should be optimised for publishing and contributions _(sets up public registry configuration, release workflows, and community files for open-source collaboration)_.
 - `--include-instructions`: When set, also add agent instructions for the chosen template.
 - `--instructions-ide-format <format>`: Target IDE format for generated instructions (for example, `cursor`, `windsurf`, `cline`, `claude`).
