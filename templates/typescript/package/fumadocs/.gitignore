@@ -1,0 +1,25 @@
+*.tgz
+.vscode
+
+# Build & Dependencies
+dist/
+node_modules/
+npm-debug.*
+.next/
+.source/
+
+# Coverage
+coverage/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Agent instructions
+.cursor/
+.windsurf/
+.cline/
+.claude/
+AGENTS.md
+AGENT.md
