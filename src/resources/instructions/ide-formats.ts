@@ -18,25 +18,16 @@ export const IDE_FORMATS = [
 export type IdeFormat = (typeof IDE_FORMATS)[number]["value"];
 
 /**
- * Resolve the `paths` glob list used in IDE-specific rule frontmatter.
- * Falls back to a broad default (written as `** / *`) when no explicit paths are provided.
- * @param frontmatter - Parsed instruction frontmatter.
- * @returns Array of glob patterns to embed in IDE frontmatter.
- */
-function getPathsArray(frontmatter: RuleFrontmatter): string[] {
-	return frontmatter.paths?.length ? frontmatter.paths : ["**/*"];
-}
-
-/**
  * Build a YAML frontmatter block that contains only a `paths:` array.
  * Used for IDEs that represent rules as simple markdown files with globs.
  * @param paths - Glob patterns to embed.
  * @returns Frontmatter string in the expected YAML format for the IDE.
  */
 function frontmatterWithPathsArray(paths: string[]): string {
+	if (paths.length === 0) return "";
 	return `---
 paths:
-${paths.map((p) => `  - "${p}"`).join("\n")}
+${paths.map((p) => `  - "${escapeYamlDoubleQuoted(p)}"`).join("\n")}
 ---
 
 `;
@@ -48,12 +39,15 @@ ${paths.map((p) => `  - "${p}"`).join("\n")}
  * @returns Frontmatter string appropriate for Cursor rule files.
  */
 function cursorFrontmatter(frontmatter: RuleFrontmatter): string {
-	const paths = getPathsArray(frontmatter);
+	const globsLines = frontmatter.paths?.length
+		? frontmatter.paths
+				.map((p) => `  - "${escapeYamlDoubleQuoted(p)}"`)
+				.join("\n")
+		: "";
+	const globsValue = globsLines ? `\nglobs:\n${globsLines}` : "";
 	return `---
 description: "${frontmatter.description}"
-alwaysApply: ${frontmatter.alwaysApply}
-globs:
-${paths.map((p) => `  - "${p}"`).join("\n")}
+alwaysApply: ${frontmatter.alwaysApply}${globsValue}
 ---
 
 `;
@@ -65,7 +59,7 @@ ${paths.map((p) => `  - "${p}"`).join("\n")}
  * @returns Frontmatter string for Cline rule files.
  */
 function clineFrontmatter(frontmatter: RuleFrontmatter): string {
-	return frontmatterWithPathsArray(getPathsArray(frontmatter));
+	return frontmatterWithPathsArray(frontmatter.paths ?? []);
 }
 
 /**
@@ -74,7 +68,7 @@ function clineFrontmatter(frontmatter: RuleFrontmatter): string {
  * @returns Frontmatter string for Claude rule files.
  */
 function claudeFrontmatter(frontmatter: RuleFrontmatter): string {
-	return frontmatterWithPathsArray(getPathsArray(frontmatter));
+	return frontmatterWithPathsArray(frontmatter.paths ?? []);
 }
 
 /** Dot-directory root for each IDE format. */

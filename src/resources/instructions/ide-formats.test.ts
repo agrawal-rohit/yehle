@@ -234,7 +234,7 @@ describe("resources/instructions/ide-formats", () => {
 			expect(result).toBe(content);
 		});
 
-		it("should handle empty paths array with default glob", () => {
+		it("should omit globs when paths are missing", () => {
 			const content = "# Test content";
 			const fmNoPaths: RuleFrontmatter = {
 				description: "Test",
@@ -247,7 +247,37 @@ describe("resources/instructions/ide-formats", () => {
 				"my-rule",
 				fmNoPaths,
 			);
-			expect(result).toContain('  - "**/*"');
+			expect(result).toContain('description: "Test"');
+			expect(result).toContain("alwaysApply: false");
+			expect(result).not.toContain("globs:");
+		});
+
+		it("should escape paths containing double quotes and backslashes in YAML", () => {
+			const content = "# Test";
+			const fm: RuleFrontmatter = {
+				description: "Test",
+				paths: ['path/with"quote', String.raw`path\with\backslash`],
+				alwaysApply: false,
+			};
+			const cursorResult = transformContentForIde(
+				content,
+				"cursor",
+				InstructionCategory.LANGUAGE,
+				"r",
+				fm,
+			);
+			expect(cursorResult).toContain(String.raw`  - "path/with\"quote"`);
+			expect(cursorResult).toContain(String.raw`  - "path\\with\\backslash"`);
+
+			const clineResult = transformContentForIde(
+				content,
+				"cline",
+				InstructionCategory.LANGUAGE,
+				"r",
+				fm,
+			);
+			expect(clineResult).toContain(String.raw`  - "path/with\"quote"`);
+			expect(clineResult).toContain(String.raw`  - "path\\with\\backslash"`);
 		});
 
 		it("should add cursor subagent frontmatter for SUBAGENTS", () => {

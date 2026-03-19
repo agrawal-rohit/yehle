@@ -2,11 +2,12 @@ import { stripAnsi } from "consola/utils";
 
 /**
  * Capitalizes the first letter of the input string.
- * @param string - The input string to capitalize.
+ * @param value - The input string to capitalize.
  * @returns The string with the first character converted to uppercase.
  */
-export function capitalizeFirstLetter(string: string) {
-	return string[0].toUpperCase() + string.slice(1);
+export function capitalizeFirstLetter(value: string) {
+	if (value.length === 0) return value;
+	return value[0].toUpperCase() + value.slice(1);
 }
 
 /**
@@ -68,7 +69,5 @@ export function truncate(s: string, max: number): string {
  * @returns The escaped string safe to include inside YAML double quotes.
  */
 export function escapeYamlDoubleQuoted(value: string): string {
-	return value
-		.replaceAll(String.raw`\\`, String.raw`\\\\`)
-		.replaceAll('"', String.raw`\"`);
+	return value.replaceAll("\\", "\\\\").replaceAll('"', String.raw`\"`);
 }
