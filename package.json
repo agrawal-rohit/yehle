@@ -26,7 +26,10 @@
 		"check:ci": "pnpm run typecheck && pnpm exec biome check",
 		"cov": "vitest run --coverage --passWithNoTests",
 		"prepack": "pnpm run build",
-		"prepare": "husky"
+		"prepare": "husky",
+		"docs:dev": "pnpm -C docs dev",
+		"docs:build": "pnpm -C docs build",
+		"docs:start": "pnpm -C docs start"
 	},
 	"dependencies": {
 		"cac": "^6.7.14",

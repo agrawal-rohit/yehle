@@ -1,0 +1,14 @@
+{
+  "title": "Features",
+  "pages": [
+    "index",
+    "release-workflow",
+    "templates",
+    "agent-instructions",
+    "ci-automation",
+    "dependency-upgrades",
+    "testing-and-quality",
+    "generated-project-docs",
+    "community-files"
+  ]
+}

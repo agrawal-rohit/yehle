@@ -1,0 +1,50 @@
+---
+title: Templates
+description: How layered templates and Mustache rendering produce a project tree.
+---
+
+## What they do
+
+**Templates** are the on-disk trees under `templates/` in the Yehle repository. When you run `yehle package`, the CLI **merges** several layers into your new project folder, then applies **Mustache** rendering and optional post-processing. No template layer is “magic”: each file comes from a known path in the registry.
+
+## How Yehle implements it
+
+### Copy order (later wins on the same path)
+
+The generator copies in this order (`writeTemplateFiles` in the CLI):
+
+1. `templates/shared` — repo-wide files (for example community-oriented GitHub templates).
+2. `templates/<lang>/shared` — language-wide shared files (for example Husky, lint-staged, Biome for TypeScript).
+3. `templates/<lang>/<projectSpec>/shared` — everything common to that project type (for example `package/shared`: CI, cliff, release workflow stubs, shared README patterns).
+4. `templates/<lang>/<projectSpec>/<template>` — the starter you chose (for example `basic` or `react`).
+
+If two layers contain the same relative path, **the last copy wins**.
+
+### Selectable templates
+
+Under each `templates/<lang>/<projectSpec>/` directory, **immediate subdirectories** other than `shared` and `instructions` are the selectable template names (for example `basic`, `react`).
+
+### Mustache
+
+Files matching `*.mustache.*` are rendered with template metadata (for example package name, package manager version, whether a playground exists) and renamed by stripping `.mustache.` from the path.
+
+### Template-only files removed after copy
+
+Basenames `instructions` and `yehle.yaml` are removed from the generated tree after copy: they drive **instruction selection** and tooling mappings for the generator, not the published package layout.
+
+### Local vs remote registry
+
+By default the CLI can fetch template content from the GitHub subtree. For local development, set `YEHLE_LOCAL_TEMPLATES=true` so `./templates` is used.
+
+## What to edit
+
+| Goal | Where to look |
+|------|----------------|
+| Change what every TypeScript package gets | `templates/typescript/package/shared` or `templates/typescript/shared` |
+| Change one starter only | `templates/typescript/package/<template>/` |
+| Add optional instruction mappings for a template | `yehle.yaml` next to that template (see [Agent instructions](/docs/features/agent-instructions)) |
+
+## Related
+
+- [Available templates](/docs/available-templates) — end-user oriented pages per starter.
+- [Contributing — contributing templates](/docs/contributing/contributing-templates) — how to extend `templates/` in the Yehle repo.

@@ -1,0 +1,52 @@
+---
+title: TypeScript — Basic package
+description: Minimal TypeScript library using the `basic` template.
+---
+
+## Goal
+
+A **small publishable or internal TypeScript package**: single entry point, tests, linting, formatting, and CI — without a UI playground.
+
+## Command
+
+```bash
+npx yehle package \
+  --name <your-package-name> \
+  --lang typescript \
+  --template basic
+```
+
+For flag details and optional agent instructions, see [API Reference — `package`](/docs/commands/package).
+
+## Supported languages
+
+- **TypeScript** only (`--lang typescript`).
+
+## What you get
+
+- Standard **package** layout from the layered template merge (`basic` on top of `templates/typescript/package/shared` and shared layers).
+- **Vitest** tests, **Biome**, **Husky** / **commitlint** / **lint-staged** as in [Testing and quality](/docs/features/testing-and-quality).
+- **Public** option: pass `--public` for open-source defaults (community files, release workflow pieces, npm-oriented README sections). See [Community files](/docs/features/community-files) and [Release workflow](/docs/features/release-workflow).
+
+### Optionally publish
+
+```bash
+npx yehle package \
+  --name <your-package-name> \
+  --lang typescript \
+  --template basic \
+  --public
+```
+
+### Optionally add agent instructions
+
+```bash
+npx yehle package \
+  --name <your-package-name> \
+  --lang typescript \
+  --template basic \
+  --include-instructions \
+  --instructions-ide-format cursor
+```
+
+See [Agent instructions](/docs/features/agent-instructions).

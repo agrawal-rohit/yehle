@@ -1,0 +1,25 @@
+---
+title: Dependency upgrades
+description: Dependabot configuration for npm ecosystems in generated repos.
+---
+
+## What it does
+
+Yehle adds **Dependabot** so your repository automatically gets **pull requests** for dependency and GitHub Actions updates. That reduces manual toil keeping `package.json` and workflow action versions current.
+
+## How Yehle implements it
+
+The config is part of the **TypeScript package shared** layer: `templates/typescript/package/shared/.github/dependabot.yml`. It is copied like any other template file during the merge described in [Templates](/docs/features/templates).
+
+You can adjust the schedule, groups, and ignore rules there to match your repo’s policy.
+
+## What to edit
+
+| Goal | Where to look |
+|------|----------------|
+| Change update frequency or open PR limits | `.github/dependabot.yml` |
+| Ignore specific packages | `ignore` entries in Dependabot config |
+
+## Related
+
+- [CI automation](/docs/features/ci-automation) — runs when you merge Dependabot PRs.

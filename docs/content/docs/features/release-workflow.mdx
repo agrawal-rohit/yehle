@@ -1,0 +1,33 @@
+---
+title: Release workflow
+description: Tag-driven npm releases and changelog generation.
+---
+
+## What it does
+
+Yehle-generated **TypeScript packages** include a **tag-driven release pipeline**: you push a semver tag (for example `v1.2.3`), and GitHub Actions can build, publish to npm, and keep a **changelog** aligned with conventional commits.
+
+This is a separate concern from day-to-day CI: it answers “how do I ship a version?” once the code is ready.
+
+## How Yehle implements it
+
+1. **Workflow file** — For **public** packages, the template includes a release workflow under `templates/typescript/package/shared/.github/workflows/release.mustache.yml`. It is copied into the generated repo and rendered as Mustache. For **private** packages, that file is omitted (it is listed in `templatePublicPaths` as TypeScript-only public content).
+
+2. **Trigger** — The workflow runs on `push` to tags matching `v[0-9]+.[0-9]+.[0-9]+*` (semver-style tags). Parsing steps derive version, prerelease flags, and npm dist-tags (`latest`, `rc`, `beta`, `alpha`).
+
+3. **Publishing** — The workflow uses Node, pnpm, and npm registry settings suitable for publishing packages (including trusted publishing patterns where configured).
+
+4. **Changelogs and release notes** — [git-cliff](https://git-cliff.org/) is configured via `cliff.toml` in the project-spec shared layer (`templates/typescript/package/shared/cliff.toml`). In CI, the release workflow runs `git-cliff` to generate **`RELEASE_NOTES.md`** for the GitHub Release body (`pnpm exec git-cliff --latest ...`). Conventional commits keep grouped sections sensible.
+
+## What to edit
+
+| Goal | Where to look |
+|------|----------------|
+| Change when releases run or add steps | `.github/workflows/release.yml` (generated name may vary after Mustache render) |
+| Changelog format / sections | `cliff.toml` |
+| Versioning and tagging | Your git tags and `package.json` version policy |
+
+## Related
+
+- [CI automation](/docs/features/ci-automation) — continuous integration on branches and PRs.
+- [API Reference — `package`](/docs/commands/package) — `--public` and what gets included in the scaffold.

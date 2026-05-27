@@ -18,6 +18,12 @@ coverage/
 .stryker-tmp
 reports/
 
+# Docs
+docs/.next/
+docs/node_modules/
+docs/dist/
+docs/build/
+
 # Agent instructions
 .cursor/
 .windsurf/

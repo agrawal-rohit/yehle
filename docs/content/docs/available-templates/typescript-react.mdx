@@ -1,0 +1,54 @@
+---
+title: TypeScript — React package
+description: TypeScript package with a Vite + React playground using the `react` template.
+---
+
+## Goal
+
+A **TypeScript package** that ships components or utilities and includes a **local React + Vite playground** to iterate on UI without publishing a separate app.
+
+## Command
+
+```bash
+npx yehle package \
+  --name <your-package-name> \
+  --lang typescript \
+  --template react
+```
+
+For flag details, see [API Reference — `package`](/docs/commands/package).
+
+## Supported languages
+
+- **TypeScript** only (`--lang typescript`).
+
+## What you get
+
+- Everything from the **package** shared layers plus the **`react`** template (playground under `playground/`, React-oriented test setup).
+- `react` and `react-dom` are typically **peer dependencies**; the playground uses Vite for fast local dev.
+
+### Optionally publish
+
+```bash
+npx yehle package \
+  --name <your-package-name> \
+  --lang typescript \
+  --template react \
+  --public
+```
+
+### Optionally add agent instructions
+
+```bash
+npx yehle package \
+  --name <your-package-name> \
+  --lang typescript \
+  --template react \
+  --include-instructions \
+  --instructions-ide-format cursor
+```
+
+## Related
+
+- [Testing and quality](/docs/features/testing-and-quality) — Vitest and UI testing setup.
+- [Templates](/docs/features/templates) — how `react` layers on top of `shared`.

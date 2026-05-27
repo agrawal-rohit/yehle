@@ -1,9 +1,0 @@
-toolingInstructions:
-  - react
-
-subagents:
-  - researcher
-  - planner
-  - implementer
-  - verifier
-  - documentation

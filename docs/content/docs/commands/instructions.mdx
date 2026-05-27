@@ -1,0 +1,79 @@
+---
+title: instructions
+description: Add IDE-specific agent instructions to an existing project.
+---
+
+Add IDE-specific agent instructions to an **existing** project.
+
+`yehle instructions` fetches instruction templates from the registry and writes them into
+your repo in the format expected by your IDE.
+
+```bash
+npx yehle instructions
+```
+
+If you already know the target IDE, provide it directly:
+
+```bash
+npx yehle instructions --ide-format cursor
+```
+
+## Interactive category flow
+
+When running interactively, `yehle` lets you choose which instruction categories to apply (in
+the following order):
+
+1. `essential` (recommended, always-on security + coding principles)
+2. `language` instructions (scoped to a language)
+3. `project-spec` instructions (scoped to a language + project type)
+4. `tooling` (best-practice rules for tools/frameworks present in your repo)
+5. `subagents` (agents like `researcher`, `planner`, `implementer`, `verifier`)
+6. `skills` (multi-step workflows)
+
+## Supported IDEs
+
+Supported `--ide-format` values:
+
+- `cursor`
+- `windsurf`
+- `cline`
+- `claude`
+
+Each IDE receives output in a different directory layout:
+
+- Cursor writes:
+  - `.cursor/rules/*` (rules, as `*.mdc`)
+  - `.cursor/skills/*/SKILL.md` (skills)
+  - `.cursor/agents/*.md` (subagents)
+- Windsurf writes:
+  - `.windsurf/rules/*` (rules)
+  - `.windsurf/skills/*/SKILL.md` (skills and subagents)
+- Cline writes:
+  - `.clinerules/*.md` (rules)
+  - `.cline/skills/*/SKILL.md` (skills and subagents)
+- Claude writes:
+  - `.claude/rules/*` (rules)
+  - `.claude/skills/*/SKILL.md` (skills)
+  - `.claude/agents/*.md` (subagents)
+
+For a full mapping (plus details about Mustache variables), see [Agent instructions](/docs/features/agent-instructions).
+
+## Prerequisites and environment
+
+- **`pnpm` is required** to run `yehle package` (the generator checks that `pnpm` exists). The `instructions` command does not scaffold a package, but generated projects assume pnpm.
+- **Git** is required for the `yehle package` finish step: it runs `git init` and creates an initial commit. If your Git config has no `user.name` / `user.email`, `git commit` will fail.
+- **Network access** is required when using the **remote** template/instruction registry (default). For fully offline local templates, set `YEHLE_LOCAL_TEMPLATES=true` and use a populated `./templates` directory.
+
+## Language and project-spec discovery
+
+`yehle instructions` discovers available `language` and `project-spec` choices by scanning your local `./templates` directory.
+
+If `./templates` is missing or empty, the prompts for language/project-spec may be skipped or return no choices.
+
+Unscoped categories (`essential`, `tooling`, `subagents`, `skills`) can still work because they are fetchable from the remote registry.
+
+## Flags
+
+| Flag | Description |
+|---|---|
+| `--ide-format <format>` | Target IDE format for generated instructions (e.g. `cursor`, `windsurf`, `cline`, `claude`) |

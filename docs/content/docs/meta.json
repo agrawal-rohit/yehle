@@ -1,0 +1,16 @@
+{
+  "title": "Docs",
+  "pages": [
+    "index",
+    "---Features---",
+    "features",
+    "---Supported languages---",
+    "supported-languages",
+    "---Available templates---",
+    "available-templates",
+    "---API Reference---",
+    "commands",
+    "---Contributing---",
+    "contributing"
+  ]
+}

@@ -1,0 +1,29 @@
+---
+title: Generated project docs
+description: README scaffolding, badges, MIT license, and changelog tooling.
+---
+
+## What it does
+
+Yehle-generated projects ship with **documentation scaffolding** so you are not staring at a blank README: a centered title, installation snippet, **shields.io** badges for public packages, and pointers for usage and contributing. **Changelog** maintenance is supported via **git-cliff** configuration (see [Release workflow](/docs/features/release-workflow)).
+
+For **public** packages, an **MIT LICENSE** can be generated when author information is available during `yehle package`.
+
+## How Yehle implements it
+
+- **README** — `README.mustache.md` in `templates/typescript/package/shared/` is rendered with Mustache (for example `name`, `public`, `authorGitUsername`) and renamed to `README.md`.
+- **Badges** — Public README sections include workflow status and npm download badges using GitHub and npm metadata.
+- **License** — When `license.public` is true and an author name is provided, the CLI writes `LICENSE` from the SPDX MIT template (`writeTemplateFiles` in the CLI).
+- **Changelog** — `cliff.toml` configures git-cliff for conventional-commit-style changelog generation.
+
+## What to edit
+
+| Goal | Where to look |
+|------|----------------|
+| Rewrite project description and usage | `README.md` |
+| Changelog sections and links | `cliff.toml`, `CHANGELOG.md` (once you generate releases) |
+| License text | `LICENSE` (MIT as generated) |
+
+## Related
+
+- [Community files](/docs/features/community-files) — contribution and issue templates for public repos.

@@ -1,0 +1,111 @@
+---
+title: Introduction
+description: An opinionated scaffolding CLI for modern developers.
+---
+
+import { ArrowUpCircle, Layers, Sparkles, Workflow } from 'lucide-react';
+
+`yehle` is a CLI tool for scaffolding modern software projects by performing common [yak-shaving](https://softwareengineering.stackexchange.com/a/388236) operations through opinionated templates, sensible tooling setup, and development best practices.
+
+Here's what `yehle` offers:
+
+<Cards>
+  <Card icon={<Layers className="text-purple-300" />} title="Templates" href="/docs/features/templates">
+    Pre-configured starters with linters, formatters, tests, basic documentation, and sensible defaults.
+  </Card>
+  <Card icon={<Workflow className="text-blue-300" />} title="Build and Release Workflows" href="/docs/features/ci-automation">
+    GitHub Actions for build checks and automatic release with changelog generation based on the commit history.
+  </Card>
+  <Card icon={<Sparkles className="text-amber-300" />} title="Agent Instructions" href="/docs/features/agent-instructions">
+    Optional rules, skills, and subagent-style configs for your IDE — better ✨vibe coding✨ with consistent conventions across Cursor, Windsurf, Cline, and Claude Code.
+  </Card>
+  <Card icon={<ArrowUpCircle className="text-emerald-300" />} title="Dependency upgrades" href="/docs/features/dependency-upgrades">
+    Dependabot keeps npm and GitHub Actions dependencies current with automated pull requests, so upgrades are reviewable instead of forgotten.
+  </Card>
+</Cards>
+
+<Callout title="Want to learn more?">
+  See the [Features](/docs/features) section for a full breakdown of each capability — release workflow, dependency upgrades, testing and quality, generated docs, and more.
+</Callout>
+
+## Motivation
+
+I'd usually spend hours re-configuring the _"same old tooling and workflow setup"_ every time I started a new project — instead of focusing on the actual functionality. The same pattern shows up for teams: **standard** scaffolding stays stable for months until a new project type or workflow appears, and suddenly everything gets reconfigured again. I built `yehle` to remove that repetition: it generates a project structure _(based on my personal flavour)_ with essential pieces already configured — pre-commit hooks, a linter and formatter, CI and release workflows, basic documentation, and more — so a new repo starts in a **known-good** state and you can build what you care about without the distractions.
+
+## What you get
+
+- Opinionated project templates (currently **TypeScript** packages — see [Supported languages](/docs/supported-languages))
+- Pre-configured development tooling (lint/format, tests, type checking)
+- CI and release workflows suitable for open-source projects
+- Optional **agent instructions** for your IDE ([Agent instructions](/docs/features/agent-instructions))
+
+## Requirements
+
+[Node.js v20+](https://nodejs.org)
+
+## Install and run
+
+You interact with `yehle` through **`package`** (scaffold a project) and **`instructions`** (add IDE rules to an existing repo):
+
+```bash
+npx yehle package
+npx yehle instructions
+```
+
+The easiest way to start is to call the CLI through [npx](https://www.npmjs.com/package/npx):
+
+```bash
+npx yehle package
+```
+
+<Callout type="warn">
+  Some workflows in the generated projects may require repository secrets to be configured in your
+  GitHub project under **Settings → Secrets and variables → Actions**. Additionally, ensure that
+  **"Allow GitHub Actions to create and approve pull requests"** is enabled under **Settings →
+  Actions → General** to prevent workflow failures before you publish your code.
+</Callout>
+
+`yehle` uses a **tag-driven release workflow** for packages configured for publishing. See [Release workflow](/docs/features/release-workflow).
+
+### Examples
+
+**Public TypeScript package**
+
+```bash
+npx yehle package \
+  --name my-package \
+  --lang typescript \
+  --template basic \
+  --public
+```
+
+**Private internal TypeScript library**
+
+```bash
+npx yehle package \
+  --name internal-utils \
+  --lang typescript \
+  --template basic
+```
+
+**React + Vite package**
+
+```bash
+npx yehle package \
+  --name my-react-package \
+  --lang typescript \
+  --template react \
+  --public
+```
+
+Full flag reference: [API Reference — `package`](/docs/commands/package).
+
+## Explore
+
+<Cards>
+  <Card title="Features" description="One page per capability Yehle provides." href="/docs/features" />
+  <Card title="Supported languages" description="Language stacks and tooling." href="/docs/supported-languages" />
+  <Card title="Available templates" description="Starters you can generate today." href="/docs/available-templates" />
+  <Card title="API Reference" description="`package` and `instructions` commands." href="/docs/commands" />
+  <Card title="Contributing" description="Support, issues, and templates." href="/docs/contributing" />
+</Cards>

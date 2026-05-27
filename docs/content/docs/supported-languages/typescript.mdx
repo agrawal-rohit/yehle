@@ -1,0 +1,39 @@
+---
+title: TypeScript
+description: How Yehle scaffolds TypeScript packages and which tools it uses.
+---
+
+## Scope
+
+**TypeScript** is the only language exposed by `yehle package` today (`typescript` as the `--lang` value). Project type **package** is the supported resource: templates live under `templates/typescript/package/<template>/`.
+
+## Stack and tooling
+
+| Area | Implementation in generated projects |
+|------|--------------------------------------|
+| Package manager | **pnpm** (required at generation time; the CLI checks that `pnpm` exists) |
+| Build / bundle | **tsdown** where included in the template |
+| Types | **TypeScript** compiler and `tsconfig` |
+| Tests | **Vitest**; **Stryker** for mutation testing (shared config) |
+| Lint / format | **Biome** |
+| Styling (React template) | **Tailwind CSS** in the playground where applicable |
+| Git hooks | **Husky**, **lint-staged**, **commitlint** |
+| CI / release | **GitHub Actions** — see [CI automation](/docs/features/ci-automation) and [Release workflow](/docs/features/release-workflow) |
+| Changelog | **git-cliff** via `cliff.toml` |
+| Upgrades | **Dependabot** — see [Dependency upgrades](/docs/features/dependency-upgrades) |
+
+## How features map to this stack
+
+- **Templates** — Layered copy under `templates/typescript/...` ([Templates](/docs/features/templates)).
+- **Agent instructions** — Language-scoped files under `templates/typescript/instructions/` plus shared categories ([Agent instructions](/docs/features/agent-instructions)).
+
+## Prerequisites
+
+- **Node.js** v20+ for running the CLI and matching generated workflow Node versions.
+- **pnpm** installed and on `PATH` when running `yehle package`.
+- **Git** — the generator initializes a repo and creates an initial commit; configure `user.name` and `user.email` first.
+
+## Related
+
+- [Available templates](/docs/available-templates) — `basic` and `react` starters.
+- [API Reference](/docs/commands) — `yehle package` flags.

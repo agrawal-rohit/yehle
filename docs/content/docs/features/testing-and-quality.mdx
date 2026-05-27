@@ -1,0 +1,39 @@
+---
+title: Testing and quality
+description: Unit tests, mutation tests, linting, formatting, and git hooks for TypeScript packages.
+---
+
+## What it does
+
+For **TypeScript package** templates, Yehle wires a **testing stack** and **quality gates** so you get fast feedback before code is merged: unit tests, optional mutation testing, **Biome** for lint/format, **commitlint** + **Husky** + **lint-staged** for consistent commits and staged checks.
+
+## How Yehle implements it
+
+Files come from the **language shared** and **project-spec shared** layers (for example `templates/typescript/shared`, `templates/typescript/package/shared`) plus template-specific files under `templates/typescript/package/<template>/`.
+
+Typical tools (varies slightly by `basic` vs `react`):
+
+| Concern | Tool / mechanism |
+|--------|-------------------|
+| Unit tests | [Vitest](https://vitest.dev/) |
+| Mutation testing | [Stryker](https://stryker-mutator.io/) (config in project-spec shared) |
+| Lint + format | [Biome](https://biomejs.dev/) |
+| Bundling | [tsdown](https://tsdown.dev/) (where included) |
+| Commits | [commitlint](https://github.com/conventional-changelog/commitlint) + [Husky](https://github.com/typicode/husky) |
+| Staged files | [lint-staged](https://github.com/lint-staged/lint-staged) |
+
+The **React** template adds a **Vite** playground and React-related test setup files for the package and UI demos.
+
+## What to edit
+
+| Goal | Where to look |
+|------|----------------|
+| Change lint rules | `biome.json` |
+| Change test commands or coverage | `vitest.config.ts`, `package.json` scripts |
+| Adjust pre-commit behavior | `lint-staged` config, Husky hooks under `.husky/` |
+| Mutation testing scope | `stryker.config.mjs` |
+
+## Related
+
+- [CI automation](/docs/features/ci-automation) — runs the same checks in GitHub Actions.
+- [Supported languages — TypeScript](/docs/supported-languages/typescript) — stack-level overview.

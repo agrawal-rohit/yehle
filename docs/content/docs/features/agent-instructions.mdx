@@ -1,0 +1,69 @@
+---
+title: Agent instructions
+description: Optional IDE rules, skills, and agents generated from markdown registries.
+---
+
+## What they do
+
+**Agent instructions** are optional markdown rules that Yehle can write into your repo in the shape each IDE expects — so AI-assisted coding tools pick up **project conventions**, **workflows**, and optional **subagents/skills** without hand-copying files.
+
+They reflect how **agentic and vibe coding** are becoming normal: Yehle treats these as **add-ons** you can enable for new projects (`yehle package --include-instructions`) or apply to existing repos (`yehle instructions`).
+
+## How Yehle implements it
+
+### Instruction categories
+
+The CLI loads instructions from paths under `templates/` (and from shared categories under `templates/instructions/`). Categories include **essential**, **language**, **project-spec**, **template**, **tooling** (via `yehle.yaml`), **skills**, and **subagents** (via `yehle.yaml`).
+
+When generating a **package** with `--include-instructions`, the write order is:
+
+`essential → language → project-spec → template → tooling → skills → subagents`
+
+The standalone `yehle instructions` command walks categories interactively in a similar order for unscoped vs scoped choices.
+
+### `yehle.yaml` on a template
+
+Templates can list which shared tooling rules, skills, and subagents to pull in:
+
+- `toolingInstructions`
+- `skills`
+- `subagents`
+
+Each value is a **basename** matching a file under the corresponding shared instruction directory.
+
+### IDE formats
+
+Yehle maps the same source markdown into different on-disk layouts. Supported `--ide-format` / `--instructions-ide-format` values: `cursor`, `windsurf`, `cline`, `claude`.
+
+| IDE | Rules | Skills | Subagents |
+|-----|--------|--------|-----------|
+| **Cursor** (`cursor`) | `.cursor/rules/<name>.mdc` | `.cursor/skills/<name>/SKILL.md` | `.cursor/agents/<name>.md` |
+| **Windsurf** (`windsurf`) | `.windsurf/rules/<name>.md` | `.windsurf/skills/<name>/SKILL.md` | Same skills tree — **subagents are emitted as skills** (no separate agents directory) |
+| **Cline** (`cline`) | `.clinerules/<name>.md` | `.cline/skills/<name>/SKILL.md` | **Subagents as skills** (same as Windsurf pattern) |
+| **Claude Code** (`claude`) | `.claude/rules/<name>.md` | `.claude/skills/<name>/SKILL.md` | `.claude/agents/<name>.md` |
+
+Frontmatter on rules (for example `description`, `paths`, `alwaysApply`, `model`, `readonly`) is interpreted when transforming into each IDE’s format.
+
+### Mustache in instruction bodies
+
+When present, these placeholders are rendered at generation time:
+
+- `{{ideRoot}}` — e.g. `.cursor` or `.claude`
+- `{{checkpointDir}}` — `<ideRoot>/checkpoints`
+
+### Limitations you should know
+
+- **`yehle instructions` and language/project-spec discovery** — choices for language and project-spec scoped instructions are discovered by scanning a local `./templates` tree. If it is missing or empty, unscoped categories may still work from the remote registry, but language/project-spec prompts may offer no choices. See [API Reference — `instructions`](/docs/commands/instructions).
+
+## What to edit
+
+| Goal | Where to look |
+|------|----------------|
+| Change default principles for all projects | `templates/instructions/essential/` in the Yehle repo (when contributing) or regenerate after upstream updates |
+| Per-project customization after generation | Files under your IDE’s rules/skills/agents directories |
+| Template-level mapping | `yehle.yaml` on the template |
+
+## Related
+
+- [API Reference](/docs/commands) — `package` and `instructions` flags.
+- [Supported languages — TypeScript](/docs/supported-languages/typescript) — how the TS stack ties into tooling rules.

@@ -1,0 +1,75 @@
+---
+title: package
+description: Generate a new package with sensible defaults, development best practices, and release workflows.
+---
+
+Generate a new `package` from a template, with sensible development tooling and (optionally) IDE-ready agent instructions.
+
+`yehle package` is interactive by default:
+
+```bash
+npx yehle package
+```
+
+You can skip prompts by passing flags:
+
+```bash
+npx yehle package \
+  --name my-lib \
+  --lang typescript \
+  --template basic \
+  --public \
+  --include-instructions \
+  --instructions-ide-format cursor
+```
+
+## What the generator does
+
+1. **Preflight checks**
+   - Ensures `pnpm` is available (this is required by the generated templates).
+   - Fails fast when the target directory already exists.
+2. **Write the template**
+   - Copies from the template registry hierarchy: `templates/shared`, `templates/<lang>/shared`, `templates/<lang>/package/shared`, then `templates/<lang>/package/<template>`.
+   - Renders mustache templates (`*.mustache.*`) and strips JSON keys when needed.
+3. **Add agent instructions (optional)**
+   - Only runs when `--include-instructions` is set.
+   - Writes instructions into your target IDE format based on the template and its `yehle.yaml` mappings.
+4. **Initialize Git and finish**
+   - Runs `git init` (if needed) and creates an initial commit.
+   - Scans `.github/workflows/*.yml` for `secrets.<NAME>` references (ignores `GITHUB_TOKEN`) and prints the secrets you’ll need in GitHub.
+5. **Print next steps**
+   - `cd <project>`
+   - `git push -u origin main`
+   - `pnpm install`
+
+## Instruction write order (when enabled)
+
+When you pass `--include-instructions`, `yehle` applies instruction categories in this order:
+
+`essential → language → project-spec → template → tooling → skills → subagents`
+
+## Flags
+
+| Flag | Description |
+|---|---|
+| `--name <project-name>` | Package name (used to create the target folder) |
+| `--lang <language>` | Language key — **only `typescript` is supported** today |
+| `--template <template-name>` | Starter template (currently `basic` and `react`) |
+| `--public` | Configure publishing + open-source defaults (community files, release workflows, and license when author info is available) |
+| `--include-instructions` | Add IDE-specific agent instructions for the chosen template |
+| `--instructions-ide-format <format>` | Target IDE format: `cursor`, `windsurf`, `cline`, `claude` |
+
+## How it works (diagram)
+
+```mermaid
+flowchart LR
+  A[Start: npx yehle package] --> B[Preflight checks: pnpm + empty target dir]
+  B --> C[Write template files (copy + mustache render)]
+  C --> D{include-instructions?}
+  D -- yes --> E[Write instruction categories in order]
+  D -- no --> F[Skip instruction writing]
+  E --> G[Initialize git + initial commit]
+  F --> G
+  G --> H[Scan workflows for secrets references]
+  H --> I[Print next steps]
+```

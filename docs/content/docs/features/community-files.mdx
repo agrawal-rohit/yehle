@@ -1,0 +1,33 @@
+---
+title: Community files
+description: Codes of conduct, issue templates, and PR templates for open-source projects.
+---
+
+## What it does
+
+For **public** packages, Yehle includes **community health** files so contributors know how to behave, how to report bugs, and how to open pull requests. These files improve **repository hygiene** on GitHub without you copying boilerplate from scratch.
+
+## How Yehle implements it
+
+Files originate from the **global shared** layer (`templates/shared/`) and related paths. When `--public` is **not** passed, several of these paths are **removed** after copy because they are intended for open-source publishing (`templatePublicPaths` in the package generator).
+
+Examples of what you may see in a public scaffold:
+
+- `CODE_OF_CONDUCT.md`
+- `.github/issue_template/` (bug reports, feature requests)
+- `.github/pull_request_template.md` (or paths merged from shared templates)
+
+Exact paths match the template tree at generation time.
+
+## What to edit
+
+| Goal | Where to look |
+|------|----------------|
+| Project-specific contributing guidelines | `CONTRIBUTING.md` and your README “Contributing” section |
+| Issue and PR templates | `.github/issue_template/`, `.github/pull_request_template.md` |
+| Code of conduct | `CODE_OF_CONDUCT.md` |
+
+## Related
+
+- [CI automation](/docs/features/ci-automation) — runs checks on PRs that use these templates.
+- [API Reference — `package`](/docs/commands/package) — `--public` and what gets included.

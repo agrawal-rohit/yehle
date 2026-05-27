@@ -1,0 +1,32 @@
+---
+title: CI automation
+description: GitHub Actions workflows for continuous integration on pushes and pull requests.
+---
+
+## What it does
+
+Generated projects include a **CI workflow** so every push to `main` and every pull request targeting `main` runs install and checks (build, lint, tests — depending on the template). This is separate from the **release** workflow, which runs on version tags.
+
+## How Yehle implements it
+
+The workflow file lives in the **project-spec shared** template layer: `templates/typescript/package/shared/.github/workflows/ci.yml`. It is copied during the layered template merge (see [Templates](/docs/features/templates)).
+
+Typical properties:
+
+- Triggers on `push` and `pull_request` for `main`.
+- Uses Node 20, pnpm, and caching for the pnpm store.
+- Runs project scripts (for example install with frozen lockfile, then test/lint/typecheck as defined in the generated `package.json`).
+
+After `yehle package` completes, the CLI also **scans** `.github/workflows/*.yml` for `secrets.<NAME>` references (except `GITHUB_TOKEN`) and prints which GitHub Actions secrets you may need to configure.
+
+## What to edit
+
+| Goal | Where to look |
+|------|----------------|
+| Add matrix builds, coverage upload, or different branches | `.github/workflows/ci.yml` |
+| Change what “checks” means | `package.json` scripts and tool configs (Biome, Vitest, etc.) |
+
+## Related
+
+- [Release workflow](/docs/features/release-workflow) — tag-based publishing.
+- [Testing and quality](/docs/features/testing-and-quality) — what the CI run is exercising locally.

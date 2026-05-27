@@ -1,0 +1,70 @@
+---
+title: Contributing templates
+description: How `templates/` and instruction files are organized for `yehle package` and `yehle instructions`.
+---
+
+`yehle` templates and instruction rules live in the repo under the **`templates/`** directory. When you add or change a template, the CLI can generate new projects via `yehle package`, and can write IDE-ready instructions via `yehle instructions`.
+
+## Directory layout
+
+- **Language templates** (for `yehle package`):
+  - `templates/<lang>/<project-spec>/<template>/...`
+  - Example: `templates/typescript/package/basic/...`
+- **Language instructions**:
+  - `templates/<lang>/instructions/*.md` (or `*.mdc`)
+- **Project-spec instructions**:
+  - `templates/<lang>/<project-spec>/instructions/*.md` (or `*.mdc`)
+- **Template-specific instructions**:
+  - `templates/<lang>/<project-spec>/<template>/instructions/*.md` (or `*.mdc`)
+- **Shared instruction categories** (used by `yehle instructions`):
+  - `templates/instructions/essential/*.md` (or `*.mdc`)
+  - `templates/instructions/tooling/*.md` (or `*.mdc`)
+  - `templates/instructions/subagents/*.md` (or `*.mdc`)
+  - `templates/instructions/skills/*.md` (or `*.mdc`)
+
+Instruction rule files can be written as either `.mdc` or `.md`. The generator tries `.mdc` first, then falls back to `.md`.
+
+## `yehle.yaml` mappings
+
+Templates (and project-specs) can include `yehle.yaml` to decide which shared instruction names (rules/skills/subagents) to apply when `--include-instructions` is enabled.
+
+Supported keys in `yehle.yaml`:
+
+- `toolingInstructions: string[]`
+- `skills: string[]`
+- `subagents: string[]`
+
+Each string should match an instruction file basename in the corresponding shared directory under `templates/instructions/**`:
+
+- `toolingInstructions` → `templates/instructions/tooling/`
+- `skills` → `templates/instructions/skills/`
+- `subagents` → `templates/instructions/subagents/`
+
+## Instruction frontmatter
+
+Instruction rule files use YAML frontmatter (parsed via `gray-matter`). For non-skill instructions, the generator reads these optional fields:
+
+- `description?: string`
+- `paths?: string[]`
+- `alwaysApply?: boolean`
+- `model?: string`
+- `readonly?: boolean`
+
+Frontmatter influences how `yehle` transforms the same instruction into the target IDE format (Cursor, Windsurf, Cline, Claude Code). See [Agent instructions](/docs/features/agent-instructions).
+
+## Mustache variables in templates
+
+Some instruction bodies may reference these placeholders:
+
+- `{{ideRoot}}`: the IDE root directory (for example `.cursor` or `.claude`)
+- `{{checkpointDir}}`: `<ideRoot>/checkpoints`
+
+`yehle` only renders these placeholders when they are present in the instruction template.
+
+## Local iteration mode
+
+By default, `yehle` fetches template/instruction registries from the GitHub subtree. For local development, set:
+
+`YEHLE_LOCAL_TEMPLATES=true`
+
+With local mode enabled, `yehle` reads from your local `./templates` directory. This is also important for `yehle instructions`, because language/project-spec choices are discovered by scanning local template directories.
