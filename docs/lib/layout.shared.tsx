@@ -5,6 +5,7 @@ export const gitConfig = {
 	user: "agrawal-rohit",
 	repo: "yehle",
 	branch: "main",
+	docsContentPath: "docs/content/docs",
 };
 
 export function baseOptions(): BaseLayoutProps {
