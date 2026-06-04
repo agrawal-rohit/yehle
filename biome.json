@@ -4,7 +4,12 @@
 		"includes": [
 			"bin/**",
 			"src/**/*.{js,ts,jsx,tsx,json,cjs,mjs,yaml,css}",
-			"!templates"
+			"docs/**/*.{js,ts,jsx,tsx,mjs,json,css}",
+			"!templates",
+			"!!docs/.next",
+			"!!docs/.source",
+			"!!docs/out",
+			"!!docs/build"
 		]
 	},
 	"formatter": {
@@ -13,6 +18,11 @@
 	"linter": {
 		"enabled": true,
 		"rules": { "recommended": true }
+	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		}
 	},
 	"assist": {
 		"enabled": true,
