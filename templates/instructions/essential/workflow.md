@@ -1,5 +1,5 @@
 ---
-description: Core expectations for how to plan, code, and verify changes
+description: Core expectations for how to collaborate and verify changes
 alwaysApply: true
 ---
 
@@ -19,8 +19,3 @@ alwaysApply: true
 - Prefer behaviour-driven tests that describe expected inputs/outputs and edge cases.
 - Co-locate tests with the code they cover (for example, `src/foo.ts` with `src/foo.test.ts`).
 - Use arrange–act–assert style in tests to maximise readability.
-- When work is non-trivial, prefer an RPI flow:
-  - Research to gather focused context.
-  - Plan to produce a concise, verifiable plan.
-  - Implement changes step by step following the plan.
-  - Verify as per the plan.

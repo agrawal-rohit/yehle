@@ -51,7 +51,7 @@
     "@vitest/coverage-v8": "3.2.4",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
-    "@fontsource/geist-sans": "^5.2.5",
+    "@fontsource-variable/geist": "^5.2.8",
     "@stryker-mutator/core": "^9.4.0",
     "@stryker-mutator/vitest-runner": "^9.4.0",
     "@stryker-mutator/typescript-checker": "^9.4.0",

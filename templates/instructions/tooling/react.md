@@ -10,7 +10,7 @@ alwaysApply: false
 
 ## Data fetching and server state
 
-- Prefer **TanStack Query** (or an equivalent data‑fetching library) over ad‑hoc `useEffect` and manual loading/error state for remote data.
+- Prefer **TanStack Query** over ad‑hoc `useEffect` and manual loading/error state for remote data.
 - Keep server state and client state separate; avoid mixing them in the same store or component.
 
 ## State management
@@ -21,14 +21,11 @@ alwaysApply: false
 
 ## Components and responsibilities
 
-- Favour **single‑responsibility, readable components**:
-  - Each component should focus on one piece of UI or behaviour.
-  - Extract smaller components when a piece of UI is conceptually separate or reused.
-- Prefer composition over large, deeply nested component trees in a single file.
+- Favour "single‑responsibility components" - Each component should focus on one piece of UI or behaviour, and smaller components should be extracted when a piece of UI is conceptually separate or reused.
 
 ## Styling
 
-- Use **Tailwind CSS** (or a similar utility‑first approach) for styling where appropriate.
+- Use **Tailwind CSS** for styling where appropriate.
 - Prefer **headless shadcn components** (or similar primitive component libraries) as building blocks, then layer your own design system on top.
 - Keep styling concerns close to components (for example, Tailwind classes or co‑located style files) rather than scattered globals.
 
