@@ -16,6 +16,7 @@ export default defineConfig({
 				"**/commitlint.config.js",
 				"**/lint-staged.config.js",
 				"bin/**",
+				"**/docs/**",
 				"**/stryker.config.mjs",
 			],
 		},
