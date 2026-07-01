@@ -15,7 +15,6 @@
 	"include": ["src"],
 	"exclude": [
 		"node_modules",
-		"templates/**",
 		"**/*.test.ts",
 		"**/*.test.tsx",
 		"**/*.spec.ts",
