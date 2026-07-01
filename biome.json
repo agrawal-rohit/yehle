@@ -6,10 +6,10 @@
 			"src/**/*.{js,ts,jsx,tsx,json,cjs,mjs,yaml,css}",
 			"docs/**/*.{js,ts,jsx,tsx,mjs,json,css}",
 			"!templates",
-			"!!docs/.next",
-			"!!docs/.source",
-			"!!docs/out",
-			"!!docs/build"
+			"!docs/.next",
+			"!docs/.source",
+			"!docs/out",
+			"!docs/build"
 		]
 	},
 	"formatter": {
