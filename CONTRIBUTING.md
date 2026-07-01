@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in contributing to `yehle`! This guide will help you get started with the development process, from setting up your environment to submitting changes.
+Thanks for your interest in contributing to `tuckshop`! This guide will help you get started with the development process, from setting up your environment to submitting changes.
 
 ## Table of Contents
 
@@ -11,7 +11,7 @@ Thanks for your interest in contributing to `yehle`! This guide will help you ge
 - [Documentation](#documentation)
 - [Release Process](#release-process)
 - [Dependencies](#dependencies)
-- [Proposing Templates](#proposing-templates)
+- [Code Registry](#code-registry)
 - [Security](#security)
 - [Maintainer Guidelines](#maintainer-guidelines)
 - [Recognition](#recognition)
@@ -19,9 +19,9 @@ Thanks for your interest in contributing to `yehle`! This guide will help you ge
 ## Getting Help
 
 If you have questions, ideas, or need help:
-- Search existing [GitHub Discussions](https://github.com/agrawal-rohit/yehle/discussions) first
+- Search existing [GitHub Discussions](https://github.com/agrawal-rohit/tuckshop/discussions) first
 - Open a new discussion for questions and proposals
-- Create a [GitHub Issue](https://github.com/agrawal-rohit/yehle/issues) for bug reports
+- Create a [GitHub Issue](https://github.com/agrawal-rohit/tuckshop/issues) for bug reports
 
 Please be specific about your environment and include steps to reproduce issues when reporting bugs.
 
@@ -122,8 +122,8 @@ When the tag is pushed, the [Github Actions](https://github.com/features/actions
 After pushing a pre-release tag, you can test it before cutting a stable release:
 
 ```bash
-# For yehle itself
-npx yehle@1.2.3-rc.1 --help
+# For tuckshop itself
+npx tuckshop@1.2.3-rc.1 --help
 
 # For your scaffolded projects
 npm install my-package@1.2.3-rc.1
@@ -147,48 +147,102 @@ git push origin v1.2.3
 - Security updates and critical fixes are always welcome
 - Include rationale and testing notes for dependency changes
 
-## Proposing Templates
+## Code Registry
 
-`yehle` uses a filesystem-based template registry organized by language and resource type. When proposing new templates, follow this hierarchy:
+`tuckshop` uses a JSON registry inspired by [shadcn](https://ui.shadcn.com/docs/registry) to distribute all registry items _(e.g. project templates, UI components, conventions, testing setups, CI/release workflows, GitHub templates, and agent instructions)_. Each unit is **atomic**, i.e. a self-contained folder holding its manifest _and_ its source files, wired to other items through a composable `registryDependencies` graph.
 
-### Template Structure
+### Registry Layout
+
+Every item is a folder under `registry/<namespace>/<item>/` containing a `registry-item.json` manifest alongside the files it ships.
 
 ```
-templates/
-├── shared/                          # Global shared files (applies to all languages)
-├── {language}/                      # Language-specific directory (e.g., typescript)
-│   ├── shared/                      # Language-level shared files
-│   └── {resource}/                  # Resource type (e.g., package)
-│       ├── shared/                  # Resource-level shared files
-│       └── {template}/              # Specific template (e.g., default)
+registry/
+├── template/
+│   └── typescript-package/          # atomic item: manifest + its own files
+│       ├── registry-item.json
+│       ├── biome.json
+│       ├── package.mustache.json
+│       └── src/…
+├── convention/
+│   ├── typescript-git-hooks/        # husky + commitlint + lint-staged
+│   ├── dependabot/
+│   └── git-cliff/
+├── workflow/
+│   ├── typescript-ci/
+│   └── typescript-package-release/
+├── testing/typescript-stryker/
+├── github/community-health/
+├── component/button/react/
+└── instruction/essential/principles/
 ```
 
-Files are copied in this order (files with the same name are overriden based on the copy order):
-1. `templates/shared` (global)
-2. `templates/{language}/shared` (language-specific)
-3. `templates/{language}/{resource}/shared` (resource-specific)
-4. `templates/{language}/{resource}/{template}` (template-specific)
+The compiled registry is written to `registry.json` at the repository root by `pnpm run build:registry`, and is regenerated and staged automatically by the pre-commit hook whenever anything under `registry/` changes.
 
-### Template Files
+`registry.json` only holds metadata for individual items, so the index stays lean as the registry grows. Each file records a repo-relative `source`, and the CLI fetches the content at install time from `${contentBaseUrl}/${source}` _(pinned to the release tag)_.
 
-- Use `.mustache` extension for templated files (e.g., `package.mustache.json`)
-- Use mustache syntax for variables: `{{ variableName }}`
-- The `<resource>` configuration is passed as the mustache context
-- Non-mustache files are copied as-is
+### Manifest Basics
 
-### Proposing New Templates
+Each item's `registry-item.json` declares its `name`, `type`, and how it composes. File `path`s are relative to the item's own folder:
 
-When proposing a new template:
-1. Follow the existing directory structure
-2. Include all necessary files for a complete working setup
-3. Test your template with `pnpm pack` and `npx <path-to-local-build>.tgz`
-4. Document what the template provides in your pull request
+```json
+{
+  "name": "template/typescript-package",
+  "type": "template",
+  "lang": "typescript",
+  "projectSpec": "package",
+  "registryDependencies": [
+    "convention/typescript-git-hooks",
+    "workflow/typescript-ci",
+    { "name": "instruction/language/typescript", "when": "includeInstructions" }
+  ],
+  "transforms": [
+    { "file": "biome.json", "op": "stripJsonKey", "key": "root", "when": "!public" }
+  ]
+}
+```
+
+### Declaring Inputs
+
+Any mustache variable or conditional an item's files rely on must be declared in `inputs`. The commands prompt for these when the item is installed _(unless a value is already supplied by the flow, e.g. `tuckshop create`)_, then feed the answers into the render context.
+
+```json
+{
+  "name": "template/typescript-package",
+  "type": "template",
+  "inputs": [
+    { "name": "name", "type": "string", "prompt": "What is the project name?", "required": true },
+    { "name": "authorName", "type": "string", "prompt": "What is the author's name?", "when": "public" }
+  ]
+}
+```
+
+- `type` is `string`, `boolean`, or `select` (use `options` for `select`).
+- `when` gates the prompt on a condition (e.g. only ask for author details when `public`).
+- Declare only the variables an item's **own** files use; a plan's inputs are the union across the item and its `registryDependencies`, deduplicated by `name`.
+- Well-known keys (`authorName`, `authorGitEmail`, `authorGitUsername`) are pre-filled from the local Git config when prompted.
+
+### Authoring Guidelines
+
+- Keep items atomic and colocate the manifest and every file it ships in one folder.
+- When `files` is omitted, the build auto-scans the item folder (`defaultVisibility` applies to scanned files). Declare `files` explicitly when you need per-file `visibility` or a custom `target`.
+- Use `.mustache.` in filenames for templated output (e.g. `package.mustache.json` → `package.json`), and declare every variable/conditional those files use in `inputs`.
+- Extract reusable concerns (conventions, workflows, testing, instructions) into their own items and reference them via `registryDependencies` to reduce duplication across items.
+- Run `pnpm run build:registry` after changing items _(the pre-commit hook and `prepack` also run it)_.
+
+### Proposing New Items
+
+When proposing a new registry item:
+
+1. Add a new folder under `registry/<namespace>/<item>/` with a `registry-item.json` and its files
+2. Include everything needed for a complete working setup; depend on existing concern items instead of copying files
+3. Run `pnpm run build:registry`, `pnpm cov`, and `pnpm pack`
+4. Document what the item provides in your pull request
 5. Include examples of generated output
 
 ## Security
 
 - **Do not** report security vulnerabilities in public issues
-- Use GitHub's [private vulnerability reporting](https://github.com/agrawal-rohit/yehle/security/advisories)
+- Use GitHub's [private vulnerability reporting](https://github.com/agrawal-rohit/tuckshop/security/advisories)
 
 ## Maintainer Guidelines
 

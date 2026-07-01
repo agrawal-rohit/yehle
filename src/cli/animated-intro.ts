@@ -5,6 +5,10 @@ import { primaryText } from "./logger";
 
 type Message = string | Promise<string>;
 
+/** Frame-cycled candy glyph shown beside the title during the intro. */
+const LOGO_FRAMES = ["●", "◔", "◕", "◑", "◒", "◓", "◐", "○"] as const;
+const LOGO_REST_FRAME = LOGO_FRAMES[0];
+
 export type AnimatedIntroOptions = {
 	title?: string;
 	stdout?: NodeJS.WriteStream;
@@ -20,15 +24,58 @@ export type AnimatedIntroOptions = {
 	ribbon?: string;
 };
 
+/**
+ * Format the intro title line with an optional animated logo prefix.
+ * @param logoFrame - Logo frame to render, or undefined for plain title (non-TTY).
+ * @param title - Intro title text.
+ * @returns Formatted title line.
+ */
+function formatTitleLine(logoFrame: string | undefined, title: string): string {
+	const titleLabel = chalk.bold(primaryText(title));
+	if (!logoFrame) return titleLabel;
+	return `${primaryText(logoFrame)} ${titleLabel}`;
+}
+
+/**
+ * Print the intro once without animation (CI, piped stdout).
+ * @param messages - Intro messages to display.
+ * @param title - Intro title.
+ * @param stdout - Output stream.
+ */
+async function printIntroPlain(
+	messages: Message[],
+	title: string,
+	stdout: NodeJS.WriteStream,
+): Promise<void> {
+	const columns = Math.max(40, stdout.columns || 80);
+	const titleLine = truncate(formatTitleLine(undefined, title), columns);
+
+	for (const message of messages) {
+		const resolvedMessage = Array.isArray(message)
+			? await Promise.all(message)
+			: await message;
+		const words = Array.isArray(resolvedMessage)
+			? resolvedMessage
+			: String(resolvedMessage).split(" ");
+		const finalMsg = truncate(words.join(" "), columns);
+		stdout.write(`\n${titleLine}\n${finalMsg}\n`);
+	}
+}
+
 export async function animatedIntro(
 	msg: Message | Message[] = [],
 	{
-		title = "Yehle",
+		title = "tuckshop",
 		stdout = process.stdout,
 		frameDelayMs = 150,
 	}: AnimatedIntroOptions = {},
 ) {
 	const messages = Array.isArray(msg) ? msg : [msg];
+
+	if (!stdout.isTTY) {
+		await printIntroPlain(messages, title, stdout);
+		return;
+	}
 
 	// minimal TTY wiring (ESC to end, Ctrl+C to abort)
 	const rl = readline.createInterface({
@@ -37,6 +84,23 @@ export async function animatedIntro(
 	});
 	readline.emitKeypressEvents(process.stdin, rl);
 	if (process.stdin.isTTY) process.stdin.setRawMode(true);
+
+	let logoFrameIndex = 0;
+	const nextLogoFrame = (): string => {
+		const frame = LOGO_FRAMES[logoFrameIndex % LOGO_FRAMES.length];
+		logoFrameIndex += 1;
+		return frame;
+	};
+
+	// fixed-height renderer
+	const renderer = createFixedHeightRenderer(stdout, 3);
+
+	const cleanup = () => {
+		if (process.stdin.isTTY) process.stdin.setRawMode(false);
+		process.stdin.off("keypress", onKeypress);
+		rl.close();
+		renderer.finish();
+	};
 
 	const onKeypress = (_: string, key: readline.Key) => {
 		if (key?.ctrl && key?.name === "c") {
@@ -49,18 +113,7 @@ export async function animatedIntro(
 	};
 	process.stdin.on("keypress", onKeypress);
 
-	const cleanup = () => {
-		if (process.stdin.isTTY) process.stdin.setRawMode(false);
-		process.stdin.off("keypress", onKeypress);
-		rl.close();
-		renderer.finish();
-	};
-
-	/* ---------------- layout constants ---------------- */
-	const label = chalk.bold(primaryText(`${title}`));
-
-	// fixed-height renderer
-	const renderer = createFixedHeightRenderer(stdout, 3);
+	const columns = Math.max(40, stdout.columns || 80);
 
 	for (const message of messages) {
 		const resolvedMessage = Array.isArray(message)
@@ -71,25 +124,26 @@ export async function animatedIntro(
 			: String(resolvedMessage).split(" ");
 		const finalMsg = words.join(" ");
 
-		const columns = Math.max(40, stdout.columns || 80);
-		const rightTitle = truncate(label, columns);
-		const rightMsgFinal = truncate(finalMsg, columns);
-
 		const spoken: string[] = [];
 
 		for (const word of ["", ...words]) {
 			if (word) spoken.push(word);
 
 			const msgNow = truncate(spoken.join(" "), columns);
-			const lines = ["", rightTitle, msgNow];
-			renderer.paint(lines);
+			const titleLine = truncate(
+				formatTitleLine(nextLogoFrame(), title),
+				columns,
+			);
+			renderer.paint(["", titleLine, msgNow]);
 
 			await sleep(frameDelayMs);
 		}
 
-		// final calm frame: simple, balanced layout
-		const lines = ["", rightTitle, rightMsgFinal];
-		renderer.paint(lines);
+		const titleLine = truncate(
+			formatTitleLine(LOGO_REST_FRAME, title),
+			columns,
+		);
+		renderer.paint(["", titleLine, truncate(finalMsg, columns)]);
 		await sleep(200);
 	}
 

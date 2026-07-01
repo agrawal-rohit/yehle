@@ -1,31 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { capitalizeFirstLetter, sleep, toSlug, truncate } from "./utils";
+import { sleep, toSlug, truncate } from "./utils";
 
 describe("core/utils", () => {
-	describe("capitalizeFirstLetter", () => {
-		it("capitalizes the first letter of a simple word", () => {
-			expect(capitalizeFirstLetter("hello")).toBe("Hello");
-		});
-
-		it("leaves an already-capitalized first letter unchanged", () => {
-			expect(capitalizeFirstLetter("Hello")).toBe("Hello");
-		});
-
-		it("handles single-character strings", () => {
-			expect(capitalizeFirstLetter("h")).toBe("H");
-			expect(capitalizeFirstLetter("H")).toBe("H");
-		});
-
-		it("does not alter other characters in the string", () => {
-			expect(capitalizeFirstLetter("hELLO world")).toBe("HELLO world");
-		});
-
-		it("handles non-alphabetic first characters", () => {
-			expect(capitalizeFirstLetter("1hello")).toBe("1hello");
-			expect(capitalizeFirstLetter("_hello")).toBe("_hello");
-		});
-	});
-
 	describe("toSlug", () => {
 		it("converts a simple name to a slug", () => {
 			expect(toSlug("My Package")).toBe("my-package");

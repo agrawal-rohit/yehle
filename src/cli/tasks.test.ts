@@ -121,7 +121,7 @@ describe("cli/tasks", () => {
 
 			await runWithTasks(goalTitle);
 
-			expect(chalk.hex).toHaveBeenCalledWith("#FEA624");
+			expect(chalk.hex).toHaveBeenCalledWith("#EFA607");
 			const mockedHex = vi.mocked(chalk.hex);
 			const colorFn = mockedHex.mock.results[0]?.value as ReturnType<
 				typeof mockedHex
@@ -303,14 +303,10 @@ describe("cli/tasks", () => {
 	});
 
 	describe("integration tests", () => {
-		test("should run conditional tasks with runWithTasks", async () => {
+		test("should run a list of subtasks with runWithTasks", async () => {
 			const task1 = vi.fn(async () => {});
-			const task2 = vi.fn(async () => {});
 
-			const subtasks = [
-				...conditionalTask(true, task("Task 1", task1)),
-				...conditionalTask(false, task("Task 2", task2)),
-			];
+			const subtasks = [task("Task 1", task1)];
 
 			await runWithTasks("Complete Setup", undefined, subtasks);
 
