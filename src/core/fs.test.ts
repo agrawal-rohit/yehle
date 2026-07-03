@@ -11,7 +11,6 @@ import {
 	isDirAsync,
 	removeFilesByBasename,
 	removeMatchingFilesRecursively,
-	renderMustacheTemplates,
 	stripKeyFromJSONFile,
 	writeFileAsync,
 } from "./fs";
@@ -301,82 +300,6 @@ describe("core/fs", () => {
 			await expect(removeFilesByBasename(root, ["a", "b"])).resolves.toBe(
 				undefined,
 			);
-		});
-	});
-
-	describe("renderMustacheTemplates", () => {
-		it("renders *.mustache.* files and writes output with .mustache. removed", async () => {
-			const root = makeTempDir();
-			const templatePath = path.join(root, "config.mustache.json");
-			const templateContent = `{
-  "name": "{{name}}",
-  "env": "{{env}}"
-}`;
-
-			writeFileSync(templatePath, templateContent);
-
-			await renderMustacheTemplates(root, { name: "app", env: "prod" });
-
-			const renderedPath = path.join(root, "config.json");
-			expect(fs.existsSync(templatePath)).toBe(false);
-			expect(fs.existsSync(renderedPath)).toBe(true);
-
-			const rendered = fs.readFileSync(renderedPath, "utf8");
-			expect(rendered).toContain(`"name": "app"`);
-			expect(rendered).toContain(`"env": "prod"`);
-		});
-
-		it("recursively processes templates in subdirectories", async () => {
-			const root = makeTempDir();
-			const subDir = path.join(root, "sub");
-			const templatePath = path.join(subDir, "values.mustache.yaml");
-			writeFileSync(templatePath, "value: {{val}}");
-
-			await renderMustacheTemplates(root, { val: "42" });
-
-			const renderedPath = path.join(subDir, "values.yaml");
-			expect(fs.existsSync(templatePath)).toBe(false);
-			expect(fs.existsSync(renderedPath)).toBe(true);
-			expect(fs.readFileSync(renderedPath, "utf8")).toBe("value: 42");
-		});
-
-		it("leaves non-mustache files untouched", async () => {
-			const root = makeTempDir();
-			const filePath = path.join(root, "plain.txt");
-			writeFileSync(filePath, "hello");
-
-			await renderMustacheTemplates(root, { name: "ignored" });
-
-			expect(fs.existsSync(filePath)).toBe(true);
-			expect(fs.readFileSync(filePath, "utf8")).toBe("hello");
-		});
-
-		it("preserves GitHub Actions expressions like ${{ secrets.X }}", async () => {
-			const root = makeTempDir();
-			const templatePath = path.join(root, "workflow.mustache.yml");
-			const content =
-				"name: CI\n" +
-				"env:\n" +
-				'  APP_NAME: "{{appName}}"\n' +
-				"  SECRET_VAL: ${{ secrets.MY_SECRET }}\n";
-
-			writeFileSync(templatePath, content);
-
-			await renderMustacheTemplates(root, { appName: "my-app" });
-
-			const renderedPath = path.join(root, "workflow.yml");
-			const rendered = fs.readFileSync(renderedPath, "utf8");
-
-			expect(rendered).toContain('APP_NAME: "my-app"');
-			expect(rendered).toContain("${{ secrets.MY_SECRET }}");
-		});
-
-		it("no-ops when target directory does not exist", async () => {
-			const root = path.join(makeTempDir(), "missing");
-
-			await expect(
-				renderMustacheTemplates(root, { foo: "bar" }),
-			).resolves.toBeUndefined();
 		});
 	});
 });
