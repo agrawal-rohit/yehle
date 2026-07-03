@@ -550,7 +550,7 @@ describe("cli/animated-intro", () => {
 			await animatedIntro("Hi", { frameDelayMs: 10 });
 
 			const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join("");
-			expect(output).toMatch(/●|◔|◕|◑|◒|◓|◐|○/);
+			expect(output).toMatch(/[●◔◕◑◒◓◐○]/);
 		});
 	});
 
