@@ -33,7 +33,7 @@ describe("cli/logger", () => {
 
 	describe("intro", () => {
 		test("should call animatedIntro with the provided message", async () => {
-			const testMessage = "Welcome to Yehle!";
+			const testMessage = "welcome to the tuckshop!";
 			const loggerInstance = new Logger();
 
 			await loggerInstance.intro(testMessage);
