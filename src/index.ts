@@ -1,11 +1,10 @@
 import cac from "cac";
-import { registerResourcesCli } from "./resources";
+import { registerCommandsCli } from "./commands";
 
 export default function run(): void {
-	const app = cac("yehle");
+	const app = cac("tuckshop");
 
-	// Register all commands defined in resources
-	registerResourcesCli(app);
+	registerCommandsCli(app);
 
 	app.help();
 
