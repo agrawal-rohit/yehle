@@ -7,7 +7,6 @@
 		"dist",
 		"bin",
 		"registry.json",
-		"tuckshop.schema.json",
 		"README.md",
 		"LICENSE"
 	],

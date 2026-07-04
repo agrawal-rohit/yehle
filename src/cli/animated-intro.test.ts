@@ -543,6 +543,64 @@ describe("cli/animated-intro", () => {
 			expect(output).toContain("tuckshop");
 			expect(output).toContain("hello world");
 		});
+
+		test("falls back to 80 columns when stdout.columns is unset", async () => {
+			const customStdout: MockStdout = {
+				write: vi.fn(),
+				isTTY: false,
+			};
+
+			await animatedIntro("hello world", {
+				stdout: customStdout as unknown as NodeJS.WriteStream,
+			});
+
+			expect(customStdout.write).toHaveBeenCalled();
+			const output = customStdout.write.mock.calls
+				.map((call) => call[0])
+				.join("");
+			expect(output).toContain("hello world");
+		});
+
+		test("prints messages that are already arrays of words", async () => {
+			const customStdout: MockStdout = {
+				write: vi.fn(),
+				columns: 80,
+				isTTY: false,
+			};
+
+			// Nested array hits Promise.all + pre-split words in printIntroPlain.
+			await animatedIntro([["hello", "world"]] as unknown as string[], {
+				stdout: customStdout as unknown as NodeJS.WriteStream,
+			});
+
+			expect(readline.createInterface).not.toHaveBeenCalled();
+			const output = customStdout.write.mock.calls
+				.map((call) => call[0])
+				.join("");
+			expect(output).toContain("hello world");
+		});
+
+		test("prints messages that are arrays of promises", async () => {
+			const customStdout: MockStdout = {
+				write: vi.fn(),
+				columns: 80,
+				isTTY: false,
+			};
+
+			await animatedIntro(
+				[
+					[Promise.resolve("async"), Promise.resolve("words")],
+				] as unknown as string[],
+				{
+					stdout: customStdout as unknown as NodeJS.WriteStream,
+				},
+			);
+
+			const output = customStdout.write.mock.calls
+				.map((call) => call[0])
+				.join("");
+			expect(output).toContain("async words");
+		});
 	});
 
 	describe("logo animation", () => {
