@@ -1,6 +1,6 @@
 import readline from "node:readline";
 import chalk from "chalk";
-import { sleep, truncate } from "../core/utils";
+import { stripAnsi } from "consola/utils";
 import { primaryText } from "./logger";
 
 type Message = string | Promise<string>;
@@ -23,6 +23,28 @@ export type AnimatedIntroOptions = {
 	hat?: string;
 	ribbon?: string;
 };
+
+/**
+ * Sleep for the specified number of milliseconds.
+ * @param ms - The number of milliseconds to sleep.
+ * @returns Promise that resolves after the given delay.
+ */
+export function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Truncate a string to a maximum visible length, respecting ANSI sequences.
+ * If truncated, appends "...". ANSI styling is not preserved in the truncated section.
+ * @param s - The input string to truncate.
+ * @param max - The maximum visible length.
+ * @returns The truncated string (with "..." if truncated).
+ */
+export function truncate(s: string, max: number): string {
+	const raw = stripAnsi(s);
+	if (raw.length <= max) return s;
+	return `${raw.slice(0, Math.max(0, max - 3))}...`;
+}
 
 /**
  * Format the intro title line with an optional animated logo prefix.

@@ -1,0 +1,23 @@
+{
+	"id": "app-release",
+	"title": "App Release",
+	"description": "CI release workflow for deploying apps.",
+	"type": "convention",
+	"tags": ["github"],
+	"projectSpec": "app",
+	"registryDependencies": ["git-cliff"],
+	"variants": [
+		{
+			"id": "github-actions",
+			"targets": { "tool": "github-actions" },
+			"files": [
+				{
+					"path": "github-actions/.github/workflows/release.mustache.yml",
+					"target": ".github/workflows/release.yml",
+					"template": true,
+					"visibility": "public"
+				}
+			]
+		}
+	]
+}

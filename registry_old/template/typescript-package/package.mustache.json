@@ -1,0 +1,54 @@
+{
+  "name": "{{ name }}",
+  "version": "0.0.0",
+  "type": "module",
+  {{#public}}
+  "private": false,
+  {{/public}}
+  {{^public}}
+  "private": true,
+  {{/public}}
+  "packageManager": "{{ packageManagerVersion }}",
+  {{#public}}
+  "license": "MIT",
+  "homepage": "https://github.com/{{ authorGitUsername }}/{{ name }}#readme",
+  "bugs": "https://github.com/{{ authorGitUsername }}/{{ name }}/issues",
+  "repository": "https://github.com/{{ authorGitUsername }}/{{ name }}",
+  "author": "{{ authorName }} <{{ authorGitEmail }}>",
+  "files": ["dist"],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  {{/public}}
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "test": "vitest",
+    "test-mutations": "stryker run",
+    "cov": "vitest run --coverage --passWithNoTests",
+    "prepare": "husky",
+    "typecheck": "tsc --noEmit",
+    "lint": "pnpm exec biome lint --write",
+		"format": "pnpm exec biome format --write",
+		"check": "pnpm run typecheck && pnpm exec biome check --write",
+		"check:ci": "pnpm run typecheck && pnpm exec biome check"
+  },
+  "devDependencies": {
+		"husky": "^9.1.7",
+    "tsdown": "^0.11.9",
+    "@types/node": "^24.3.1",
+    "@biomejs/biome": "2.3.10",
+    "lint-staged": "^16.1.6",
+    "@vitest/coverage-v8": "3.2.4",
+    "@stryker-mutator/core": "^9.4.0",
+    "@stryker-mutator/vitest-runner": "^9.4.0",
+    "@stryker-mutator/typescript-checker": "^9.4.0",
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    {{#public}}
+    "git-cliff": "^2.10.1",
+		{{/public}}
+		"typescript": "^5.9.2",
+		"vitest": "^3.2.4"
+  }
+}

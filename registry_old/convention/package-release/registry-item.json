@@ -1,0 +1,23 @@
+{
+	"id": "package-release",
+	"title": "Package Release",
+	"description": "CI release workflow for publishing packages.",
+	"type": "convention",
+	"tags": ["github"],
+	"projectSpec": "package",
+	"registryDependencies": ["git-cliff"],
+	"variants": [
+		{
+			"id": "github-actions",
+			"targets": { "ecosystem": "npm", "tool": "github-actions" },
+			"files": [
+				{
+					"path": "github-actions/.github/workflows/release.mustache.yml",
+					"target": ".github/workflows/release.yml",
+					"template": true,
+					"visibility": "public"
+				}
+			]
+		}
+	]
+}

@@ -2,13 +2,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { runAsync } from "./shell";
 
+
+/**
+ * Determine whether a directory already contains a git repository.
+ * @param cwd - Absolute path to the target directory.
+ * @returns True if a .git directory exists inside cwd, false otherwise.
+ */
+function isGitRepo(cwd: string): boolean {
+	return fs.existsSync(path.join(cwd, ".git"));
+}
+
 /**
  * Read a git config value for a given key from the current environment.
  * Looks up git configuration (local/global/system) based on how git resolves it.
  * @param key - Fully qualified git config key (e.g. "user.name", "user.email").
  * @returns The config value if set, undefined otherwise.
  */
-async function readGitConfig(key: string): Promise<string | undefined> {
+export async function readGitConfig(key: string): Promise<string | undefined> {
 	try {
 		const out = await runAsync(`git config --get ${key}`, { stdio: "pipe" });
 		const s = out.trim();
@@ -16,31 +26,6 @@ async function readGitConfig(key: string): Promise<string | undefined> {
 	} catch {
 		return undefined;
 	}
-}
-
-/**
- * Get git user.name from current git configuration.
- * @returns Promise resolving to the configured git user.name, or undefined if not set.
- */
-export async function getGitUsername(): Promise<string | undefined> {
-	return await readGitConfig("user.name");
-}
-
-/**
- * Get git user.email from current git configuration.
- * @returns Promise resolving to the configured git user.email, or undefined if not set.
- */
-export async function getGitEmail(): Promise<string | undefined> {
-	return await readGitConfig("user.email");
-}
-
-/**
- * Determine whether a directory already contains a git repository.
- * @param cwd - Absolute path to the target directory.
- * @returns True if a .git directory exists inside cwd, false otherwise.
- */
-export function isGitRepo(cwd: string): boolean {
-	return fs.existsSync(path.join(cwd, ".git"));
 }
 
 /**

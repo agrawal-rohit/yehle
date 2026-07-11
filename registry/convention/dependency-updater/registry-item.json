@@ -1,0 +1,19 @@
+{
+	"id": "dependency-updater",
+	"title": "Dependency Updater",
+	"description": "Automated dependency update configuration.",
+	"type": "convention",
+	"variants": [
+		{
+			"id": "dependabot",
+			"title": "Dependabot",
+			"description": "Dependabot configuration for automated dependency updates.",
+			"files": [
+				{
+					"source": "dependabot/.github/dependabot.yml",
+					"target": ".github/dependabot.yml"
+				}
+			]
+		}
+	]
+}

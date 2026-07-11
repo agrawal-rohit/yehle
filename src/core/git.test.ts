@@ -1,12 +1,8 @@
 import fs from "node:fs";
-import path from "node:path";
 import type { MockInstance } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	getGitEmail,
-	getGitUsername,
 	initGitRepo,
-	isGitRepo,
 	makeInitialCommit,
 } from "./git";
 import type { RunOptions } from "./shell";
@@ -25,86 +21,6 @@ describe("core/git", () => {
 
 	afterEach(() => {
 		vi.restoreAllMocks();
-	});
-
-	describe("getGitUsername", () => {
-		it("returns trimmed git user.name when set", async () => {
-			runAsyncSpy.mockResolvedValue(" Jane Doe \n");
-
-			const result = await getGitUsername();
-
-			expect(runAsyncSpy).toHaveBeenCalledWith("git config --get user.name", {
-				stdio: "pipe",
-			});
-			expect(result).toBe("Jane Doe");
-		});
-
-		it("returns undefined when git user.name is empty or whitespace", async () => {
-			runAsyncSpy.mockResolvedValue("   \n");
-
-			const result = await getGitUsername();
-
-			expect(result).toBeUndefined();
-		});
-
-		it("returns undefined when git config command fails", async () => {
-			runAsyncSpy.mockRejectedValue(new Error("git not available"));
-
-			const result = await getGitUsername();
-
-			expect(result).toBeUndefined();
-		});
-	});
-
-	describe("getGitEmail", () => {
-		it("returns trimmed git user.email when set", async () => {
-			runAsyncSpy.mockResolvedValue(" user@example.com \n");
-
-			const result = await getGitEmail();
-
-			expect(runAsyncSpy).toHaveBeenCalledWith("git config --get user.email", {
-				stdio: "pipe",
-			});
-			expect(result).toBe("user@example.com");
-		});
-
-		it("returns undefined when git user.email is empty or whitespace", async () => {
-			runAsyncSpy.mockResolvedValue("\n");
-
-			const result = await getGitEmail();
-
-			expect(result).toBeUndefined();
-		});
-
-		it("returns undefined when git config command fails", async () => {
-			runAsyncSpy.mockRejectedValue(new Error("git not available"));
-
-			const result = await getGitEmail();
-
-			expect(result).toBeUndefined();
-		});
-	});
-
-	describe("isGitRepo", () => {
-		it("returns true when .git directory exists", () => {
-			const cwd = "/project/root";
-			const expectedPath = path.join(cwd, ".git");
-			existsSyncSpy.mockReturnValue(true);
-
-			const result = isGitRepo(cwd);
-
-			expect(existsSyncSpy).toHaveBeenCalledWith(expectedPath);
-			expect(result).toBe(true);
-		});
-
-		it("returns false when .git directory does not exist", () => {
-			const cwd = "/project/root";
-			existsSyncSpy.mockReturnValue(false);
-
-			const result = isGitRepo(cwd);
-
-			expect(result).toBe(false);
-		});
 	});
 
 	describe("initGitRepo", () => {

@@ -1,0 +1,20 @@
+{
+	"id": "button",
+	"title": "Button",
+	"description": "Accessible button primitive.",
+	"type": "component",
+	"variants": [
+		{
+			"id": "react",
+			"title": "React",
+			"description": "React/TypeScript button component.",
+			"dependencies": ["react"],
+			"files": [
+				{
+					"source": "react/button.tsx",
+					"target": "src/components/ui/button.tsx"
+				}
+			]
+		}
+	]
+}

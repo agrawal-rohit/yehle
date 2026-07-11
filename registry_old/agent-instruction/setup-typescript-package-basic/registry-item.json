@@ -1,0 +1,10 @@
+{
+	"id": "setup-typescript-package-basic",
+	"title": "TypeScript Package Setup",
+	"description": "Template-specific setup instructions for basic TypeScript packages.",
+	"type": "agent-instruction",
+	"tags": ["agent"],
+	"instructionName": "setup",
+	"projectSpec": "package",
+	"targets": { "language": "typescript" }
+}

@@ -2,17 +2,29 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * Check whether a path exists and is a directory.
- * @param dirPath - Directory path to check.
- * @returns True if the path exists and is a directory, false otherwise.
+ * Check whether a path exists and refers to a regular file.
+ * @param filePath - Absolute or relative path to check.
+ * @returns Promise resolving to true when the path is a regular file, false otherwise.
  */
-export async function isDirAsync(dirPath: string): Promise<boolean> {
+export async function isRegularFileAsync(filePath: string): Promise<boolean> {
 	try {
-		const st = await fs.promises.stat(dirPath);
-		return st.isDirectory();
+		return (await fs.promises.stat(filePath)).isFile();
 	} catch {
 		return false;
 	}
+}
+
+/**
+ * Read and parse a JSON file.
+ * @param filePath - Absolute or relative path to the JSON file.
+ * @returns Parsed JSON value.
+ * @throws Error when the file is missing or contains invalid JSON.
+ */
+export async function readJSONFileAsync<T = unknown>(
+	filePath: string,
+): Promise<T> {
+	const content = await fs.promises.readFile(filePath, "utf8");
+	return JSON.parse(content) as T;
 }
 
 /**
@@ -50,12 +62,7 @@ export async function copyFileSafeAsync(
 	src: string,
 	dest: string,
 ): Promise<void> {
-	try {
-		const stat = await fs.promises.stat(src);
-		if (!stat.isFile()) return;
-	} catch {
-		return;
-	}
+	if (!(await isRegularFileAsync(src))) return;
 
 	await ensureDirAsync(path.dirname(dest));
 	await fs.promises.copyFile(src, dest);
@@ -128,21 +135,6 @@ export async function removeMatchingFilesRecursively(
 			}
 		}
 	}
-}
-
-/**
- * Convenience wrapper to remove any files or directories whose basename is in the provided list,
- * regardless of which subfolder they are in.
- * @param rootDir - Root directory to traverse.
- * @param fileNames - Iterable of basenames to remove.
- * @returns Promise that resolves when the removal pass is complete.
- */
-export async function removeFilesByBasename(
-	rootDir: string,
-	fileNames: Iterable<string>,
-): Promise<void> {
-	const set = new Set(fileNames);
-	await removeMatchingFilesRecursively(rootDir, (name) => set.has(name));
 }
 
 /**

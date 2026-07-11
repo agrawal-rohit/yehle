@@ -1,0 +1,10 @@
+{
+	"id": "setup-typescript-app-react",
+	"title": "TypeScript React App Setup",
+	"description": "Template-specific setup instructions for TypeScript React apps.",
+	"type": "agent-instruction",
+	"tags": ["agent"],
+	"instructionName": "setup",
+	"projectSpec": "app",
+	"targets": { "language": "typescript", "framework": "react" }
+}

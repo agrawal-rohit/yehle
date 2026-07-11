@@ -1,0 +1,19 @@
+{
+	"id": "build",
+	"title": "Build",
+	"description": "Build workflow for package ecosystems.",
+	"type": "convention",
+	"variants": [
+		{
+			"id": "github-actions",
+			"title": "GitHub Actions",
+			"description": "GitHub Actions build workflow for npm packages.",
+			"files": [
+				{
+					"source": "github-actions/.github/workflows/build.yml",
+					"target": ".github/workflows/build.yml"
+				}
+			]
+		}
+	]
+}

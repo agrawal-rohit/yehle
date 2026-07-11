@@ -70,7 +70,6 @@ export function runAsync(cmd: string, opts: RunOptions = {}): Promise<string> {
 		});
 	}
 
-	// Default: capture stdout using spawn
 	return new Promise((resolve, reject) => {
 		const child = spawn(command, args, {
 			cwd,

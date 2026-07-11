@@ -1,0 +1,31 @@
+{
+	"id": "typescript-git-hooks",
+	"title": "TypeScript Git Hooks",
+	"description": "Husky, commitlint, and lint-staged hooks for TypeScript projects.",
+	"type": "convention",
+	"variants": [
+		{
+			"id": "default",
+			"title": "Default",
+			"description": "Husky, commitlint, and lint-staged hooks for TypeScript.",
+			"files": [
+				{
+					"source": ".husky/commit-msg",
+					"target": ".husky/commit-msg"
+				},
+				{
+					"source": ".husky/pre-commit",
+					"target": ".husky/pre-commit"
+				},
+				{
+					"source": "commitlint.config.js",
+					"target": "commitlint.config.js"
+				},
+				{
+					"source": "lint-staged.config.js",
+					"target": "lint-staged.config.js"
+				}
+			]
+		}
+	]
+}

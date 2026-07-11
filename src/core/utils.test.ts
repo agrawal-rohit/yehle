@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { sleep, toSlug, truncate } from "./utils";
+import { describe, expect, it } from "vitest";
+import { toSlug } from "./utils";
 
 describe("core/utils", () => {
 	describe("toSlug", () => {
@@ -45,71 +45,6 @@ describe("core/utils", () => {
 		it("handles values that normalize to empty segments", () => {
 			expect(toSlug("   ")).toBe("");
 			expect(toSlug("///")).toBe("");
-		});
-	});
-
-	describe("sleep", () => {
-		afterEach(() => {
-			vi.useRealTimers();
-		});
-
-		it("resolves after approximately the requested time using real timers", async () => {
-			const ms = 50;
-			const start = Date.now();
-			await sleep(ms);
-			const end = Date.now();
-			expect(end - start).toBeGreaterThanOrEqual(ms - 10);
-		});
-
-		it("can be used with fake timers and advances when timers run", async () => {
-			vi.useFakeTimers();
-
-			const promise = sleep(100);
-
-			// Should not resolve before timers advance
-			let resolved = false;
-			promise.then(() => {
-				resolved = true;
-			});
-
-			expect(resolved).toBe(false);
-
-			vi.advanceTimersByTime(100);
-
-			await promise;
-			expect(resolved).toBe(true);
-		});
-	});
-
-	describe("truncate", () => {
-		it("returns the original string when length is within max", () => {
-			expect(truncate("hello", 10)).toBe("hello");
-			expect(truncate("hello", 5)).toBe("hello");
-		});
-
-		it("truncates and appends ellipsis when longer than max", () => {
-			expect(truncate("hello world", 8)).toBe("hello...");
-			expect(truncate("hello world", 6)).toBe("hel...");
-		});
-
-		it("returns only ellipsis when max is 3", () => {
-			expect(truncate("hello world", 3)).toBe("...");
-		});
-
-		it("handles very small max values", () => {
-			expect(truncate("hello", 2)).toBe("...");
-			expect(truncate("hello", 0)).toBe("...");
-		});
-
-		it("respects visible length when ANSI codes are present", () => {
-			const colored = "\u001b[31mhello world\u001b[0m";
-			const result = truncate(colored, 8);
-			expect(result).toBe("hello...");
-		});
-
-		it("does not modify already short ANSI strings", () => {
-			const colored = "\u001b[32mok\u001b[0m";
-			expect(truncate(colored, 5)).toBe(colored);
 		});
 	});
 });

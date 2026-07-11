@@ -1,0 +1,8 @@
+{
+	"id": "documentation-maintainer",
+	"title": "Documentation Maintainer",
+	"description": "Subagent definition for keeping documentation in sync.",
+	"type": "subagent",
+	"tags": ["agent"],
+	"instructionName": "documentation-maintainer"
+}

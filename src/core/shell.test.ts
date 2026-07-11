@@ -131,7 +131,7 @@ describe("core/shell", () => {
 			);
 		});
 
-		it("rejects when spawn emits an error", async () => {
+		it("rejects when spawn emits an error for pipe stdio", async () => {
 			const fakeChild = {
 				stdout: { on: vi.fn() },
 				on: vi.fn(),
@@ -459,7 +459,7 @@ describe("core/shell", () => {
 			);
 		});
 
-		it("rejects when spawn emits an error", async () => {
+		it("rejects when spawn emits an error for inherit stdio", async () => {
 			const fakeChild = {
 				on: vi.fn(),
 			};

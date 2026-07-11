@@ -1,0 +1,1159 @@
+{
+  "version": "0.2.1",
+  "contentBaseUrl": "https://raw.githubusercontent.com/agrawal-rohit/tuckshop/v0.2.1",
+  "items": {
+    "app-release": {
+      "id": "app-release",
+      "title": "App Release",
+      "description": "CI release workflow for deploying apps.",
+      "type": "convention",
+      "tags": [
+        "github"
+      ],
+      "projectSpec": "app",
+      "registryDependencies": [
+        "git-cliff"
+      ],
+      "variants": [
+        {
+          "id": "github-actions",
+          "targets": {
+            "tool": "github-actions"
+          },
+          "files": [
+            {
+              "source": "registry/convention/app-release/github-actions/.github/workflows/release.mustache.yml",
+              "target": ".github/workflows/release.yml",
+              "template": true,
+              "visibility": "public"
+            }
+          ]
+        }
+      ]
+    },
+    "auto-assign": {
+      "id": "auto-assign",
+      "title": "Auto Assign",
+      "description": "Workflow that auto-assigns pull request authors.",
+      "type": "convention",
+      "tags": [
+        "github"
+      ],
+      "variants": [
+        {
+          "id": "github-actions",
+          "targets": {
+            "tool": "github-actions"
+          },
+          "files": [
+            {
+              "source": "registry/convention/auto-assign/github-actions/.github/workflows/auto-assign.yml",
+              "target": ".github/workflows/auto-assign.yml"
+            }
+          ]
+        }
+      ]
+    },
+    "build": {
+      "id": "build",
+      "title": "Build",
+      "description": "CI build workflow for package ecosystems.",
+      "type": "convention",
+      "tags": [
+        "github"
+      ],
+      "variants": [
+        {
+          "id": "github-actions",
+          "targets": {
+            "tool": "github-actions",
+            "ecosystem": "npm"
+          },
+          "files": [
+            {
+              "source": "registry/convention/build/github-actions/.github/workflows/ci.yml",
+              "target": ".github/workflows/ci.yml"
+            }
+          ]
+        }
+      ]
+    },
+    "button": {
+      "id": "button",
+      "title": "Button",
+      "description": "Accessible button primitive with React and Vue variants.",
+      "type": "component",
+      "tags": [
+        "ui"
+      ],
+      "variants": [
+        {
+          "id": "react",
+          "targets": {
+            "language": "typescript",
+            "framework": "react"
+          },
+          "files": [
+            {
+              "source": "registry/component/button/react/button.tsx",
+              "target": "src/components/ui/button.tsx"
+            }
+          ],
+          "dependencies": [
+            "react"
+          ]
+        },
+        {
+          "id": "vue",
+          "targets": {
+            "language": "typescript",
+            "framework": "vue"
+          },
+          "files": [
+            {
+              "source": "registry/component/button/vue/Button.vue",
+              "target": "src/components/ui/Button.vue"
+            }
+          ]
+        }
+      ]
+    },
+    "code-of-conduct": {
+      "id": "code-of-conduct",
+      "title": "Code of Conduct",
+      "description": "Contributor code of conduct for open-source projects.",
+      "type": "convention",
+      "tags": [
+        "github"
+      ],
+      "variants": [
+        {
+          "id": "github",
+          "targets": {
+            "tool": "github"
+          },
+          "files": [
+            {
+              "source": "registry/convention/code-of-conduct/github/CODE_OF_CONDUCT.md",
+              "target": "CODE_OF_CONDUCT.md",
+              "visibility": "public"
+            }
+          ]
+        }
+      ]
+    },
+    "dependency-updater": {
+      "id": "dependency-updater",
+      "title": "Dependency Updater",
+      "description": "Automated dependency update configuration.",
+      "type": "convention",
+      "tags": [
+        "github"
+      ],
+      "variants": [
+        {
+          "id": "dependabot",
+          "targets": {
+            "tool": "dependabot"
+          },
+          "files": [
+            {
+              "source": "registry/convention/dependency-updater/dependabot/.github/dependabot.yml",
+              "target": ".github/dependabot.yml"
+            }
+          ]
+        }
+      ]
+    },
+    "documentation-maintainer": {
+      "id": "documentation-maintainer",
+      "title": "Documentation Maintainer",
+      "description": "Subagent definition for keeping documentation in sync.",
+      "type": "subagent",
+      "tags": [
+        "agent"
+      ],
+      "instructionName": "documentation-maintainer",
+      "variants": [
+        {
+          "id": "default",
+          "files": [
+            {
+              "source": "registry/subagent/documentation-maintainer/documentation-maintainer.md",
+              "target": "documentation-maintainer.md"
+            }
+          ]
+        }
+      ]
+    },
+    "git-cliff": {
+      "id": "git-cliff",
+      "title": "git-cliff",
+      "description": "Changelog generation configuration for git-cliff.",
+      "type": "convention",
+      "variants": [
+        {
+          "id": "default",
+          "files": [
+            {
+              "source": "registry/convention/git-cliff/cliff.toml",
+              "target": "cliff.toml"
+            }
+          ]
+        }
+      ]
+    },
+    "issue-templates": {
+      "id": "issue-templates",
+      "title": "Issue Templates",
+      "description": "Bug report and feature request issue templates.",
+      "type": "convention",
+      "tags": [
+        "github"
+      ],
+      "variants": [
+        {
+          "id": "github",
+          "targets": {
+            "tool": "github"
+          },
+          "files": [
+            {
+              "source": "registry/convention/issue-templates/github/.github/issue_template/bug_report.md",
+              "target": ".github/issue_template/bug_report.md",
+              "visibility": "public"
+            },
+            {
+              "source": "registry/convention/issue-templates/github/.github/issue_template/feature_request.md",
+              "target": ".github/issue_template/feature_request.md",
+              "visibility": "public"
+            }
+          ]
+        }
+      ]
+    },
+    "mutation-testing": {
+      "id": "mutation-testing",
+      "title": "Mutation Testing",
+      "description": "Mutation testing configuration for catching weak tests.",
+      "type": "convention",
+      "variants": [
+        {
+          "id": "typescript",
+          "targets": {
+            "language": "typescript"
+          },
+          "files": [
+            {
+              "source": "registry/convention/mutation-testing/typescript/stryker.config.mjs",
+              "target": "stryker.config.mjs"
+            }
+          ]
+        }
+      ]
+    },
+    "package-release": {
+      "id": "package-release",
+      "title": "Package Release",
+      "description": "CI release workflow for publishing packages.",
+      "type": "convention",
+      "tags": [
+        "github"
+      ],
+      "projectSpec": "package",
+      "registryDependencies": [
+        "git-cliff"
+      ],
+      "variants": [
+        {
+          "id": "github-actions",
+          "targets": {
+            "tool": "github-actions",
+            "ecosystem": "npm"
+          },
+          "files": [
+            {
+              "source": "registry/convention/package-release/github-actions/.github/workflows/release.mustache.yml",
+              "target": ".github/workflows/release.yml",
+              "template": true,
+              "visibility": "public"
+            }
+          ]
+        }
+      ]
+    },
+    "principles": {
+      "id": "principles",
+      "title": "Principles",
+      "description": "Core agent coding principles for any project.",
+      "type": "agent-instruction",
+      "tags": [
+        "agent"
+      ],
+      "instructionName": "principles",
+      "variants": [
+        {
+          "id": "default",
+          "files": [
+            {
+              "source": "registry/agent-instruction/principles/principles.md",
+              "target": "principles.md"
+            }
+          ]
+        }
+      ]
+    },
+    "pull-request-template": {
+      "id": "pull-request-template",
+      "title": "Pull Request Template",
+      "description": "Pull request template for consistent contribution reviews.",
+      "type": "convention",
+      "tags": [
+        "github"
+      ],
+      "variants": [
+        {
+          "id": "github",
+          "targets": {
+            "tool": "github"
+          },
+          "files": [
+            {
+              "source": "registry/convention/pull-request-template/github/.github/pull_request_template.md",
+              "target": ".github/pull_request_template.md",
+              "visibility": "public"
+            }
+          ]
+        }
+      ]
+    },
+    "react": {
+      "id": "react",
+      "title": "React",
+      "description": "React tooling guidance for agents.",
+      "type": "agent-instruction",
+      "tags": [
+        "agent"
+      ],
+      "instructionName": "react",
+      "variants": [
+        {
+          "id": "default",
+          "targets": {
+            "framework": "react"
+          },
+          "files": [
+            {
+              "source": "registry/agent-instruction/react/react.md",
+              "target": "react.md"
+            }
+          ]
+        }
+      ]
+    },
+    "setup-typescript-app-react": {
+      "id": "setup-typescript-app-react",
+      "title": "TypeScript React App Setup",
+      "description": "Template-specific setup instructions for TypeScript React apps.",
+      "type": "agent-instruction",
+      "tags": [
+        "agent"
+      ],
+      "projectSpec": "app",
+      "instructionName": "setup",
+      "variants": [
+        {
+          "id": "default",
+          "targets": {
+            "language": "typescript",
+            "framework": "react"
+          },
+          "files": [
+            {
+              "source": "registry/agent-instruction/setup-typescript-app-react/setup.md",
+              "target": "setup.md"
+            }
+          ]
+        }
+      ]
+    },
+    "setup-typescript-package-basic": {
+      "id": "setup-typescript-package-basic",
+      "title": "TypeScript Package Setup",
+      "description": "Template-specific setup instructions for basic TypeScript packages.",
+      "type": "agent-instruction",
+      "tags": [
+        "agent"
+      ],
+      "projectSpec": "package",
+      "instructionName": "setup",
+      "variants": [
+        {
+          "id": "default",
+          "targets": {
+            "language": "typescript"
+          },
+          "files": [
+            {
+              "source": "registry/agent-instruction/setup-typescript-package-basic/setup.md",
+              "target": "setup.md"
+            }
+          ]
+        }
+      ]
+    },
+    "setup-typescript-package-react": {
+      "id": "setup-typescript-package-react",
+      "title": "TypeScript React Package Setup",
+      "description": "Template-specific setup instructions for TypeScript React packages.",
+      "type": "agent-instruction",
+      "tags": [
+        "agent"
+      ],
+      "projectSpec": "package",
+      "instructionName": "setup",
+      "variants": [
+        {
+          "id": "default",
+          "targets": {
+            "language": "typescript",
+            "framework": "react"
+          },
+          "files": [
+            {
+              "source": "registry/agent-instruction/setup-typescript-package-react/setup.md",
+              "target": "setup.md"
+            }
+          ]
+        }
+      ]
+    },
+    "typescript": {
+      "id": "typescript",
+      "title": "TypeScript",
+      "description": "TypeScript and JavaScript coding standards for agents.",
+      "type": "agent-instruction",
+      "tags": [
+        "agent"
+      ],
+      "instructionName": "typescript",
+      "variants": [
+        {
+          "id": "default",
+          "targets": {
+            "language": "typescript"
+          },
+          "files": [
+            {
+              "source": "registry/agent-instruction/typescript/typescript.md",
+              "target": "typescript.md"
+            }
+          ]
+        }
+      ]
+    },
+    "typescript-app-convention": {
+      "id": "typescript-app-convention",
+      "title": "TypeScript App Convention",
+      "description": "README, CONTRIBUTING, and gitignore defaults for TypeScript apps.",
+      "type": "convention",
+      "projectSpec": "app",
+      "inputs": [
+        {
+          "name": "name",
+          "type": "string",
+          "prompt": "What is the project name?",
+          "required": true
+        },
+        {
+          "name": "authorName",
+          "type": "string",
+          "prompt": "What is the author's name?",
+          "when": "public"
+        },
+        {
+          "name": "authorGitUsername",
+          "type": "string",
+          "prompt": "Under which GitHub account will this repository live?",
+          "when": "public"
+        }
+      ],
+      "variants": [
+        {
+          "id": "default",
+          "targets": {
+            "language": "typescript"
+          },
+          "files": [
+            {
+              "source": "registry/convention/typescript-app/.gitignore",
+              "target": ".gitignore"
+            },
+            {
+              "source": "registry/convention/typescript-app/README.mustache.md",
+              "target": "README.md",
+              "template": true
+            },
+            {
+              "source": "registry/convention/typescript-app/CONTRIBUTING.mustache.md",
+              "target": "CONTRIBUTING.md",
+              "template": true,
+              "visibility": "public"
+            }
+          ]
+        }
+      ]
+    },
+    "typescript-git-hooks": {
+      "id": "typescript-git-hooks",
+      "title": "TypeScript Git Hooks",
+      "description": "Husky, commitlint, and lint-staged hooks for TypeScript projects.",
+      "type": "convention",
+      "variants": [
+        {
+          "id": "default",
+          "targets": {
+            "language": "typescript"
+          },
+          "files": [
+            {
+              "source": "registry/convention/typescript-git-hooks/.husky/commit-msg",
+              "target": ".husky/commit-msg"
+            },
+            {
+              "source": "registry/convention/typescript-git-hooks/.husky/pre-commit",
+              "target": ".husky/pre-commit"
+            },
+            {
+              "source": "registry/convention/typescript-git-hooks/commitlint.config.js",
+              "target": "commitlint.config.js"
+            },
+            {
+              "source": "registry/convention/typescript-git-hooks/lint-staged.config.js",
+              "target": "lint-staged.config.js"
+            }
+          ]
+        }
+      ]
+    },
+    "typescript-package": {
+      "id": "typescript-package",
+      "title": "TypeScript Package",
+      "description": "Opinionated scaffold for a TypeScript library package.",
+      "type": "template",
+      "projectSpec": "package",
+      "inputs": [
+        {
+          "name": "public",
+          "type": "boolean",
+          "prompt": "Should this package be publicly available? (released to the NPM registry)",
+          "default": true
+        },
+        {
+          "name": "includeInstructions",
+          "type": "boolean",
+          "prompt": "Would you like to include appropriate agent instructions?",
+          "default": false
+        },
+        {
+          "name": "instructionsIdeFormat",
+          "type": "select",
+          "prompt": "Which IDE should the instructions be written for?",
+          "optionsFrom": "ideFormats",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "prompt": "What is the project name?",
+          "required": true
+        },
+        {
+          "name": "authorName",
+          "type": "string",
+          "prompt": "What is the author's name?",
+          "when": "public"
+        },
+        {
+          "name": "authorGitUsername",
+          "type": "string",
+          "prompt": "Under which GitHub account will this repository live?",
+          "when": "public"
+        },
+        {
+          "name": "authorGitEmail",
+          "type": "string",
+          "prompt": "What is the author's email?",
+          "when": "public"
+        }
+      ],
+      "registryDependencies": [
+        "typescript-git-hooks",
+        "dependency-updater",
+        "typescript-package-convention",
+        "build",
+        "package-release",
+        "code-of-conduct",
+        "pull-request-template",
+        "issue-templates",
+        "auto-assign",
+        "mutation-testing",
+        {
+          "name": "principles",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "workflow",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "typescript",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "setup-typescript-package-basic",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "documentation-maintainer",
+          "when": "includeInstructions"
+        }
+      ],
+      "transforms": [
+        {
+          "file": "biome.json",
+          "op": "stripJsonKey",
+          "key": "root",
+          "when": "!public"
+        }
+      ],
+      "variants": [
+        {
+          "id": "default",
+          "targets": {
+            "language": "typescript"
+          },
+          "files": [
+            {
+              "source": "registry/template/typescript-package/biome.json",
+              "target": "biome.json"
+            },
+            {
+              "source": "registry/template/typescript-package/package.mustache.json",
+              "target": "package.json",
+              "template": true
+            },
+            {
+              "source": "registry/template/typescript-package/src/index.test.ts",
+              "target": "src/index.test.ts"
+            },
+            {
+              "source": "registry/template/typescript-package/src/index.ts",
+              "target": "src/index.ts"
+            },
+            {
+              "source": "registry/template/typescript-package/tsconfig.json",
+              "target": "tsconfig.json"
+            },
+            {
+              "source": "registry/template/typescript-package/tsdown.config.ts",
+              "target": "tsdown.config.ts"
+            },
+            {
+              "source": "registry/template/typescript-package/vitest.config.ts",
+              "target": "vitest.config.ts"
+            }
+          ]
+        }
+      ]
+    },
+    "typescript-package-convention": {
+      "id": "typescript-package-convention",
+      "title": "TypeScript Package Convention",
+      "description": "README, CONTRIBUTING, and gitignore defaults for TypeScript packages.",
+      "type": "convention",
+      "projectSpec": "package",
+      "inputs": [
+        {
+          "name": "name",
+          "type": "string",
+          "prompt": "What is the project name?",
+          "required": true
+        },
+        {
+          "name": "authorName",
+          "type": "string",
+          "prompt": "What is the author's name?",
+          "when": "public"
+        },
+        {
+          "name": "authorGitUsername",
+          "type": "string",
+          "prompt": "Under which GitHub account will this repository live?",
+          "when": "public"
+        }
+      ],
+      "variants": [
+        {
+          "id": "default",
+          "targets": {
+            "language": "typescript"
+          },
+          "files": [
+            {
+              "source": "registry/convention/typescript-package/.gitignore",
+              "target": ".gitignore"
+            },
+            {
+              "source": "registry/convention/typescript-package/README.mustache.md",
+              "target": "README.md",
+              "template": true
+            },
+            {
+              "source": "registry/convention/typescript-package/CONTRIBUTING.mustache.md",
+              "target": "CONTRIBUTING.md",
+              "template": true,
+              "visibility": "public"
+            }
+          ]
+        }
+      ]
+    },
+    "typescript-react-app": {
+      "id": "typescript-react-app",
+      "title": "TypeScript React App",
+      "description": "Opinionated scaffold for a TypeScript React application.",
+      "type": "template",
+      "projectSpec": "app",
+      "inputs": [
+        {
+          "name": "public",
+          "type": "boolean",
+          "prompt": "Should this app live in a public repo? (adds a license, changelog, and build/release workflow)",
+          "default": true
+        },
+        {
+          "name": "includeInstructions",
+          "type": "boolean",
+          "prompt": "Would you like to include appropriate agent instructions?",
+          "default": false
+        },
+        {
+          "name": "instructionsIdeFormat",
+          "type": "select",
+          "prompt": "Which IDE should the instructions be written for?",
+          "optionsFrom": "ideFormats",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "prompt": "What is the project name?",
+          "required": true
+        },
+        {
+          "name": "authorName",
+          "type": "string",
+          "prompt": "What is the author's name?",
+          "when": "public"
+        },
+        {
+          "name": "authorGitUsername",
+          "type": "string",
+          "prompt": "Under which GitHub account will this repository live?",
+          "when": "public"
+        },
+        {
+          "name": "authorGitEmail",
+          "type": "string",
+          "prompt": "What is the author's email?",
+          "when": "public"
+        }
+      ],
+      "registryDependencies": [
+        "typescript-git-hooks",
+        "dependency-updater",
+        "typescript-app-convention",
+        "build",
+        "app-release",
+        "code-of-conduct",
+        "pull-request-template",
+        "issue-templates",
+        "auto-assign",
+        {
+          "name": "principles",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "workflow",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "typescript",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "react",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "setup-typescript-app-react",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "documentation-maintainer",
+          "when": "includeInstructions"
+        }
+      ],
+      "transforms": [
+        {
+          "file": "biome.json",
+          "op": "stripJsonKey",
+          "key": "root",
+          "when": "!public"
+        }
+      ],
+      "variants": [
+        {
+          "id": "default",
+          "targets": {
+            "language": "typescript",
+            "framework": "react"
+          },
+          "files": [
+            {
+              "source": "registry/template/typescript-react-app/biome.json",
+              "target": "biome.json"
+            },
+            {
+              "source": "registry/template/typescript-react-app/index.html",
+              "target": "index.html"
+            },
+            {
+              "source": "registry/template/typescript-react-app/package.mustache.json",
+              "target": "package.json",
+              "template": true
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/App.tsx",
+              "target": "src/App.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/components/color-picker.tsx",
+              "target": "src/components/color-picker.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/components/theme-provider.tsx",
+              "target": "src/components/theme-provider.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/components/ui/button.tsx",
+              "target": "src/components/ui/button.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/components/ui/collapsible.tsx",
+              "target": "src/components/ui/collapsible.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/components/ui/help-tooltip.tsx",
+              "target": "src/components/ui/help-tooltip.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/components/ui/label.tsx",
+              "target": "src/components/ui/label.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/components/ui/popover.tsx",
+              "target": "src/components/ui/popover.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/components/ui/scroll-area.tsx",
+              "target": "src/components/ui/scroll-area.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/components/ui/select.tsx",
+              "target": "src/components/ui/select.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/components/ui/separator.tsx",
+              "target": "src/components/ui/separator.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/components/ui/slider.tsx",
+              "target": "src/components/ui/slider.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/components/ui/switch.tsx",
+              "target": "src/components/ui/switch.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/components/ui/tabs.tsx",
+              "target": "src/components/ui/tabs.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/components/ui/toggle-field.tsx",
+              "target": "src/components/ui/toggle-field.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/components/ui/tooltip.tsx",
+              "target": "src/components/ui/tooltip.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/index.css",
+              "target": "src/index.css"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/index.tsx",
+              "target": "src/index.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/lib/utils.test.ts",
+              "target": "src/lib/utils.test.ts"
+            },
+            {
+              "source": "registry/template/typescript-react-app/src/lib/utils.ts",
+              "target": "src/lib/utils.ts"
+            },
+            {
+              "source": "registry/template/typescript-react-app/test-setup.ts",
+              "target": "test-setup.ts"
+            },
+            {
+              "source": "registry/template/typescript-react-app/tsconfig.json",
+              "target": "tsconfig.json"
+            },
+            {
+              "source": "registry/template/typescript-react-app/vite.config.ts",
+              "target": "vite.config.ts"
+            },
+            {
+              "source": "registry/template/typescript-react-app/vitest.config.ts",
+              "target": "vitest.config.ts"
+            }
+          ]
+        }
+      ]
+    },
+    "typescript-react-package": {
+      "id": "typescript-react-package",
+      "title": "TypeScript React Package",
+      "description": "Opinionated scaffold for a TypeScript React component library.",
+      "type": "template",
+      "projectSpec": "package",
+      "inputs": [
+        {
+          "name": "public",
+          "type": "boolean",
+          "prompt": "Should this package be publicly available? (released to the NPM registry)",
+          "default": true
+        },
+        {
+          "name": "includeInstructions",
+          "type": "boolean",
+          "prompt": "Would you like to include appropriate agent instructions?",
+          "default": false
+        },
+        {
+          "name": "instructionsIdeFormat",
+          "type": "select",
+          "prompt": "Which IDE should the instructions be written for?",
+          "optionsFrom": "ideFormats",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "prompt": "What is the project name?",
+          "required": true
+        },
+        {
+          "name": "authorName",
+          "type": "string",
+          "prompt": "What is the author's name?",
+          "when": "public"
+        },
+        {
+          "name": "authorGitUsername",
+          "type": "string",
+          "prompt": "Under which GitHub account will this repository live?",
+          "when": "public"
+        },
+        {
+          "name": "authorGitEmail",
+          "type": "string",
+          "prompt": "What is the author's email?",
+          "when": "public"
+        }
+      ],
+      "registryDependencies": [
+        "typescript-git-hooks",
+        "dependency-updater",
+        "typescript-package-convention",
+        "build",
+        "package-release",
+        "code-of-conduct",
+        "pull-request-template",
+        "issue-templates",
+        "auto-assign",
+        "mutation-testing",
+        {
+          "name": "principles",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "workflow",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "typescript",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "react",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "setup-typescript-package-react",
+          "when": "includeInstructions"
+        },
+        {
+          "name": "documentation-maintainer",
+          "when": "includeInstructions"
+        }
+      ],
+      "transforms": [
+        {
+          "file": "biome.json",
+          "op": "stripJsonKey",
+          "key": "root",
+          "when": "!public"
+        }
+      ],
+      "variants": [
+        {
+          "id": "default",
+          "targets": {
+            "language": "typescript",
+            "framework": "react"
+          },
+          "files": [
+            {
+              "source": "registry/template/typescript-react-package/biome.json",
+              "target": "biome.json"
+            },
+            {
+              "source": "registry/template/typescript-react-package/package.mustache.json",
+              "target": "package.json",
+              "template": true
+            },
+            {
+              "source": "registry/template/typescript-react-package/playground/index.html",
+              "target": "playground/index.html"
+            },
+            {
+              "source": "registry/template/typescript-react-package/playground/src/App.tsx",
+              "target": "playground/src/App.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-package/playground/src/index.css",
+              "target": "playground/src/index.css"
+            },
+            {
+              "source": "registry/template/typescript-react-package/playground/src/index.tsx",
+              "target": "playground/src/index.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-package/playground/tsconfig.json",
+              "target": "playground/tsconfig.json"
+            },
+            {
+              "source": "registry/template/typescript-react-package/playground/vite.config.ts",
+              "target": "playground/vite.config.ts"
+            },
+            {
+              "source": "registry/template/typescript-react-package/src/button.tsx",
+              "target": "src/button.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-package/src/index.test.tsx",
+              "target": "src/index.test.tsx"
+            },
+            {
+              "source": "registry/template/typescript-react-package/src/index.ts",
+              "target": "src/index.ts"
+            },
+            {
+              "source": "registry/template/typescript-react-package/test-setup.ts",
+              "target": "test-setup.ts"
+            },
+            {
+              "source": "registry/template/typescript-react-package/tsconfig.json",
+              "target": "tsconfig.json"
+            },
+            {
+              "source": "registry/template/typescript-react-package/tsdown.config.ts",
+              "target": "tsdown.config.ts"
+            },
+            {
+              "source": "registry/template/typescript-react-package/vite.config.ts",
+              "target": "vite.config.ts"
+            },
+            {
+              "source": "registry/template/typescript-react-package/vitest.config.ts",
+              "target": "vitest.config.ts"
+            }
+          ]
+        }
+      ]
+    },
+    "workflow": {
+      "id": "workflow",
+      "title": "Workflow",
+      "description": "Core agent workflow expectations for any project.",
+      "type": "agent-instruction",
+      "tags": [
+        "agent"
+      ],
+      "instructionName": "workflow",
+      "variants": [
+        {
+          "id": "default",
+          "files": [
+            {
+              "source": "registry/agent-instruction/workflow/workflow.md",
+              "target": "workflow.md"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "commandInputs": {
+    "add": [
+      {
+        "name": "public",
+        "type": "boolean",
+        "prompt": "Is the target project public? (controls license, community files, and public-only content)",
+        "default": false
+      },
+      {
+        "name": "includeInstructions",
+        "type": "boolean",
+        "prompt": "Include agent instructions?",
+        "default": false
+      },
+      {
+        "name": "instructionsIdeFormat",
+        "type": "select",
+        "prompt": "Which IDE should the instructions be written for?",
+        "when": "includeInstructions",
+        "optionsFrom": "ideFormats"
+      },
+      {
+        "name": "framework",
+        "type": "string",
+        "prompt": "Target framework for cross-framework items (e.g., react, vue)"
+      }
+    ]
+  }
+}

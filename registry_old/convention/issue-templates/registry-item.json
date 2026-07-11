@@ -1,0 +1,25 @@
+{
+	"id": "issue-templates",
+	"title": "Issue Templates",
+	"description": "Bug report and feature request issue templates.",
+	"type": "convention",
+	"tags": ["github"],
+	"variants": [
+		{
+			"id": "github",
+			"targets": { "tool": "github" },
+			"files": [
+				{
+					"path": "github/.github/issue_template/bug_report.md",
+					"target": ".github/issue_template/bug_report.md",
+					"visibility": "public"
+				},
+				{
+					"path": "github/.github/issue_template/feature_request.md",
+					"target": ".github/issue_template/feature_request.md",
+					"visibility": "public"
+				}
+			]
+		}
+	]
+}

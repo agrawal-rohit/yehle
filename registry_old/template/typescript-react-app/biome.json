@@ -1,0 +1,23 @@
+{
+	"root": false,
+	"$schema": "https://biomejs.dev/schemas/2.3.10/schema.json",
+	"files": {
+		"includes": ["src/**/*.{js,ts,jsx,tsx,json,cjs,mjs,yaml,css}"]
+	},
+	"formatter": {
+		"enabled": true
+	},
+	"linter": {
+		"enabled": true,
+		"rules": { "recommended": true }
+	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		}
+	},
+	"assist": {
+		"enabled": true,
+		"actions": { "source": { "organizeImports": "on" } }
+	}
+}
