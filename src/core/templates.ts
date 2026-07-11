@@ -1,0 +1,142 @@
+import path from "node:path";
+import type { Language } from "./constants";
+import {
+	DEFAULT_GITHUB_OWNER,
+	DEFAULT_GITHUB_REPO,
+	IS_LOCAL_MODE,
+} from "./constants";
+import { isDirAsync } from "./fs";
+import {
+	getLocalRoot,
+	listLocalChildDirs,
+	resolveLocalTemplatesSubpath,
+} from "./registry.local";
+import {
+	listRemoteChildDirsViaAPI,
+	resolveRemoteSubpath,
+} from "./registry.remote";
+
+/** Directory names to exclude when listing template/language children. */
+export const NON_TEMPLATE_DIR_NAMES = new Set(
+	["shared", "instructions"].map((n) => n.toLowerCase()),
+);
+
+/**
+ * List language directory names (e.g. "typescript") by scanning templates/.
+ * Excludes shared and instructions (see NON_TEMPLATE_DIR_NAMES). Used by standalone instructions flow to discover languages.
+ * @returns Promise resolving to sorted array of language names; empty if templates root not found.
+ */
+export async function listLanguageNames(): Promise<string[]> {
+	const root = await getLocalRoot("templates");
+	if (!root) return [];
+	const names = await listLocalChildDirs(root, NON_TEMPLATE_DIR_NAMES);
+	return names.sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * List project-spec directory names for a language (e.g. "package") by scanning templates/<lang>/.
+ * Excludes shared and instructions (see NON_TEMPLATE_DIR_NAMES). Used by standalone instructions flow to discover project-specs.
+ * @param lang - Language key (e.g. typescript).
+ * @returns Promise resolving to sorted array of project-spec names; empty if lang dir not found.
+ */
+export async function listProjectSpecNames(lang: string): Promise<string[]> {
+	const root = await getLocalRoot("templates");
+	if (!root) return [];
+	const langDir = path.join(root, lang);
+	if (!(await isDirAsync(langDir))) return [];
+	const names = await listLocalChildDirs(langDir, NON_TEMPLATE_DIR_NAMES);
+	return names.sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Attempt to normalize the downloaded directory to the expected subtree.
+ * @param downloadedDir - The path to the directory returned by giget.
+ * @param language - The programming language for the templates (used to construct candidate paths).
+ * @param resource - Optional resource within the language (e.g. "package").
+ * @returns The normalized directory path.
+ */
+async function normalizeDownloadedDir(
+	downloadedDir: string,
+	language: string,
+	resource?: string,
+): Promise<string> {
+	const candidate = resource
+		? path.join(downloadedDir, "templates", language, resource)
+		: path.join(downloadedDir, "templates", language);
+
+	if (await isDirAsync(candidate)) return candidate;
+	return downloadedDir;
+}
+
+/**
+ * Resolve the on-disk directory that contains templates for a given language and resource.
+ * Local mode uses ./templates, remote mode downloads from GitHub to a temp dir.
+ * @param language - The programming language for the templates.
+ * @param resource - Optional resource within the language (e.g. "package").
+ * @returns Promise resolving to the absolute path of the templates directory.
+ * @throws Error when the path is not found (local) or download fails (remote).
+ */
+export async function resolveTemplatesDir(
+	language: string,
+	resource?: string,
+): Promise<string> {
+	const subpath = ["templates", language, resource].filter(Boolean).join("/");
+
+	// Local mode
+	if (IS_LOCAL_MODE) {
+		const localDir = await resolveLocalTemplatesSubpath(subpath);
+		if (localDir && (await isDirAsync(localDir))) return localDir;
+
+		const root = await getLocalRoot("templates");
+		if (!root) throw new Error(`No local templates root found.`);
+
+		const resourcePart = resource ? ` and resource "${resource}"` : "";
+		throw new Error(
+			`Local templates not found at ${root} for language "${language}"${resourcePart}.`,
+		);
+	}
+
+	// Remote mode
+	const remoteDir = await resolveRemoteSubpath(
+		subpath,
+		"yehle-templates-",
+		async (dir) => {
+			const normalized = await normalizeDownloadedDir(dir, language, resource);
+			if (await isDirAsync(normalized)) return normalized;
+
+			const resourcePart = resource ? ` and resource "${resource}"` : "";
+			throw new Error(
+				`No remote templates found for language "${language}"${resourcePart} in ${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}.`,
+			);
+		},
+	);
+	return remoteDir;
+}
+
+/**
+ * List available template names (subdirectories) for a given language and resource.
+ * @param language - The programming language for the templates.
+ * @param resource - The resource type (e.g. "package").
+ * @returns Promise resolving to an array of available template names.
+ * @throws Error when the GitHub API fails in remote mode.
+ */
+export async function listAvailableTemplates(
+	language: Language,
+	resource: string,
+): Promise<string[]> {
+	const subpath = ["templates", language, resource].filter(Boolean).join("/");
+
+	// Local mode
+	if (IS_LOCAL_MODE) {
+		const localDir = await resolveLocalTemplatesSubpath(subpath);
+		if (!localDir) return [];
+		return listLocalChildDirs(localDir, NON_TEMPLATE_DIR_NAMES);
+	}
+
+	// Remote mode
+	const apiNames = await listRemoteChildDirsViaAPI(
+		subpath,
+		NON_TEMPLATE_DIR_NAMES,
+	);
+	return apiNames;
+}

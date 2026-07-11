@@ -2,7 +2,7 @@ import chalk from "chalk";
 import animatedIntro from "./animated-intro";
 
 // Log colors
-export const primaryText = (message: string) => chalk.hex("#EFA607")(message);
+export const primaryText = (message: string) => chalk.hex("#FEA624")(message);
 export const defaultText = (message: string) => chalk.grey(message);
 export const dangerHighlight = (message: string) => chalk.bgRed(message);
 

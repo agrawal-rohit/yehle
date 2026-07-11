@@ -1,6 +1,16 @@
 import { stripAnsi } from "consola/utils";
 
 /**
+ * Capitalizes the first letter of the input string.
+ * @param value - The input string to capitalize.
+ * @returns The string with the first character converted to uppercase.
+ */
+export function capitalizeFirstLetter(value: string) {
+	if (value.length === 0) return value;
+	return value[0].toUpperCase() + value.slice(1);
+}
+
+/**
  * Convert an arbitrary string into a URL and npm-friendly slug.
  * @param value - The input string to slugify (e.g., package or repo name).
  * @returns A normalized slug suitable for package/repo names.

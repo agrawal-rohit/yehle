@@ -1,14 +1,11 @@
 import cac from "cac";
-import { registerCommandsCli } from "./commands";
+import { registerResourcesCli } from "./resources";
 
-/**
- * Bootstrap the tuckshop CLI: register commands, then parse argv or show help.
- * Registration is async because command flags are derived from the registry.
- */
-export default async function run(): Promise<void> {
-	const app = cac("tuckshop");
+export default function run(): void {
+	const app = cac("yehle");
 
-	await registerCommandsCli(app);
+	// Register all commands defined in resources
+	registerResourcesCli(app);
 
 	app.help();
 

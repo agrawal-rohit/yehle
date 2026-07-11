@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import mustache from "mustache";
 
 /**
  * Check whether a path exists and is a directory.
@@ -167,5 +168,68 @@ export async function stripKeyFromJSONFile(
 		);
 	} catch {
 		// File missing or invalid JSON; ignore
+	}
+}
+
+/**
+ * Recursively find all *.mustache.* files in targetDir, render them using the provided data,
+ * write the rendered content to the same path with ".mustache." removed, and remove the original.
+ * Example: package.mustache.json -> package.json, config.mustache.ts -> config.ts
+ * @param targetDir - Root directory to search.
+ * @param data - Key/value pairs used for mustache interpolation.
+ * @returns Promise that resolves when all mustache files have been rendered and replaced.
+ */
+export async function renderMustacheTemplates(
+	targetDir: string,
+	data: Record<string, unknown>,
+): Promise<void> {
+	let entries: fs.Dirent[] = [];
+	try {
+		entries = await fs.promises.readdir(targetDir, { withFileTypes: true });
+	} catch {
+		return;
+	}
+
+	for (const entry of entries) {
+		const full = path.join(targetDir, entry.name);
+		if (entry.isDirectory()) {
+			await renderMustacheTemplates(full, data);
+		} else if (entry.isFile() && /\.mustache\./i.test(entry.name)) {
+			const raw = await fs.promises.readFile(full, "utf8");
+
+			// Preserve GitHub Actions expressions like ${{ secrets.X }} by masking them before rendering.
+			const ghExprPattern = /\$\{\{[\s\S]*?\}\}/g;
+			const ghExprs: string[] = [];
+			const masked = raw.replaceAll(ghExprPattern, (m) => {
+				const token = `__GH_EXPR_${ghExprs.length}__`;
+				ghExprs.push(m);
+				return token;
+			});
+
+			const previousEscape = mustache.escape;
+			try {
+				// Disable HTML escaping to preserve literal "/" and other characters during render
+				// This is safe because the rendered content is written to files, not directly to HTML output
+				mustache.escape = (s: string) => s;
+
+				let rendered = mustache.render(masked, data);
+
+				// Restore masked GitHub Actions expressions
+				ghExprs.forEach((expr, i) => {
+					const token = `__GH_EXPR_${i}__`;
+					rendered = rendered.split(token).join(expr);
+				});
+
+				const dest = path.join(
+					path.dirname(full),
+					entry.name.replace(/\.mustache\./i, "."),
+				);
+				await fs.promises.writeFile(dest, rendered, "utf8");
+				await fs.promises.rm(full, { force: true });
+			} finally {
+				// Restore original Mustache escape behavior
+				mustache.escape = previousEscape;
+			}
+		}
 	}
 }

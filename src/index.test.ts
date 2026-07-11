@@ -11,18 +11,18 @@ vi.mock("cac", () => ({
 	default: vi.fn(() => mockApp),
 }));
 
-vi.mock("./commands", () => ({
-	registerCommandsCli: vi.fn(async () => {}),
+vi.mock("./resources", () => ({
+	registerResourcesCli: vi.fn(),
 }));
 
 import cac from "cac";
-import { registerCommandsCli } from "./commands";
 import run from "./index";
+
+import { registerResourcesCli } from "./resources";
 
 describe("index", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		vi.mocked(registerCommandsCli).mockResolvedValue();
 	});
 
 	afterEach(() => {
@@ -30,38 +30,38 @@ describe("index", () => {
 	});
 
 	describe("run", () => {
-		it("should initialize CAC with correct name and register the commands CLI", async () => {
-			vi.stubGlobal("process", { argv: ["node", "tuckshop"] });
+		it("should initialize CAC with correct name and register the resources CLI", () => {
+			vi.stubGlobal("process", { argv: ["node", "yehle"] });
 
-			await run();
+			run();
 
-			expect(cac).toHaveBeenCalledWith("tuckshop");
-			expect(registerCommandsCli).toHaveBeenCalledWith(mockApp);
+			expect(cac).toHaveBeenCalledWith("yehle");
+			expect(registerResourcesCli).toHaveBeenCalledWith(mockApp);
 			expect(mockApp.help).toHaveBeenCalled();
 		});
 
-		it("should output help when no arguments are provided", async () => {
-			vi.stubGlobal("process", { argv: ["node", "tuckshop"] });
+		it("should output help when no arguments are provided", () => {
+			vi.stubGlobal("process", { argv: ["node", "yehle"] });
 
-			await run();
+			run();
 
 			expect(mockApp.outputHelp).toHaveBeenCalled();
 			expect(mockApp.parse).not.toHaveBeenCalled();
 		});
 
-		it("should parse arguments when provided", async () => {
-			const argv = ["node", "tuckshop", "package"];
+		it("should parse arguments when provided", () => {
+			const argv = ["node", "yehle", "package"];
 			vi.stubGlobal("process", { argv });
 			vi.mocked(mockApp.parse).mockImplementation(() => {});
 
-			await run();
+			run();
 
 			expect(mockApp.parse).toHaveBeenCalledWith(argv);
 			expect(mockApp.outputHelp).not.toHaveBeenCalled();
 		});
 
-		it("should handle parse errors by showing help for the command", async () => {
-			const argv = ["node", "tuckshop", "package"];
+		it("should handle parse errors by showing help for the command", () => {
+			const argv = ["node", "yehle", "package"];
 			vi.stubGlobal("process", { argv });
 			vi.mocked(mockApp.parse)
 				.mockImplementationOnce(() => {
@@ -69,15 +69,15 @@ describe("index", () => {
 				})
 				.mockImplementationOnce(() => {});
 
-			await run();
+			run();
 
 			expect(mockApp.parse).toHaveBeenCalledWith(argv);
 			expect(mockApp.parse).toHaveBeenCalledWith([...argv, "--help"]);
 			expect(mockApp.outputHelp).not.toHaveBeenCalled();
 		});
 
-		it("should fallback to global help if command help also fails", async () => {
-			const argv = ["node", "tuckshop", "package"];
+		it("should fallback to global help if command help also fails", () => {
+			const argv = ["node", "yehle", "package"];
 			vi.stubGlobal("process", { argv });
 			vi.mocked(mockApp.parse)
 				.mockImplementationOnce(() => {
@@ -87,24 +87,20 @@ describe("index", () => {
 					throw new Error("Help parse error");
 				});
 
-			await run();
+			run();
 
 			expect(mockApp.parse).toHaveBeenCalledWith(argv);
 			expect(mockApp.parse).toHaveBeenCalledWith([...argv, "--help"]);
 			expect(mockApp.outputHelp).toHaveBeenCalled();
 		});
 
-		it("should filter out empty arguments", async () => {
-			vi.stubGlobal("process", { argv: ["node", "tuckshop", "package"] });
+		it("should filter out empty arguments", () => {
+			vi.stubGlobal("process", { argv: ["node", "yehle", "package"] });
 			vi.mocked(mockApp.parse).mockImplementation(() => {});
 
-			await run();
+			run();
 
-			expect(mockApp.parse).toHaveBeenCalledWith([
-				"node",
-				"tuckshop",
-				"package",
-			]);
+			expect(mockApp.parse).toHaveBeenCalledWith(["node", "yehle", "package"]);
 		});
 	});
 });

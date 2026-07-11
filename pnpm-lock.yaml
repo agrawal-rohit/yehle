@@ -20,6 +20,9 @@ importers:
       consola:
         specifier: ^3.2.3
         version: 3.4.2
+      giget:
+        specifier: ^3.1.2
+        version: 3.1.2
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3
@@ -87,9 +90,6 @@ importers:
       lint-staged:
         specifier: ^16.1.6
         version: 16.1.6
-      tsx:
-        specifier: ^4.20.5
-        version: 4.20.5
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -3276,6 +3276,10 @@ packages:
 
   get-tsconfig@4.13.6:
     resolution: {integrity: sha512-shZT/QMiSHc/YBLxxOkMtgSid5HFoauqCE3/exfsEcwg1WkeqjG+V40yBbBrsD+jW2HDXcs28xOfcbm2jI8Ddw==}
+
+  giget@3.1.2:
+    resolution: {integrity: sha512-T2qUpKBHeUTwHcIhydgnJzhL0Hj785ms+JkxaaWQH9SDM/llXeewnOkfJcFShAHjWI+26hOChwUfCoupaXLm8g==}
+    hasBin: true
 
   git-cliff-darwin-arm64@2.10.1:
     resolution: {integrity: sha512-ns0LnnUZNgVPoQf7HTQP9Clqo/YNtBQ2UIJMmppq350WuA0SWUq1oh/NtHAXc9iqsfZH+ZoI8NTH0KFjtRt/Uw==}
@@ -7789,6 +7793,7 @@ snapshots:
       '@esbuild/win32-arm64': 0.25.12
       '@esbuild/win32-ia32': 0.25.12
       '@esbuild/win32-x64': 0.25.12
+    optional: true
 
   esbuild@0.27.7:
     optionalDependencies:
@@ -8103,6 +8108,9 @@ snapshots:
   get-tsconfig@4.13.6:
     dependencies:
       resolve-pkg-maps: 1.0.0
+    optional: true
+
+  giget@3.1.2: {}
 
   git-cliff-darwin-arm64@2.10.1:
     optional: true
@@ -9769,7 +9777,8 @@ snapshots:
 
   resolve-from@5.0.0: {}
 
-  resolve-pkg-maps@1.0.0: {}
+  resolve-pkg-maps@1.0.0:
+    optional: true
 
   restore-cursor@5.1.0:
     dependencies:
@@ -10088,6 +10097,7 @@ snapshots:
       get-tsconfig: 4.13.6
     optionalDependencies:
       fsevents: 2.3.3
+    optional: true
 
   tunnel@0.0.6: {}
 

@@ -7,8 +7,7 @@ const logger = loggerModule?.default ?? loggerModule;
 const run = indexModule?.default ?? indexModule;
 
 try {
-	await run();
+	run();
 } catch (err) {
 	logger.error(err instanceof Error ? err.message : String(err));
-	process.exitCode = 1;
 }
