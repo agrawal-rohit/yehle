@@ -10,12 +10,12 @@
 		"typecheck": "pnpm run mdx && next typegen && tsc --noEmit"
 	},
 	"dependencies": {
-		"@takumi-rs/image-response": "^0.72.0",
-		"fumadocs-core": "16.6.17",
-		"fumadocs-mdx": "14.2.10",
-		"fumadocs-ui": "16.6.17",
-		"lucide-react": "^0.577.0",
-		"next": "16.1.6",
+		"@takumi-rs/image-response": "^2.1.1",
+		"fumadocs-core": "16.11.3",
+		"fumadocs-mdx": "15.1.0",
+		"fumadocs-ui": "16.11.3",
+		"lucide-react": "^1.24.0",
+		"next": "16.2.10",
 		"react": "^19.2.4",
 		"react-dom": "^19.2.4",
 		"tailwind-merge": "^3.5.0"
