@@ -28,11 +28,6 @@ vi.mock("chalk", () => ({
 	},
 }));
 
-// Mock consola/utils
-vi.mock("consola/utils", () => ({
-	stripAnsi: vi.fn((text) => text),
-}));
-
 import readline from "node:readline";
 import animatedIntro, { sleep, truncate } from "./animated-intro";
 

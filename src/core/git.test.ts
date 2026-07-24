@@ -1,10 +1,7 @@
 import fs from "node:fs";
 import type { MockInstance } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	initGitRepo,
-	makeInitialCommit,
-} from "./git";
+import { initGitRepo, makeInitialCommit, readGitConfig } from "./git";
 import type { RunOptions } from "./shell";
 import * as shell from "./shell";
 
@@ -21,6 +18,30 @@ describe("core/git", () => {
 
 	afterEach(() => {
 		vi.restoreAllMocks();
+	});
+
+	describe("readGitConfig", () => {
+		it("returns the trimmed config value when set", async () => {
+			runAsyncSpy.mockResolvedValue("  Rohit Agrawal \n");
+
+			await expect(readGitConfig("user.name")).resolves.toBe("Rohit Agrawal");
+
+			expect(runAsyncSpy).toHaveBeenCalledWith("git config --get user.name", {
+				stdio: "pipe",
+			});
+		});
+
+		it("returns undefined when the config value is empty or whitespace", async () => {
+			runAsyncSpy.mockResolvedValue("   \n");
+
+			await expect(readGitConfig("user.email")).resolves.toBeUndefined();
+		});
+
+		it("returns undefined when the git command fails", async () => {
+			runAsyncSpy.mockRejectedValue(new Error("key not found"));
+
+			await expect(readGitConfig("user.name")).resolves.toBeUndefined();
+		});
 	});
 
 	describe("initGitRepo", () => {

@@ -15,9 +15,8 @@ async function resolveBuiltRegistryPath(): Promise<string | null> {
 		path.resolve(__dirname, "../../", registryFilename),
 	];
 
-	for (const candidate of candidates) {
+	for (const candidate of candidates)
 		if (await isRegularFileAsync(candidate)) return candidate;
-	}
 
 	return null;
 }
