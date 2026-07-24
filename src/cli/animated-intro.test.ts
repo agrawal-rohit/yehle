@@ -405,26 +405,13 @@ describe("cli/animated-intro", () => {
 	});
 
 	describe("edge cases", () => {
-		test("should handle single word message", async () => {
-			await animatedIntro("Hello");
-
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-		});
-
-		test("should handle message with multiple spaces", async () => {
-			await animatedIntro("Hello   World   Test");
-
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-		});
-
-		test("should handle empty string message", async () => {
-			await animatedIntro("");
-
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-		});
-
-		test("should handle numeric message converted to string", async () => {
-			await animatedIntro(123 as unknown as string);
+		test.each([
+			["single word message", "Hello"],
+			["message with multiple spaces", "Hello   World   Test"],
+			["empty string message", ""],
+			["numeric message converted to string", 123 as unknown as string],
+		])("should handle %s", async (_description, message) => {
+			await animatedIntro(message);
 
 			expect(stdoutWriteSpy).toHaveBeenCalled();
 		});
