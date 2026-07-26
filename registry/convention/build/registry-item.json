@@ -5,12 +5,15 @@
 	"type": "convention",
 	"variants": [
 		{
-			"id": "github-actions",
-			"title": "GitHub Actions",
-			"description": "GitHub Actions build workflow for npm packages.",
+			"id": "typescript",
+			"title": "TypeScript",
+			"description": "GitHub Actions CI workflow for TypeScript projects using pnpm (check, build, and test).",
+			"when": {
+				"language": "typescript"
+			},
 			"files": [
 				{
-					"source": "github-actions/.github/workflows/build.yml",
+					"source": "typescript/.github/workflows/build.yml",
 					"target": ".github/workflows/build.yml"
 				}
 			]

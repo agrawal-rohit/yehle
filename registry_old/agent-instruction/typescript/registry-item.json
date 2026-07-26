@@ -1,9 +1,0 @@
-{
-	"id": "typescript",
-	"title": "TypeScript",
-	"description": "TypeScript and JavaScript coding standards for agents.",
-	"type": "agent-instruction",
-	"tags": ["agent"],
-	"instructionName": "typescript",
-	"targets": { "language": "typescript" }
-}

@@ -1,0 +1,14 @@
+{
+	"language": {
+		"label": "Language",
+		"description": "Which language is this project written in?",
+		"inference": "files",
+		"values": [
+			{
+				"value": "typescript",
+				"label": "TypeScript",
+				"files": ["package.json", "tsconfig.json"]
+			}
+		]
+	}
+}

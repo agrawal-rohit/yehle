@@ -1,6 +1,6 @@
 import chalk from "chalk";
+import { defaultText, primaryText } from "../cli/logger";
 import { parseMultiValueOption } from "../cli/options";
-import prompts from "../cli/prompts";
 import {
 	type Registry,
 	type RegistryItem,
@@ -13,82 +13,66 @@ export type ListCommandOptions = {
 	type?: string;
 };
 
-/**
- * Format a registry item type for terminal display.
- * @param type - Registry item type value from registry.json.
- * @returns Human-readable section label.
- */
-function formatRegistryItemType(type: RegistryItemType): string {
-	switch (type) {
-		case RegistryItemType.BLOCK:
-			return "Blocks";
-		case RegistryItemType.COMPONENT:
-			return "Components";
-		case RegistryItemType.CONVENTION:
-			return "Conventions";
-		case RegistryItemType.AGENT_INSTRUCTION:
-			return "Agent Instructions";
-		case RegistryItemType.AGENT_SKILL:
-			return "Agent Skills";
-		case RegistryItemType.SUBAGENT:
-			return "Subagents";
-		case RegistryItemType.TEMPLATE:
-			return "Templates";
-		case RegistryItemType.THEME:
-			return "Themes";
-		default: {
-			const _exhaustive: never = type;
-			return _exhaustive;
-		}
-	}
-}
+/** Display metadata for each registry item type. */
+const REGISTRY_ITEM_TYPE_META = {
+	[RegistryItemType.COMPONENT]: {
+		label: "Components",
+		description: "Reusable UI primitives for building interfaces.",
+	},
+	[RegistryItemType.CONVENTION]: {
+		label: "Conventions",
+		description: "Project workflows and tooling configuration.",
+	},
+	[RegistryItemType.AGENT_INSTRUCTION]: {
+		label: "Agent Instructions",
+		description: "Instruction files that guide coding agents.",
+	},
+	[RegistryItemType.AGENT_SKILL]: {
+		label: "Agent Skills",
+		description: "Reusable skills that extend coding agents.",
+	},
+	[RegistryItemType.SUBAGENT]: {
+		label: "Subagents",
+		description: "Specialised agents for focused tasks.",
+	},
+	[RegistryItemType.TEMPLATE]: {
+		label: "Templates",
+		description: "Starter scaffolds for new projects.",
+	},
+	[RegistryItemType.THEME]: {
+		label: "Themes",
+		description: "Design tokens and styling presets.",
+	},
+} as const satisfies Record<
+	RegistryItemType,
+	{ label: string; description: string }
+>;
 
 /**
  * Resolve which item types to include from `--type`.
+ * Defaults to every available type when `--type` is omitted.
  * @param typeOption - Raw `--type` value from the CLI.
  * @param availableTypes - Types present in the registry.
  * @returns Allowed item types.
  */
-async function resolveFilterTypes(
+function resolveFilterTypes(
 	typeOption: string | undefined,
 	availableTypes: string[],
-): Promise<Set<string>> {
+): Set<string> {
 	if (availableTypes.length === 0)
 		throw new Error("No registry item types found.");
 
 	const tokens = typeOption ? parseMultiValueOption(typeOption) : [];
 
-	// If no types are requested, prompt the user for selection
-	if (tokens.length === 0) {
-		// If there is only one type, return it
-		if (availableTypes.length === 1) return new Set(availableTypes);
-
-		// Prompt the user for selection
-		const chosen = await prompts.multiselectInput(
-			"Which registry types would you like to list?",
-			{
-				options: availableTypes.map((type) => ({
-					label: formatRegistryItemType(type as RegistryItemType),
-					value: type,
-				})),
-			},
-			availableTypes,
-		);
-
-		if (chosen.length === 0)
-			throw new Error("Select at least one registry type to list.");
-
-		return new Set(chosen);
-	}
+	// No explicit filter means list everything
+	if (tokens.length === 0) return new Set(availableTypes);
 
 	const wantsAll = tokens.includes("all");
 	const concreteTypes = tokens.filter((token) => token !== "all");
 
 	// Validate the requested filter combination
 	if (wantsAll && concreteTypes.length > 0)
-		throw new Error(
-			'Cannot combine type "all" with specific --type values.',
-		);
+		throw new Error('Cannot combine type "all" with specific --type values.');
 
 	// If all types are requested, return all available types
 	if (wantsAll) return new Set(availableTypes);
@@ -109,40 +93,40 @@ async function resolveFilterTypes(
  * @param matches - Items to print.
  * @param typeOrder - Section order for types.
  */
-function printItemsByType(
-	matches: { id: string; item: RegistryItem }[],
-	typeOrder: string[],
-): void {
-	const byType = new Map<string, { id: string; item: RegistryItem }[]>();
+function printItemsByType(matches: RegistryItem[], typeOrder: string[]): void {
+	const byType = new Map<string, RegistryItem[]>();
 
-	for (const match of matches) {
-		const group = byType.get(match.item.type) ?? [];
-		group.push(match);
-		byType.set(match.item.type, group);
+	for (const item of matches) {
+		const group = byType.get(item.type) ?? [];
+		group.push(item);
+		byType.set(item.type, group);
 	}
 
 	for (const type of typeOrder) {
 		const group = byType.get(type);
 		if (!group) continue;
 
-		console.log(
-			`  ${chalk.bold(formatRegistryItemType(type as RegistryItemType))}`,
-		);
+		const meta = REGISTRY_ITEM_TYPE_META[type as RegistryItemType] as
+			| { label: string; description: string }
+			| undefined;
+		console.log(primaryText(meta?.label ?? type));
+		if (meta?.description) console.log(meta.description);
+		console.log();
 
-		for (const { id, item } of [...group].sort((a, b) =>
-			a.item.title.localeCompare(b.item.title),
-		)) {
-			const variantLabels = item.variants
-				.filter((variant) => variant.id !== "default")
-				.map((variant) => variant.id);
-			const suffix =
+		const sorted = [...group].sort((a, b) => a.title.localeCompare(b.title));
+		const indexWidth = String(sorted.length).length;
+
+		for (const [index, item] of sorted.entries()) {
+			const variantLabels = item.variants.map((variant) => variant.title);
+			const variants =
 				variantLabels.length > 0
-					? chalk.dim(` [${variantLabels.join(", ")}]`)
+					? chalk.cyan(` [${variantLabels.join(", ")}]`)
 					: "";
+			const number = defaultText(`${String(index + 1).padStart(indexWidth)}.`);
 
-			console.log(`    ${chalk.bold(item.title)}${suffix}`);
-			console.log(`    ${chalk.dim(item.description)}`);
-			console.log(`    ${chalk.dim(id)}`);
+			console.log(
+				`  ${number} ${chalk.bold(item.title)}${variants}: ${item.description}`,
+			);
 		}
 
 		console.log();
@@ -160,20 +144,26 @@ export async function listCommand(
 	itemTypes: string[],
 	options: ListCommandOptions = {},
 ): Promise<void> {
-	const allowedTypes = await resolveFilterTypes(options.type, itemTypes);
-	const matches = Object.entries(registry.items)
-		.filter(([, item]) => allowedTypes.has(item.type))
-		.map(([id, item]) => ({ id, item }));
+	const allowedTypes = resolveFilterTypes(options.type, itemTypes);
+	const matches = Object.values(registry.items).filter((item) =>
+		allowedTypes.has(item.type),
+	);
 
 	if (matches.length === 0) {
-		console.log(chalk.dim("No registry items match the requested types."));
+		console.log();
+		console.log(defaultText("─".repeat(40)));
+		console.log();
+		console.log(defaultText("No registry items match the requested types."));
 		console.log();
 		return;
 	}
 
+	console.log();
+	console.log(defaultText("─".repeat(40)));
+	console.log();
 	const typeOrder = itemTypes.filter((type) => allowedTypes.has(type));
 	printItemsByType(matches, typeOrder);
-	console.log(chalk.dim(`${matches.length} item(s)`));
+	console.log(defaultText(`${matches.length} item(s)`));
 	console.log();
 }
 

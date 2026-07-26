@@ -2,19 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Registry } from "../registry/schema";
 import { RegistryItemType } from "../registry/schema";
 
-const mockMultiselectInput = vi.fn();
 const mockParseMultiValueOption = vi.fn((value: string) =>
 	value
 		.split(",")
 		.map((token) => token.trim())
 		.filter(Boolean),
 );
-
-vi.mock("../cli/prompts", () => ({
-	default: {
-		multiselectInput: (...args: unknown[]) => mockMultiselectInput(...args),
-	},
-}));
 
 vi.mock("../cli/options", () => ({
 	parseMultiValueOption: (value: string) => mockParseMultiValueOption(value),
@@ -23,7 +16,10 @@ vi.mock("../cli/options", () => ({
 vi.mock("chalk", () => ({
 	default: {
 		bold: (text: string) => text,
+		cyan: (text: string) => text,
 		dim: (text: string) => text,
+		grey: (text: string) => text,
+		hex: () => (text: string) => text,
 	},
 }));
 
@@ -82,14 +78,14 @@ describe("commands/list", () => {
 				title: "Alpha Theme",
 				type: RegistryItemType.THEME,
 			}),
-			"block-a": makeItem({
-				id: "block-a",
-				title: "Alpha Block",
-				type: RegistryItemType.BLOCK,
+			"component-a": makeItem({
+				id: "component-a",
+				title: "Alpha Component",
+				type: RegistryItemType.COMPONENT,
 			}),
 		});
 
-		await listCommand(registry, ["block", "theme"], { type: "theme" });
+		await listCommand(registry, ["component", "theme"], { type: "theme" });
 
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
 		expect(output).toContain("Themes");
@@ -98,7 +94,7 @@ describe("commands/list", () => {
 		expect(output.indexOf("Alpha Theme")).toBeLessThan(
 			output.indexOf("Zebra Theme"),
 		);
-		expect(output).not.toContain("Alpha Block");
+		expect(output).not.toContain("Alpha Component");
 		expect(output).toContain("2 item(s)");
 	});
 
@@ -109,17 +105,17 @@ describe("commands/list", () => {
 				title: "Alpha Theme",
 				type: RegistryItemType.THEME,
 			}),
-			"block-a": makeItem({
-				id: "block-a",
-				title: "Alpha Block",
-				type: RegistryItemType.BLOCK,
+			"component-a": makeItem({
+				id: "component-a",
+				title: "Alpha Component",
+				type: RegistryItemType.COMPONENT,
 			}),
 		});
 
-		await listCommand(registry, ["block", "theme"], { type: "all" });
+		await listCommand(registry, ["component", "theme"], { type: "all" });
 
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
-		expect(output).toContain("Blocks");
+		expect(output).toContain("Components");
 		expect(output).toContain("Themes");
 		expect(output).toContain("2 item(s)");
 	});
@@ -133,15 +129,15 @@ describe("commands/list", () => {
 			}),
 		});
 
-		await listCommand(registry, ["block", "theme"], { type: "all" });
+		await listCommand(registry, ["component", "theme"], { type: "all" });
 
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
-		expect(output).not.toContain("Blocks");
+		expect(output).not.toContain("Components");
 		expect(output).toContain("Themes");
 		expect(output).toContain("1 item(s)");
 	});
 
-	it("shows non-default variant ids as a suffix", async () => {
+	it("shows variant titles as a suffix", async () => {
 		const registry = makeRegistry({
 			"theme-a": makeItem({
 				id: "theme-a",
@@ -149,9 +145,9 @@ describe("commands/list", () => {
 				type: RegistryItemType.THEME,
 				variants: [
 					{
-						id: "default",
-						title: "Default",
-						description: "Default",
+						id: "light",
+						title: "Light",
+						description: "Light",
 						files: [],
 					},
 					{
@@ -167,7 +163,7 @@ describe("commands/list", () => {
 		await listCommand(registry, ["theme"], { type: "theme" });
 
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
-		expect(output).toContain("Alpha Theme [dark]");
+		expect(output).toContain("Alpha Theme [Light, Dark]");
 	});
 
 	it("prints an empty-state message when no items match", async () => {
@@ -179,14 +175,16 @@ describe("commands/list", () => {
 			}),
 		});
 
-		await listCommand(registry, ["theme", "block"], { type: "block" });
+		await listCommand(registry, ["theme", "component"], {
+			type: "component",
+		});
 
 		expect(consoleLogSpy).toHaveBeenCalledWith(
 			"No registry items match the requested types.",
 		);
 	});
 
-	it("auto-selects the only available type when --type is omitted", async () => {
+	it("lists the only available type when --type is omitted", async () => {
 		const registry = makeRegistry({
 			"theme-a": makeItem({
 				id: "theme-a",
@@ -197,62 +195,33 @@ describe("commands/list", () => {
 
 		await listCommand(registry, ["theme"], {});
 
-		expect(mockMultiselectInput).not.toHaveBeenCalled();
 		expect(
 			consoleLogSpy.mock.calls.map((call) => call[0]).join("\n"),
 		).toContain("Alpha Theme");
 	});
 
-	it("prompts for types when --type is omitted and multiple types exist", async () => {
-		mockMultiselectInput.mockResolvedValue(["theme"]);
+	it("lists every type when --type is omitted and multiple types exist", async () => {
 		const registry = makeRegistry({
 			"theme-a": makeItem({
 				id: "theme-a",
 				title: "Alpha Theme",
 				type: RegistryItemType.THEME,
 			}),
-			"block-a": makeItem({
-				id: "block-a",
-				title: "Alpha Block",
-				type: RegistryItemType.BLOCK,
+			"component-a": makeItem({
+				id: "component-a",
+				title: "Alpha Component",
+				type: RegistryItemType.COMPONENT,
 			}),
 		});
 
-		await listCommand(registry, ["block", "theme"], {});
+		await listCommand(registry, ["component", "theme"], {});
 
-		expect(mockMultiselectInput).toHaveBeenCalledWith(
-			"Which registry types would you like to list?",
-			expect.objectContaining({
-				options: expect.arrayContaining([
-					{ label: "Blocks", value: "block" },
-					{ label: "Themes", value: "theme" },
-				]),
-			}),
-			["block", "theme"],
-		);
-		expect(
-			consoleLogSpy.mock.calls.map((call) => call[0]).join("\n"),
-		).toContain("Alpha Theme");
-	});
-
-	it("throws when the multiselect returns no types", async () => {
-		mockMultiselectInput.mockResolvedValue([]);
-		const registry = makeRegistry({
-			"theme-a": makeItem({
-				id: "theme-a",
-				title: "Alpha Theme",
-				type: RegistryItemType.THEME,
-			}),
-			"block-a": makeItem({
-				id: "block-a",
-				title: "Alpha Block",
-				type: RegistryItemType.BLOCK,
-			}),
-		});
-
-		await expect(listCommand(registry, ["block", "theme"], {})).rejects.toThrow(
-			"Select at least one registry type to list.",
-		);
+		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
+		expect(output).toContain("Components");
+		expect(output).toContain("Alpha Component");
+		expect(output).toContain("Themes");
+		expect(output).toContain("Alpha Theme");
+		expect(output).toContain("2 item(s)");
 	});
 
 	it("throws when no registry item types are available", async () => {
@@ -277,11 +246,6 @@ describe("commands/list", () => {
 
 	it("formats every known registry item type label", async () => {
 		const registry = makeRegistry({
-			block: makeItem({
-				id: "block",
-				title: "Block",
-				type: RegistryItemType.BLOCK,
-			}),
 			component: makeItem({
 				id: "component",
 				title: "Component",
@@ -324,7 +288,6 @@ describe("commands/list", () => {
 			[
 				"agent-instruction",
 				"agent-skill",
-				"block",
 				"component",
 				"convention",
 				"subagent",
@@ -335,7 +298,6 @@ describe("commands/list", () => {
 		);
 
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
-		expect(output).toContain("Blocks");
 		expect(output).toContain("Components");
 		expect(output).toContain("Conventions");
 		expect(output).toContain("Agent Instructions");
@@ -343,7 +305,7 @@ describe("commands/list", () => {
 		expect(output).toContain("Subagents");
 		expect(output).toContain("Templates");
 		expect(output).toContain("Themes");
-		expect(output).toContain("8 item(s)");
+		expect(output).toContain("7 item(s)");
 	});
 
 	it("returns the raw type string for unknown registry item types at runtime", async () => {

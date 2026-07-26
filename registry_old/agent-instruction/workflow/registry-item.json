@@ -1,8 +1,0 @@
-{
-	"id": "workflow",
-	"title": "Workflow",
-	"description": "Core agent workflow expectations for any project.",
-	"type": "agent-instruction",
-	"tags": ["agent"],
-	"instructionName": "workflow"
-}

@@ -8,6 +8,14 @@
 			"id": "typescript",
 			"title": "TypeScript",
 			"description": "Stryker mutation testing config for TypeScript projects.",
+			"when": {
+				"language": "typescript"
+			},
+			"devDependencies": [
+				"@stryker-mutator/core@^9",
+				"@stryker-mutator/vitest-runner@^9",
+				"@stryker-mutator/typescript-checker@^9"
+			],
 			"files": [
 				{
 					"source": "typescript/stryker.config.mjs",

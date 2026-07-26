@@ -1,8 +1,0 @@
-{
-	"id": "principles",
-	"title": "Principles",
-	"description": "Core agent coding principles for any project.",
-	"type": "agent-instruction",
-	"tags": ["agent"],
-	"instructionName": "principles"
-}

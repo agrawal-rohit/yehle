@@ -1,9 +1,0 @@
-{
-	"id": "react",
-	"title": "React",
-	"description": "React tooling guidance for agents.",
-	"type": "agent-instruction",
-	"tags": ["agent"],
-	"instructionName": "react",
-	"targets": { "framework": "react" }
-}

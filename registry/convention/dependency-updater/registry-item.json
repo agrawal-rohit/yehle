@@ -5,12 +5,15 @@
 	"type": "convention",
 	"variants": [
 		{
-			"id": "dependabot",
-			"title": "Dependabot",
-			"description": "Dependabot configuration for automated dependency updates.",
+			"id": "typescript",
+			"title": "TypeScript",
+			"description": "Dependabot configuration for npm and GitHub Actions updates in TypeScript projects.",
+			"when": {
+				"language": "typescript"
+			},
 			"files": [
 				{
-					"source": "dependabot/.github/dependabot.yml",
+					"source": "typescript/.github/dependabot.yml",
 					"target": ".github/dependabot.yml"
 				}
 			]

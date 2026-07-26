@@ -16,7 +16,7 @@ export async function registerCommandsCli(app: CAC): Promise<void> {
 	const listCmd = app.command("list", "List available registry items");
 	listCmd.option(
 		"--type <types>",
-		`Filter by type: all, or comma-separated types (${itemTypes.join(", ")}). Prompted when omitted`,
+		`Filter by type: all, or comma-separated types (${itemTypes.join(", ")}). Lists all types when omitted`,
 	);
 	listCmd.action(async (options: Record<string, unknown>) => {
 		try {
