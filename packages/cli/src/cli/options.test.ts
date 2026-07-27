@@ -1,34 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-	getBooleanOption,
-	getStringOption,
-	parseMultiValueOption,
-	pickStringOptions,
-} from "./options";
+import { parseMultiValueOption, pickStringOptions } from "./options";
 
 describe("cli/options", () => {
-	describe("getStringOption", () => {
-		it("returns a trimmed string when present", () => {
-			expect(getStringOption({ type: " component " }, "type")).toBe(
-				"component",
-			);
-		});
-
-		it("returns undefined when missing, blank, or not a string", () => {
-			expect(getStringOption({}, "type")).toBeUndefined();
-			expect(getStringOption({ type: "   " }, "type")).toBeUndefined();
-			expect(getStringOption({ type: 1 }, "type")).toBeUndefined();
-		});
-	});
-
-	describe("getBooleanOption", () => {
-		it("returns true only when the flag is explicitly true", () => {
-			expect(getBooleanOption({ all: true }, "all")).toBe(true);
-			expect(getBooleanOption({ all: false }, "all")).toBe(false);
-			expect(getBooleanOption({}, "all")).toBe(false);
-		});
-	});
-
 	describe("pickStringOptions", () => {
 		it("returns only present non-empty string options", () => {
 			expect(
@@ -40,6 +13,18 @@ describe("cli/options", () => {
 				type: "component",
 				lang: "typescript",
 			});
+		});
+
+		it("trims whitespace from string values", () => {
+			expect(pickStringOptions({ type: " component " }, ["type"])).toEqual({
+				type: "component",
+			});
+		});
+
+		it("ignores missing, blank, or non-string values", () => {
+			expect(pickStringOptions({}, ["type"])).toEqual({});
+			expect(pickStringOptions({ type: "   " }, ["type"])).toEqual({});
+			expect(pickStringOptions({ type: 1 }, ["type"])).toEqual({});
 		});
 	});
 

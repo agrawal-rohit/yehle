@@ -132,9 +132,6 @@ importers:
       consola:
         specifier: ^3.2.3
         version: 3.4.2
-      listr2:
-        specifier: ^10.1.0
-        version: 10.1.0
 
   packages/core: {}
 
@@ -3804,10 +3801,6 @@ packages:
     engines: {node: '>=20.17'}
     hasBin: true
 
-  listr2@10.1.0:
-    resolution: {integrity: sha512-/6t2KgDYIcCjhELwvrRxi1gaJ4xCGLTjNvh6mSjYenBkrZxggek8EwCbwBU33GMUCpyyrOzz2TzylrO5mTiI1w==}
-    engines: {node: '>=22.0.0'}
-
   listr2@9.0.5:
     resolution: {integrity: sha512-ME4Fb83LgEgwNw96RKNvKV4VTLuXfoKudAmm2lP8Kk87KaMK0/Xrx/aAkMWmT8mDb+3MlFDspfbCs7adjRxA2g==}
     engines: {node: '>=20.0.0'}
@@ -3840,10 +3833,6 @@ packages:
   log-update@6.1.0:
     resolution: {integrity: sha512-9ie8ItPR6tjY5uYJh8K/Zrv/RMZ5VOlOWvtZdEHYSTFKZfIBPQa9tOAEeAWhd+AnIneLJ22w5fjOYtoutpWq5w==}
     engines: {node: '>=18'}
-
-  log-update@7.0.2:
-    resolution: {integrity: sha512-cSSF1K5w9juI2+JeSRAdaTUZJf6cJB0aWwWO1nQQkcWw44+bIfXmhZMwK2eEsv6tXvU3UfKX/kzcX6SP+1tLAw==}
-    engines: {node: '>=20'}
 
   longest-streak@3.1.0:
     resolution: {integrity: sha512-9Ri+o0JYgehTaVBBDoMqIl8GXtbWg711O3srftcHhZ0dqnETqLaoIK0x17fUw9rFSlK/0NlsKe0Ahhyl5pXE2g==}
@@ -8831,15 +8820,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  listr2@10.1.0:
-    dependencies:
-      cli-truncate: 5.1.1
-      colorette: 2.0.20
-      eventemitter3: 5.0.4
-      log-update: 7.0.2
-      rfdc: 1.4.1
-      wrap-ansi: 9.0.2
-
   listr2@9.0.5:
     dependencies:
       cli-truncate: 5.1.1
@@ -8868,14 +8848,6 @@ snapshots:
   lodash.upperfirst@4.3.1: {}
 
   log-update@6.1.0:
-    dependencies:
-      ansi-escapes: 7.2.0
-      cli-cursor: 5.0.0
-      slice-ansi: 7.1.2
-      strip-ansi: 7.1.2
-      wrap-ansi: 9.0.2
-
-  log-update@7.0.2:
     dependencies:
       ansi-escapes: 7.2.0
       cli-cursor: 5.0.0

@@ -7,25 +7,12 @@ export type CliOptions = Record<string, unknown>;
  * @param key - Option key.
  * @returns Trimmed non-empty string, or undefined when missing or blank.
  */
-export function getStringOption(
-	options: CliOptions,
-	key: string,
-): string | undefined {
+function getStringOption(options: CliOptions, key: string): string | undefined {
 	const value = options[key];
 	if (typeof value !== "string") return undefined;
 
 	const trimmed = value.trim();
 	return trimmed.length > 0 ? trimmed : undefined;
-}
-
-/**
- * Read a boolean flag from CAC options.
- * @param options - Raw CAC options.
- * @param key - Option key.
- * @returns True when the flag is explicitly set, false otherwise.
- */
-export function getBooleanOption(options: CliOptions, key: string): boolean {
-	return options[key] === true;
 }
 
 /**

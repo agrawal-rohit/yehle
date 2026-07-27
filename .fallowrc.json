@@ -23,7 +23,8 @@
 	"ignoreDependencies": [
 		"@stryker-mutator/api",
 		"collections",
-		"lucide-react"
+		"lucide-react",
+		"minimatch"
 	],
 	"rules": {
 		"unresolved-imports": "error",

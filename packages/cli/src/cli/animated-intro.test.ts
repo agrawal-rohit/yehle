@@ -29,7 +29,7 @@ vi.mock("chalk", () => ({
 }));
 
 import readline from "node:readline";
-import animatedIntro, { sleep, truncate } from "./animated-intro";
+import animatedIntro from "./animated-intro";
 
 describe("cli/animated-intro", () => {
 	type MockStdout = {
@@ -275,12 +275,22 @@ describe("cli/animated-intro", () => {
 			expect(stdoutWriteSpy).toHaveBeenCalled();
 		});
 
-		test("should call truncate for long messages", async () => {
-			await animatedIntro(
-				"This is a very long message that should be truncated",
-			);
+		test("truncates long messages in non-TTY output", async () => {
+			const customStdout: MockStdout = {
+				write: vi.fn(),
+				columns: 80,
+				isTTY: false,
+			};
+			const longMessage = "word ".repeat(30).trim();
 
-			expect(stdoutWriteSpy).toHaveBeenCalled();
+			await animatedIntro(longMessage, {
+				stdout: customStdout as unknown as NodeJS.WriteStream,
+			});
+
+			const output = customStdout.write.mock.calls
+				.map((call) => call[0])
+				.join("");
+			expect(output).toContain("...");
 		});
 
 		test("should paint final frame with longer delay", async () => {
@@ -592,71 +602,6 @@ describe("cli/animated-intro", () => {
 		test("should export animatedIntro as default", () => {
 			expect(animatedIntro).toBeDefined();
 			expect(typeof animatedIntro).toBe("function");
-		});
-	});
-
-	describe("sleep", () => {
-		afterEach(() => {
-			vi.useRealTimers();
-		});
-
-		test("resolves after approximately the requested time using real timers", async () => {
-			const ms = 50;
-			const start = Date.now();
-			await sleep(ms);
-			const end = Date.now();
-			expect(end - start).toBeGreaterThanOrEqual(ms - 10);
-		});
-
-		test("can be used with fake timers and advances when timers run", async () => {
-			vi.useFakeTimers();
-
-			const promise = sleep(100);
-
-			// Should not resolve before timers advance
-			let resolved = false;
-			promise.then(() => {
-				resolved = true;
-			});
-
-			expect(resolved).toBe(false);
-
-			vi.advanceTimersByTime(100);
-
-			await promise;
-			expect(resolved).toBe(true);
-		});
-	});
-
-	describe("truncate", () => {
-		test("returns the original string when length is within max", () => {
-			expect(truncate("hello", 10)).toBe("hello");
-			expect(truncate("hello", 5)).toBe("hello");
-		});
-
-		test("truncates and appends ellipsis when longer than max", () => {
-			expect(truncate("hello world", 8)).toBe("hello...");
-			expect(truncate("hello world", 6)).toBe("hel...");
-		});
-
-		test("returns only ellipsis when max is 3", () => {
-			expect(truncate("hello world", 3)).toBe("...");
-		});
-
-		test("handles very small max values", () => {
-			expect(truncate("hello", 2)).toBe("...");
-			expect(truncate("hello", 0)).toBe("...");
-		});
-
-		test("respects visible length when ANSI codes are present", () => {
-			const colored = "\u001b[31mhello world\u001b[0m";
-			const result = truncate(colored, 8);
-			expect(result).toBe("hello...");
-		});
-
-		test("does not modify already short ANSI strings", () => {
-			const colored = "\u001b[32mok\u001b[0m";
-			expect(truncate(colored, 5)).toBe(colored);
 		});
 	});
 });

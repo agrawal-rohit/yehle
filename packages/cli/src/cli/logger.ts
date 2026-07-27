@@ -2,7 +2,7 @@ import animatedIntro from "./animated-intro";
 import { dangerHighlight } from "./colors";
 
 /** Logger utilities for the CLI. */
-export class Logger {
+class Logger {
 	/**
 	 * Prints an introductory message.
 	 * @param message - The introductory message to display.
@@ -20,17 +20,6 @@ export class Logger {
 		console.error(`${dangerHighlight(" error ")} ${message}`);
 		console.log();
 		process.exit(1);
-	}
-
-	/**
-	 * Prints an end message with a red background prefix and exits the process with code 0.
-	 * @param message - The end message to display.
-	 */
-	end(message: string) {
-		console.log();
-		console.error(`${dangerHighlight(" end ")} ${message}`);
-		console.log();
-		process.exit(0);
 	}
 }
 

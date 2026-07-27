@@ -4,25 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import {
-	copyDirSafeAsync,
-	copyFileSafeAsync,
-	ensureDirAsync,
-	isRegularFileAsync,
-	readJSONFileAsync,
-	removeMatchingFilesRecursively,
-	stripKeyFromJSONFile,
-	writeFileAsync,
-} from "./fs";
+import { isRegularFileAsync, readJSONFileAsync, writeFileAsync } from "./fs";
 
 function makeTempDir(prefix = "fs-test-"): string {
 	const tmp = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 	return tmp;
-}
-
-function writeFileSync(filePath: string, contents: string) {
-	fs.mkdirSync(path.dirname(filePath), { recursive: true });
-	fs.writeFileSync(filePath, contents, "utf8");
 }
 
 describe("core/fs", () => {
@@ -50,252 +36,49 @@ describe("core/fs", () => {
 	});
 
 	describe("readJSONFileAsync", () => {
-		it("reads and parses a JSON file", async () => {
+		it("parses and returns JSON content", async () => {
 			const root = makeTempDir();
-			const file = path.join(root, "config.json");
-			const data = { version: "1.0.0", items: { foo: { name: "foo" } } };
+			const file = path.join(root, "data.json");
+			const data = { hello: "world", n: 42 };
 			fs.writeFileSync(file, JSON.stringify(data), "utf8");
 
 			await expect(readJSONFileAsync(file)).resolves.toEqual(data);
 		});
 
-		it("throws when the file does not exist", async () => {
+		it("rejects when file does not exist", async () => {
 			const root = makeTempDir();
 			const file = path.join(root, "missing.json");
 
 			await expect(readJSONFileAsync(file)).rejects.toThrow();
 		});
 
-		it("throws when the file contains invalid JSON", async () => {
+		it("rejects when file contains invalid JSON", async () => {
 			const root = makeTempDir();
-			const file = path.join(root, "invalid.json");
-			fs.writeFileSync(file, "{not json", "utf8");
+			const file = path.join(root, "bad.json");
+			fs.writeFileSync(file, "{ not json", "utf8");
 
 			await expect(readJSONFileAsync(file)).rejects.toThrow();
-		});
-	});
-
-	describe("ensureDirAsync", () => {
-		it("creates directory when it does not exist (mkdir -p semantics)", async () => {
-			const root = makeTempDir();
-			const nested = path.join(root, "a", "b", "c");
-
-			await ensureDirAsync(nested);
-
-			const st = fs.statSync(nested);
-			expect(st.isDirectory()).toBe(true);
-		});
-
-		it("does not throw when directory already exists", async () => {
-			const dir = makeTempDir();
-			await ensureDirAsync(dir);
-			await expect(ensureDirAsync(dir)).resolves.toBeUndefined();
 		});
 	});
 
 	describe("writeFileAsync", () => {
-		it("writes file contents and creates parent directories", async () => {
+		it("writes file and creates parent directories", async () => {
 			const root = makeTempDir();
-			const file = path.join(root, "nested", "dir", "file.txt");
+			const file = path.join(root, "nested", "out.txt");
 
 			await writeFileAsync(file, "hello world");
 
-			const data = fs.readFileSync(file, "utf8");
-			expect(data).toBe("hello world");
+			expect(fs.readFileSync(file, "utf8")).toBe("hello world");
 		});
 
-		it("overwrites existing file contents", async () => {
+		it("overwrites existing file", async () => {
 			const root = makeTempDir();
-			const file = path.join(root, "file.txt");
-
+			const file = path.join(root, "out.txt");
 			fs.writeFileSync(file, "old", "utf8");
+
 			await writeFileAsync(file, "new");
 
-			const data = fs.readFileSync(file, "utf8");
-			expect(data).toBe("new");
-		});
-	});
-
-	describe("stripKeyFromJSONFile", () => {
-		it("removes the specified key from a JSON file", async () => {
-			const root = makeTempDir();
-			const file = path.join(root, "config.json");
-			fs.writeFileSync(
-				file,
-				JSON.stringify({ root: false, other: "value" }, null, "\t"),
-				"utf8",
-			);
-
-			await stripKeyFromJSONFile(file, "root");
-
-			const data = JSON.parse(fs.readFileSync(file, "utf8"));
-			expect(data).toEqual({ other: "value" });
-			expect(data.root).toBeUndefined();
-		});
-
-		it("no-ops when file does not exist", async () => {
-			const root = makeTempDir();
-			const file = path.join(root, "missing.json");
-
-			await expect(stripKeyFromJSONFile(file, "root")).resolves.toBeUndefined();
-		});
-
-		it("leaves JSON unchanged when key does not exist", async () => {
-			const root = makeTempDir();
-			const file = path.join(root, "config.json");
-			const original = { foo: "bar", baz: 42 };
-			fs.writeFileSync(file, JSON.stringify(original, null, "\t"), "utf8");
-
-			await stripKeyFromJSONFile(file, "nonexistent");
-
-			const data = JSON.parse(fs.readFileSync(file, "utf8"));
-			expect(data).toEqual(original);
-		});
-	});
-
-	describe("copyFileSafeAsync", () => {
-		it("copies file when source exists", async () => {
-			const root = makeTempDir();
-			const src = path.join(root, "src.txt");
-			const dest = path.join(root, "nested", "dest.txt");
-			fs.writeFileSync(src, "content", "utf8");
-
-			await copyFileSafeAsync(src, dest);
-
-			const data = fs.readFileSync(dest, "utf8");
-			expect(data).toBe("content");
-		});
-
-		it("creates destination directory when copying", async () => {
-			const root = makeTempDir();
-			const src = path.join(root, "src.txt");
-			const destDir = path.join(root, "a", "b");
-			const dest = path.join(destDir, "dest.txt");
-			fs.writeFileSync(src, "content", "utf8");
-
-			await copyFileSafeAsync(src, dest);
-
-			expect(fs.existsSync(destDir)).toBe(true);
-			expect(fs.readFileSync(dest, "utf8")).toBe("content");
-		});
-
-		it("no-ops when source does not exist", async () => {
-			const root = makeTempDir();
-			const src = path.join(root, "missing.txt");
-			const dest = path.join(root, "dest.txt");
-
-			await copyFileSafeAsync(src, dest);
-
-			expect(fs.existsSync(dest)).toBe(false);
-		});
-
-		it("no-ops when source is not a regular file (directory)", async () => {
-			const root = makeTempDir();
-			const srcDir = path.join(root, "srcDir");
-			const dest = path.join(root, "dest.txt");
-			fs.mkdirSync(srcDir);
-
-			await copyFileSafeAsync(srcDir, dest);
-
-			expect(fs.existsSync(dest)).toBe(false);
-		});
-	});
-
-	describe("copyDirSafeAsync", () => {
-		it("copies directory tree recursively", async () => {
-			const srcRoot = makeTempDir();
-			const destRoot = makeTempDir();
-
-			// Directory structure:
-			// srcRoot/
-			//   file1.txt
-			//   sub/
-			//     file2.txt
-			const file1 = path.join(srcRoot, "file1.txt");
-			const subDir = path.join(srcRoot, "sub");
-			const file2 = path.join(subDir, "file2.txt");
-			writeFileSync(file1, "one");
-			writeFileSync(file2, "two");
-
-			const destDir = path.join(destRoot, "copied");
-			await copyDirSafeAsync(srcRoot, destDir);
-
-			expect(fs.readFileSync(path.join(destDir, "file1.txt"), "utf8")).toBe(
-				"one",
-			);
-			expect(
-				fs.readFileSync(path.join(destDir, "sub", "file2.txt"), "utf8"),
-			).toBe("two");
-		});
-
-		it("no-ops when source directory does not exist", async () => {
-			const src = path.join(makeTempDir(), "missing");
-			const dest = path.join(makeTempDir(), "dest");
-
-			await copyDirSafeAsync(src, dest);
-
-			// dest directory may or may not exist depending on implementation; the key
-			// behavior is that it does not throw and does not create copies.
-			expect(() => fs.readdirSync(dest)).toThrow();
-		});
-
-		it("no-ops when source path is not a directory", async () => {
-			const root = makeTempDir();
-			const srcFile = path.join(root, "file.txt");
-			const dest = path.join(root, "dest");
-			fs.writeFileSync(srcFile, "content", "utf8");
-
-			await copyDirSafeAsync(srcFile, dest);
-
-			expect(fs.existsSync(dest)).toBe(false);
-		});
-	});
-
-	describe("removeMatchingFilesRecursively", () => {
-		it("removes files that match predicate while preserving others", async () => {
-			const root = makeTempDir();
-
-			const keepFile = path.join(root, "keep.txt");
-			const removeFile = path.join(root, "remove.log");
-			const subDir = path.join(root, "sub");
-			const nestedRemove = path.join(subDir, "temp.log");
-			writeFileSync(keepFile, "keep");
-			writeFileSync(removeFile, "remove");
-			writeFileSync(nestedRemove, "remove2");
-
-			await removeMatchingFilesRecursively(root, (basename) =>
-				basename.endsWith(".log"),
-			);
-
-			expect(fs.existsSync(keepFile)).toBe(true);
-			expect(fs.existsSync(removeFile)).toBe(false);
-			expect(fs.existsSync(nestedRemove)).toBe(false);
-		});
-
-		it("removes directories that match predicate", async () => {
-			const root = makeTempDir();
-
-			const keepDir = path.join(root, "keep");
-			const removeDir = path.join(root, "remove-me");
-			const nestedFile = path.join(removeDir, "file.txt");
-			writeFileSync(path.join(keepDir, "file.txt"), "keep");
-			writeFileSync(nestedFile, "remove");
-
-			await removeMatchingFilesRecursively(
-				root,
-				(basename) => basename === "remove-me",
-			);
-
-			expect(fs.existsSync(keepDir)).toBe(true);
-			expect(fs.existsSync(removeDir)).toBe(false);
-		});
-
-		it("no-ops when root directory does not exist", async () => {
-			const root = path.join(makeTempDir(), "missing");
-
-			await expect(
-				removeMatchingFilesRecursively(root, () => true),
-			).resolves.toBeUndefined();
+			expect(fs.readFileSync(file, "utf8")).toBe("new");
 		});
 	});
 });

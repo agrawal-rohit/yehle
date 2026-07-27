@@ -29,7 +29,7 @@ type AnimatedIntroOptions = {
  * @param ms - The number of milliseconds to sleep.
  * @returns Promise that resolves after the given delay.
  */
-export function sleep(ms: number): Promise<void> {
+function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -40,7 +40,7 @@ export function sleep(ms: number): Promise<void> {
  * @param max - The maximum visible length.
  * @returns The truncated string (with "..." if truncated).
  */
-export function truncate(s: string, max: number): string {
+function truncate(s: string, max: number): string {
 	const raw = stripAnsi(s);
 	if (raw.length <= max) return s;
 	return `${raw.slice(0, Math.max(0, max - 3))}...`;

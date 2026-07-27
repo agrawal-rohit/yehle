@@ -32,7 +32,7 @@ export async function readJSONFileAsync<T = unknown>(
  * @param dirPath - Directory to create if missing.
  * @returns Promise that resolves when the directory exists.
  */
-export async function ensureDirAsync(dirPath: string): Promise<void> {
+async function ensureDirAsync(dirPath: string): Promise<void> {
 	await fs.promises.mkdir(dirPath, { recursive: true });
 }
 
@@ -49,115 +49,4 @@ export async function writeFileAsync(
 	const dir = path.dirname(filePath);
 	await ensureDirAsync(dir);
 	await fs.promises.writeFile(filePath, data, "utf8");
-}
-
-/**
- * Copy a file if it exists, ensuring destination directory exists.
- * No-ops when source is missing or is not a regular file.
- * @param src - Source file path.
- * @param dest - Destination file path.
- * @returns Promise that resolves when the copy is done or when the source is missing.
- */
-export async function copyFileSafeAsync(
-	src: string,
-	dest: string,
-): Promise<void> {
-	if (!(await isRegularFileAsync(src))) return;
-
-	await ensureDirAsync(path.dirname(dest));
-	await fs.promises.copyFile(src, dest);
-}
-
-/**
- * Recursively copy a directory tree. If the source directory does not exist, it no-ops.
- * @param srcDir - Source directory path.
- * @param destDir - Destination directory path.
- * @returns Promise that resolves when the copy is done or when the source is missing.
- */
-export async function copyDirSafeAsync(
-	srcDir: string,
-	destDir: string,
-): Promise<void> {
-	try {
-		const st = await fs.promises.stat(srcDir);
-		if (!st.isDirectory()) return;
-	} catch {
-		return;
-	}
-
-	await ensureDirAsync(destDir);
-	const entries = await fs.promises.readdir(srcDir, { withFileTypes: true });
-
-	for (const entry of entries) {
-		const srcPath = path.join(srcDir, entry.name);
-		const destPath = path.join(destDir, entry.name);
-
-		if (entry.isDirectory()) await copyDirSafeAsync(srcPath, destPath);
-		else if (entry.isFile()) await copyFileSafeAsync(srcPath, destPath);
-	}
-}
-
-/**
- * Recursively remove files or directories in a directory tree that match a predicate.
- * The predicate is called with: (basename, fullPath, dirent).
- * Directories that match are deleted (recursively); non-matching directories are traversed.
- * @param rootDir - Root directory to traverse.
- * @param predicate - Function returning true when the entry should be removed.
- * @returns Promise that resolves when the removal pass is complete.
- */
-export async function removeMatchingFilesRecursively(
-	rootDir: string,
-	predicate: (basename: string, fullPath: string, entry: fs.Dirent) => boolean,
-): Promise<void> {
-	let entries: fs.Dirent[] = [];
-	try {
-		entries = await fs.promises.readdir(rootDir, { withFileTypes: true });
-	} catch {
-		return;
-	}
-
-	for (const entry of entries) {
-		const full = path.join(rootDir, entry.name);
-
-		// If the directory itself matches, remove it entirely; otherwise traverse it.
-		if (entry.isDirectory()) {
-			if (predicate(entry.name, full, entry)) {
-				await fs.promises.rm(full, { recursive: true, force: true });
-				continue;
-			}
-			await removeMatchingFilesRecursively(full, predicate);
-		}
-
-		// If the file matches, remove the file
-		else if (entry.isFile()) {
-			if (predicate(entry.name, full, entry)) {
-				await fs.promises.rm(full, { force: true });
-			}
-		}
-	}
-}
-
-/**
- * Read a JSON file, remove a key from the root object if present, and write it back.
- * No-op when the file does not exist or is invalid JSON.
- * @param filePath - Absolute path to the JSON file.
- * @param key - Key to remove from the root object.
- * @returns Promise that resolves when the file has been updated, or when the file is missing/invalid.
- */
-export async function stripKeyFromJSONFile(
-	filePath: string,
-	key: string,
-): Promise<void> {
-	try {
-		await fs.promises.access(filePath);
-		const content = await fs.promises.readFile(filePath, "utf8");
-		const config = JSON.parse(content) as Record<string, unknown>;
-		delete config[key];
-		await fs.promises.writeFile(
-			filePath,
-			`${JSON.stringify(config, null, "\t")}\n`,
-		);
-	} catch {
-		// File missing or invalid JSON; ignore
-	}
 }
