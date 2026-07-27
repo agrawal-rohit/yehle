@@ -14,7 +14,7 @@ export default defineConfig({
 			"**/.stryker-tmp/**",
 		],
 		coverage: {
-			reporter: ["text", "lcov", "html", "json-summary"],
+			reporter: ["text", "lcov", "html"],
 			thresholds: {
 				lines: 45,
 			},

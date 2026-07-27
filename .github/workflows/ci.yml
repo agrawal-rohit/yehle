@@ -7,8 +7,6 @@ on:
   pull_request:
     branches:
       - main
-  schedule:
-    - cron: "0 6 * * 1" # every Monday at 6:00 AM
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,26 +16,6 @@ permissions:
   contents: read
 
 jobs:
-  commitlint:
-    name: Quality Gates (Commitlint)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Validate conventional commits
-        uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1
-        with:
-          configFile: commitlint.config.mjs
-
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -65,12 +43,11 @@ jobs:
     name: Test (Coverage)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Setup workspace
@@ -79,58 +56,19 @@ jobs:
       - name: Run tests with coverage
         run: pnpm cov
 
-      - name: Build coverage badge JSON
-        id: badge
-        shell: bash
-        run: |
-          pct=$(jq -r '.total.lines.pct' coverage/coverage-summary.json)
-          pct_int=${pct%.*}
-          if (( pct_int >= 80 )); then
-            color=brightgreen
-          elif (( pct_int >= 60 )); then
-            color=yellow
-          elif (( pct_int >= 40 )); then
-            color=orange
-          else
-            color=red
-          fi
-          jq -n \
-            --arg message "${pct_int}%" \
-            --arg color "$color" \
-            '{schemaVersion: 1, label: "coverage", message: $message, color: $color}' \
-            > .github/badges/coverage.json
-          echo "message=${pct_int}%" >> "$GITHUB_OUTPUT"
-          echo "color=$color" >> "$GITHUB_OUTPUT"
-          echo "Coverage: ${pct_int}%"
-
-      - name: Publish coverage badge to gist
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: schneegans/dynamic-badges-action@e5f1304e872a1f574dd9bc9465b1d7b08b5b3291 # v1.7.0
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         with:
-          auth: ${{ secrets.COVERAGE_GIST_SECRET }}
-          gistID: ${{ secrets.COVERAGE_GIST_ID }}
-          filename: coverage.json
-          label: coverage
-          message: ${{ steps.badge.outputs.message }}
-          color: ${{ steps.badge.outputs.color }}
-        continue-on-error: true
+          args: >
+            -Dsonar.projectVersion=${{ github.sha }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      - name: Commit coverage badge
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: stefanzweifel/git-auto-commit-action@6c370f5a47ade0b199f2497bfb1682cb9fa1b240 # v5.0.3
-        with:
-          commit_message: "ci: update coverage badge [skip ci]"
-          file_pattern: .github/badges/coverage.json
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload coverage reports
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.0
-        with:
-          name: coverage
-          path: |
-            coverage/lcov.info
-            coverage/coverage-summary.json
-          retention-days: 7
+      - name: SonarQube Quality Gate
+        uses: SonarSource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b # v1.2.0
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   fallow:
     name: Quality Gates (Fallow)
@@ -164,145 +102,3 @@ jobs:
           sarif_file: fallow-results.sarif
           category: fallow
         continue-on-error: true
-
-  dependency-review:
-    name: Code Security (Dependency Review)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Dependency review
-        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
-
-  zizmor:
-    name: Workflow Security (Zizmor)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Scan GitHub Actions workflows
-        uses: zizmorcore/zizmor-action@6fc4b006235f201fdab3722e17240ab420d580e5 # v0.6.1
-
-  codeql:
-    name: Code Security (CodeQL)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      security-events: write
-      actions: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
-        with:
-          languages: actions, javascript-typescript
-          config-file: .github/codeql/config.yml
-          build-mode: none
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
-        with:
-          category: codeql
-
-  semgrep:
-    name: Code Security (Semgrep)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    container:
-      image: semgrep/semgrep
-    permissions:
-      contents: read
-      security-events: write
-    steps:
-      - name: Install git
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends git
-
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Run Semgrep
-        run: |
-          semgrep scan \
-            --config p/default \
-            --config p/typescript \
-            --config p/secrets \
-            --sarif \
-            --output semgrep.sarif
-
-      - name: Upload Semgrep SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
-        with:
-          sarif_file: semgrep.sarif
-          category: semgrep
-        continue-on-error: true
-
-  ci-success:
-    name: CI success
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs:
-      - build
-      - test
-      - fallow
-      - commitlint
-      - dependency-review
-      - zizmor
-      - codeql
-      - semgrep
-    if: ${{ always() }}
-    steps:
-      - name: Require all checks
-        run: |
-          check_job() {
-            local job="$1"
-            local result="$2"
-            if [[ "$result" != "success" ]]; then
-              echo "Required job '$job' finished with result: $result"
-              exit 1
-            fi
-          }
-
-          check_job_pr_optional() {
-            local job="$1"
-            local result="$2"
-            if [[ "$result" == "skipped" ]]; then
-              return 0
-            fi
-            check_job "$job" "$result"
-          }
-
-          check_job build "${{ needs.build.result }}"
-          check_job test "${{ needs.test.result }}"
-          check_job fallow "${{ needs.fallow.result }}"
-          check_job zizmor "${{ needs.zizmor.result }}"
-          check_job codeql "${{ needs.codeql.result }}"
-          check_job semgrep "${{ needs.semgrep.result }}"
-          check_job_pr_optional commitlint "${{ needs.commitlint.result }}"
-          check_job_pr_optional dependency-review "${{ needs.dependency-review.result }}"
-          echo "CI checks passed."

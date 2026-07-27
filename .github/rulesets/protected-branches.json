@@ -51,7 +51,25 @@
         "do_not_enforce_on_create": false,
         "required_status_checks": [
           {
-            "context": "CI success"
+            "context": "Build"
+          },
+          {
+            "context": "Test (Coverage)"
+          },
+          {
+            "context": "Quality Gates (Fallow)"
+          },
+          {
+            "context": "Workflow Security (Zizmor)"
+          },
+          {
+            "context": "Code Security (CodeQL)"
+          },
+          {
+            "context": "Code Security (Semgrep)"
+          },
+          {
+            "context": "Code Security (Dependency Review)"
           }
         ]
       }

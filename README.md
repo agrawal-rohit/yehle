@@ -7,8 +7,7 @@
 <div align="center">
   <p align="center" style="width: 80%; margin: auto">
     <img alt="Status" src="https://img.shields.io/github/actions/workflow/status/agrawal-rohit/tuckshop/ci.yml">
-    <img alt="Coverage" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/agrawal-rohit/tuckshop/main/.github/badges/coverage.json">
-    <a href="https://github.com/agrawal-rohit/tuckshop/actions/workflows/ci.yml"><img alt="Code Quality" src="https://img.shields.io/badge/code%20quality-CodeQL%20%C2%B7%20Fallow%20%C2%B7%20Semgrep-2ea44f"></a>
+    <img alt="Coverage" src="https://img.shields.io/sonar/coverage/agrawal-rohit_tuckshop?server=https%3A%2F%2Fsonarcloud.io">
     <img alt="Downloads" src="https://img.shields.io/npm/dt/tuckshop">
     <img alt="Biome" src="https://img.shields.io/badge/code_style-biome-60a5fa">
     <img alt="License" src="https://img.shields.io/github/license/agrawal-rohit/tuckshop" />
