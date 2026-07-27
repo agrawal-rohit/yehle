@@ -1,15 +1,16 @@
+import type { Registry } from "@tuckshop/core";
+import { getRegistryItemTypes } from "@tuckshop/core";
 import type { CAC } from "cac";
 import logger from "../cli/logger";
 import { pickStringOptions } from "../cli/options";
-import { loadRegistry } from "../registry/loader";
-import { getRegistryItemTypes } from "../registry/schema";
 import listCommand from "./list";
 
-export async function registerCommandsCli(app: CAC): Promise<void> {
+export async function registerCommandsCli(
+	app: CAC,
+	registry: Registry,
+): Promise<void> {
 	app.usage("<command> [options]");
 
-	// Collect registry items and create the list command
-	const registry = await loadRegistry();
 	const itemTypes = getRegistryItemTypes(registry);
 
 	// Create the list command

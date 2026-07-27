@@ -1,0 +1,16 @@
+{
+	"name": "@tuckshop/core",
+	"version": "0.2.1",
+	"description": "Core registry primitives for building, validating, and resolving tuckshop registries.",
+	"license": "MIT",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "vitest run"
+	}
+}

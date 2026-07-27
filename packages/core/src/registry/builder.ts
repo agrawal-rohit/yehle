@@ -1,21 +1,53 @@
 import fs from "node:fs";
 import path from "node:path";
-import chalk from "chalk";
 import { readJSONFileAsync, writeFileAsync } from "../core/fs";
+import { assertNonEmptyString, parseStringArray, parseWhen } from "./parse";
 import {
 	type Registry,
 	type RegistryCondition,
-	RegistryConditionInference,
-	type RegistryConditionValue,
 	type RegistryFile,
 	type RegistryItem,
-	RegistryItemType,
 	type RegistryVariant,
+	SCHEMA_VERSION,
 } from "./schema";
+import {
+	crossValidateWhen,
+	parseRegistryConditions,
+	validateRegistryItem,
+} from "./validate";
 
-/** Base URL for the raw registry source files on GitHub. */
+/**
+ * Default content base for single-package registries that keep `registry/` at
+ * the repository root and publish `v<version>` tags. Monorepo layouts should
+ * pass an explicit `contentBaseUrl` instead.
+ */
 const REGISTRY_REPO_RAW_BASE =
 	"https://raw.githubusercontent.com/agrawal-rohit/tuckshop";
+
+export interface BuildRegistryOptions {
+	/**
+	 * Absolute path to the registry content package root (directory that
+	 * contains `registry/` and `package.json`).
+	 */
+	repoRoot?: string;
+	/**
+	 * Base URL for file sources (`${contentBaseUrl}/${source}`). When omitted,
+	 * defaults to `${REGISTRY_REPO_RAW_BASE}/v${package.json version}`.
+	 */
+	contentBaseUrl?: string;
+}
+
+/**
+ * Normalize the supported buildRegistry input shapes.
+ * @param options - Repo root string or full options object.
+ * @returns Normalized options object.
+ */
+function normalizeBuildRegistryOptions(
+	options: BuildRegistryOptions | string | undefined,
+): BuildRegistryOptions {
+	if (typeof options === "string") return { repoRoot: options };
+	return options ?? {};
+}
 
 /**
  * Recursively collect the folder of every registry-item.json under registry/.
@@ -42,66 +74,6 @@ function collectItemDirs(dir: string): string[] {
 			results.push(...collectItemDirs(path.join(dir, entry.name)));
 
 	return results;
-}
-
-/**
- * Assert a value is a non-empty string.
- * @param value - Value to check.
- * @param label - Label used in the error message.
- * @throws Error when the value is not a non-empty string.
- */
-function assertNonEmptyString(
-	value: unknown,
-	label: string,
-): asserts value is string {
-	if (typeof value !== "string" || value.length === 0)
-		throw new Error(`${label} must be a non-empty string.`);
-}
-
-/**
- * Parse and validate a non-empty string array (npm deps, file lists, etc.).
- * @param raw - Raw array value.
- * @param label - Context label for error messages.
- * @returns Validated string array, or undefined when absent.
- * @throws Error when an entry is not a non-empty string.
- */
-function parseStringArray(raw: unknown, label: string): string[] | undefined {
-	if (raw === undefined || raw === null) return undefined;
-	if (!Array.isArray(raw)) throw new Error(`${label} must be an array.`);
-
-	const result: string[] = [];
-	for (const [index, entry] of raw.entries()) {
-		assertNonEmptyString(entry, `${label}[${index}]`);
-		result.push(entry);
-	}
-
-	return result.length > 0 ? result : undefined;
-}
-
-/**
- * Parse and validate a variant `when` matcher.
- * @param raw - Raw when value from the manifest.
- * @param label - Context label for error messages.
- * @returns Validated when map, or undefined when absent.
- * @throws Error when the when shape is invalid.
- */
-function parseWhen(
-	raw: unknown,
-	label: string,
-): Record<string, string> | undefined {
-	// Check if the when is valid
-	if (raw === undefined || raw === null) return undefined;
-	if (typeof raw !== "object" || Array.isArray(raw))
-		throw new Error(`${label} when must be an object.`);
-
-	// Parse the when object into a key-value map
-	const when: Record<string, string> = {};
-	for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-		assertNonEmptyString(key, `${label} when key`);
-		assertNonEmptyString(value, `${label} when["${key}"]`);
-		when[key] = value;
-	}
-	return Object.keys(when).length > 0 ? when : undefined;
 }
 
 /**
@@ -178,12 +150,7 @@ function buildRegistryItem(itemDir: string, repoRoot: string): RegistryItem {
 		`Registry item "${manifest.id}" description`,
 	);
 
-	// Check if the type is valid
-	const allTypes = new Set<string>(Object.values(RegistryItemType));
-	if (typeof manifest.type !== "string" || !allTypes.has(manifest.type))
-		throw new Error(
-			`Registry item "${manifest.id}" has invalid type "${String(manifest.type)}" (expected one of: ${Object.values(RegistryItemType).join(", ")}).`,
-		);
+	assertNonEmptyString(manifest.type, `Registry item "${manifest.id}" type`);
 
 	// Check if the variants are valid
 	if (!Array.isArray(manifest.variants) || manifest.variants.length === 0)
@@ -285,7 +252,7 @@ function buildRegistryItem(itemDir: string, repoRoot: string): RegistryItem {
 		id: manifest.id,
 		title: manifest.title,
 		description: manifest.description,
-		type: manifest.type as RegistryItemType,
+		type: manifest.type,
 		...(sharedFiles ? { files: sharedFiles } : {}),
 		...(dependencies ? { dependencies } : {}),
 		...(devDependencies ? { devDependencies } : {}),
@@ -296,146 +263,20 @@ function buildRegistryItem(itemDir: string, repoRoot: string): RegistryItem {
 		item.registryDependencies =
 			manifest.registryDependencies as RegistryItem["registryDependencies"];
 
-	return item;
-}
-
-/**
- * Parse and validate the authored conditions map from registry/conditions.json.
- * @param raw - Raw JSON value.
- * @returns Validated conditions keyed by condition key, or undefined when absent/empty.
- * @throws Error when a condition entry is invalid.
- */
-function parseConditions(
-	raw: unknown,
-): Record<string, RegistryCondition> | undefined {
-	// Check if the raw conditions object is valid
-	if (raw === undefined || raw === null) return undefined;
-	if (typeof raw !== "object" || Array.isArray(raw))
-		throw new Error("Registry conditions must be an object.");
-
-	// Parse the raw conditions object into a key-value map
-	const source = raw as Record<string, unknown>;
-	const conditions: Record<string, RegistryCondition> = {};
-
-	for (const [key, rawCondition] of Object.entries(source)) {
-		if (
-			!rawCondition ||
-			typeof rawCondition !== "object" ||
-			Array.isArray(rawCondition)
-		)
-			throw new Error(`Registry condition "${key}" must be an object.`);
-
-		const entry = rawCondition as Record<string, unknown>;
-		assertNonEmptyString(entry.label, `Registry condition "${key}" label`);
-
-		// Parse the inference mode if it is present
-		let inference: RegistryConditionInference | undefined;
-		if (entry.inference !== undefined) {
-			assertNonEmptyString(
-				entry.inference,
-				`Registry condition "${key}" inference`,
-			);
-			const modes = new Set<string>(Object.values(RegistryConditionInference));
-			if (!modes.has(entry.inference))
-				throw new Error(
-					`Registry condition "${key}" has invalid inference "${entry.inference}" (expected one of: ${Object.values(RegistryConditionInference).join(", ")}).`,
-				);
-			inference = entry.inference as RegistryConditionInference;
-		}
-
-		if (!Array.isArray(entry.values) || entry.values.length === 0)
-			throw new Error(
-				`Registry condition "${key}" must declare at least one value.`,
-			);
-
-		const seenValues = new Set<string>();
-		const values: RegistryConditionValue[] = [];
-		for (const [index, rawValue] of entry.values.entries()) {
-			if (!rawValue || typeof rawValue !== "object" || Array.isArray(rawValue))
-				throw new Error(
-					`Registry condition "${key}" values[${index}] must be an object.`,
-				);
-
-			const valueEntry = rawValue as Record<string, unknown>;
-			assertNonEmptyString(
-				valueEntry.value,
-				`Registry condition "${key}" values[${index}].value`,
-			);
-			assertNonEmptyString(
-				valueEntry.label,
-				`Registry condition "${key}" values[${index}].label`,
-			);
-			if (seenValues.has(valueEntry.value))
-				throw new Error(
-					`Registry condition "${key}" has duplicate value "${valueEntry.value}".`,
-				);
-			seenValues.add(valueEntry.value);
-
-			const files = parseStringArray(
-				valueEntry.files,
-				`Registry condition "${key}" values[${index}].files`,
-			);
-
-			values.push({
-				value: valueEntry.value,
-				label: valueEntry.label,
-				...(files ? { files } : {}),
-			});
-		}
-
-		conditions[key] = {
-			label: entry.label,
-			...(typeof entry.description === "string" && entry.description.length > 0
-				? { description: entry.description }
-				: {}),
-			...(inference ? { inference } : {}),
-			values,
-		};
-	}
-
-	return Object.keys(conditions).length > 0 ? conditions : undefined;
-}
-
-/**
- * Ensure every variant `when` key/value is declared in the conditions map.
- * @param items - Built registry items.
- * @param conditions - Shared condition definitions (may be undefined).
- * @throws Error when a when key is unknown or a when value is undeclared.
- */
-function crossValidateWhen(
-	items: Record<string, RegistryItem>,
-	conditions: Record<string, RegistryCondition> | undefined,
-): void {
-	// Check each item and variant's when keys and values against the conditions
-	for (const item of Object.values(items)) {
-		for (const variant of item.variants) {
-			if (!variant.when) continue;
-
-			// For each when key and value, check if it is declared in the conditions
-			for (const [key, value] of Object.entries(variant.when)) {
-				const condition = conditions?.[key];
-				if (!condition)
-					throw new Error(
-						`Registry item "${item.id}" variant "${variant.id}" references unknown when key "${key}".`,
-					);
-				if (!condition.values.some((entry) => entry.value === value))
-					throw new Error(
-						`Registry item "${item.id}" variant "${variant.id}" uses undeclared when value "${value}" for key "${key}".`,
-					);
-			}
-		}
-	}
+	return validateRegistryItem(item, `Registry item "${manifest.id}"`);
 }
 
 /**
  * Compile all registry items into registry.json at the repo root.
- * @param repoRoot - Absolute path to the repository root (defaults to process.cwd()).
+ * @param options - Build options controlling the source root and content base URL.
  * @returns The built registry document that was written to disk.
  * @throws Error when no items are found, an item is invalid, or a duplicate id exists.
  */
 export async function buildRegistry(
-	repoRoot: string = process.cwd(),
+	options: BuildRegistryOptions | string = {},
 ): Promise<Registry> {
+	const normalizedOptions = normalizeBuildRegistryOptions(options);
+	const repoRoot = normalizedOptions.repoRoot ?? process.cwd();
 	const registryDir = path.join(repoRoot, "registry");
 	const outputPath = path.join(repoRoot, "registry.json");
 
@@ -468,7 +309,7 @@ export async function buildRegistry(
 		const rawConditions = JSON.parse(
 			fs.readFileSync(conditionsPath, "utf8"),
 		) as unknown;
-		conditions = parseConditions(rawConditions);
+		conditions = parseRegistryConditions(rawConditions);
 	}
 
 	// Validate the when keys and values against the conditions
@@ -479,10 +320,14 @@ export async function buildRegistry(
 	const contentBaseUrl =
 		override && override.length > 0
 			? override.replace(/\/+$/, "")
-			: `${REGISTRY_REPO_RAW_BASE}/v${pkg.version}`;
+			: (
+					normalizedOptions.contentBaseUrl ??
+					`${REGISTRY_REPO_RAW_BASE}/v${pkg.version}`
+				).replace(/\/+$/, "");
 
 	const document: Registry = {
 		version: pkg.version,
+		schemaVersion: SCHEMA_VERSION,
 		contentBaseUrl,
 		...(conditions ? { conditions } : {}),
 		items: sortedItems,
@@ -490,7 +335,7 @@ export async function buildRegistry(
 
 	await writeFileAsync(outputPath, `${JSON.stringify(document, null, 2)}\n`);
 	console.log(
-		`Built ${Object.keys(sortedItems).length} registry items at ${chalk.green(path.relative(repoRoot, outputPath))}.`,
+		`Built ${Object.keys(sortedItems).length} registry items at ${path.relative(repoRoot, outputPath)}.`,
 	);
 
 	return document;

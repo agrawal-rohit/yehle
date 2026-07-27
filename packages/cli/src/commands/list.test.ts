@@ -1,6 +1,9 @@
+import {
+	type Registry,
+	RegistryItemType,
+	SCHEMA_VERSION,
+} from "@tuckshop/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Registry } from "../registry/schema";
-import { RegistryItemType } from "../registry/schema";
 
 const mockParseMultiValueOption = vi.fn((value: string) =>
 	value
@@ -49,6 +52,7 @@ function makeItem(
 function makeRegistry(items: Registry["items"]): Registry {
 	return {
 		version: "0.0.0",
+		schemaVersion: SCHEMA_VERSION,
 		contentBaseUrl: "https://example.com",
 		items,
 	};
@@ -309,7 +313,7 @@ describe("commands/list", () => {
 	});
 
 	it("returns the raw type string for unknown registry item types at runtime", async () => {
-		const unknownType = "legacy" as RegistryItemType;
+		const unknownType = "legacy";
 		const registry = makeRegistry({
 			"legacy-item": makeItem({
 				id: "legacy-item",

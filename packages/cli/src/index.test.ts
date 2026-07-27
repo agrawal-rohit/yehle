@@ -1,8 +1,10 @@
+import { SCHEMA_VERSION } from "@tuckshop/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock CLI dependencies used by the top-level entrypoint
 const mockApp = {
 	help: vi.fn(),
+	option: vi.fn().mockReturnThis(),
 	outputHelp: vi.fn(),
 	parse: vi.fn(),
 };
@@ -15,9 +17,19 @@ vi.mock("./commands", () => ({
 	registerCommandsCli: vi.fn(async () => {}),
 }));
 
+vi.mock("./registry-remote", () => ({
+	loadRuntimeRegistry: vi.fn(async () => ({
+		version: "1.0.0",
+		schemaVersion: SCHEMA_VERSION,
+		contentBaseUrl: "https://example.com",
+		items: {},
+	})),
+}));
+
 import cac from "cac";
 import { registerCommandsCli } from "./commands";
 import run from "./index";
+import { loadRuntimeRegistry } from "./registry-remote";
 
 describe("index", () => {
 	beforeEach(() => {
@@ -36,7 +48,11 @@ describe("index", () => {
 			await run();
 
 			expect(cac).toHaveBeenCalledWith("tuckshop");
-			expect(registerCommandsCli).toHaveBeenCalledWith(mockApp);
+			expect(loadRuntimeRegistry).toHaveBeenCalledWith(undefined);
+			expect(registerCommandsCli).toHaveBeenCalledWith(
+				mockApp,
+				expect.objectContaining({ schemaVersion: SCHEMA_VERSION }),
+			);
 			expect(mockApp.help).toHaveBeenCalled();
 		});
 
@@ -105,6 +121,25 @@ describe("index", () => {
 				"tuckshop",
 				"package",
 			]);
+		});
+
+		it("should pass through a global --registry override before registration", async () => {
+			vi.stubGlobal("process", {
+				argv: [
+					"node",
+					"tuckshop",
+					"--registry",
+					"https://example.com/registry.json",
+					"list",
+				],
+			});
+			vi.mocked(mockApp.parse).mockImplementation(() => {});
+
+			await run();
+
+			expect(loadRuntimeRegistry).toHaveBeenCalledWith(
+				"https://example.com/registry.json",
+			);
 		});
 	});
 });

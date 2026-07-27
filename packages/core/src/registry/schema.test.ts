@@ -12,6 +12,7 @@ import {
 	RegistryItemType,
 	type RegistryVariant,
 	resolveRegistryPlan,
+	SCHEMA_VERSION,
 	selectRegistryVariant,
 	variantMatchesContext,
 } from "./schema";
@@ -19,6 +20,7 @@ import {
 function makeRegistry(items: Registry["items"] = {}): Registry {
 	return {
 		version: "0.0.0",
+		schemaVersion: SCHEMA_VERSION,
 		contentBaseUrl: "https://example.com",
 		items,
 	};

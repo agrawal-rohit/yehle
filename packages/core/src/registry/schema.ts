@@ -9,6 +9,12 @@ export enum RegistryItemType {
 	SUBAGENT = "subagent",
 }
 
+/** Schema version supported by this build of `@tuckshop/core`. */
+export const SCHEMA_VERSION = 1;
+
+/** Registry items may use built-in types or custom author-defined strings. */
+export type RegistryItemTypeValue = RegistryItemType | (string & {});
+
 /** Supported condition inference modes. */
 export enum RegistryConditionInference {
 	FILES = "files",
@@ -52,8 +58,10 @@ export type RegistryVariant = {
 
 /** The built registry document written to registry.json. */
 export type Registry = {
-	/** CLI/registry version the metadata was built for. */
+	/** Version of the registry content package that produced this document. */
 	version: string;
+	/** Schema version used to validate and interpret the document. */
+	schemaVersion: number;
 	/** Base URL for fetching file content (`${contentBaseUrl}/${source}`). */
 	contentBaseUrl: string;
 	/** Shared condition definitions keyed by condition key. */
@@ -67,7 +75,7 @@ export type RegistryItem = {
 	id: string;
 	title: string;
 	description: string;
-	type: RegistryItemType;
+	type: RegistryItemTypeValue;
 	files?: RegistryFile[];
 	dependencies?: string[];
 	devDependencies?: string[];

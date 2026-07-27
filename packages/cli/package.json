@@ -1,0 +1,29 @@
+{
+	"name": "tuckshop",
+	"version": "0.2.1",
+	"description": "An opinionated scaffolding CLI for modern developers.",
+	"license": "MIT",
+	"bin": {
+		"tuckshop": "./bin/cli.mjs"
+	},
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist",
+		"bin",
+		"registry.json"
+	],
+	"scripts": {
+		"build": "pnpm --filter @tuckshop/core run build && tsc -p tsconfig.json",
+		"typecheck": "pnpm --filter @tuckshop/core run build && tsc -p tsconfig.json --noEmit",
+		"test": "vitest run",
+		"prepack": "pnpm run build && pnpm --filter @tuckshop/registry run build && node ./scripts/embed-default-registry.mjs"
+	},
+	"dependencies": {
+		"@tuckshop/core": "workspace:*",
+		"cac": "^6.7.14",
+		"chalk": "^5.6.2",
+		"consola": "^3.2.3",
+		"listr2": "^10.1.0"
+	}
+}

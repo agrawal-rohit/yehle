@@ -1,23 +1,16 @@
+import { RegistryItemType, SCHEMA_VERSION } from "@tuckshop/core";
 import type { CAC } from "cac";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RegistryItemType } from "../registry/schema";
 
-const mockLoadRegistry = vi.fn();
 const mockGetRegistryItemTypes = vi.fn();
 const mockListCommand = vi.fn();
 const mockPickStringOptions = vi.fn();
 const mockLoggerIntro = vi.fn();
 const mockLoggerError = vi.fn();
 
-vi.mock("../registry/loader", () => ({
-	loadRegistry: (...args: unknown[]) => mockLoadRegistry(...args),
-}));
-
-vi.mock("../registry/schema", async () => {
+vi.mock("@tuckshop/core", async () => {
 	const actual =
-		await vi.importActual<typeof import("../registry/schema")>(
-			"../registry/schema",
-		);
+		await vi.importActual<typeof import("@tuckshop/core")>("@tuckshop/core");
 	return {
 		...actual,
 		getRegistryItemTypes: (...args: unknown[]) =>
@@ -64,6 +57,7 @@ function createMockApp() {
 describe("commands/index", () => {
 	const registry = {
 		version: "1.0.0",
+		schemaVersion: SCHEMA_VERSION,
 		contentBaseUrl: "https://example.com",
 		items: {
 			"theme-a": {
@@ -79,7 +73,6 @@ describe("commands/index", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
-		mockLoadRegistry.mockResolvedValue(registry);
 		mockGetRegistryItemTypes.mockReturnValue(itemTypes);
 		mockPickStringOptions.mockReturnValue({ type: "theme" });
 		mockListCommand.mockResolvedValue(undefined);
@@ -93,10 +86,9 @@ describe("commands/index", () => {
 	it("registers the list command with usage and type option", async () => {
 		const { app, command, option } = createMockApp();
 
-		await registerCommandsCli(app);
+		await registerCommandsCli(app, registry);
 
 		expect(app.usage).toHaveBeenCalledWith("<command> [options]");
-		expect(mockLoadRegistry).toHaveBeenCalled();
 		expect(mockGetRegistryItemTypes).toHaveBeenCalledWith(registry);
 		expect(command).toHaveBeenCalledWith(
 			"list",
@@ -110,7 +102,7 @@ describe("commands/index", () => {
 
 	it("runs the list command action with picked options", async () => {
 		const { app, actionHandler } = createMockApp();
-		await registerCommandsCli(app);
+		await registerCommandsCli(app, registry);
 
 		await actionHandler({ type: "theme" });
 
@@ -127,7 +119,7 @@ describe("commands/index", () => {
 	it("logs Error messages when the list command fails", async () => {
 		const { app, actionHandler } = createMockApp();
 		mockListCommand.mockRejectedValue(new Error("boom"));
-		await registerCommandsCli(app);
+		await registerCommandsCli(app, registry);
 
 		await actionHandler({});
 
@@ -137,7 +129,7 @@ describe("commands/index", () => {
 	it("logs non-Error failures as strings", async () => {
 		const { app, actionHandler } = createMockApp();
 		mockListCommand.mockRejectedValue("string failure");
-		await registerCommandsCli(app);
+		await registerCommandsCli(app, registry);
 
 		await actionHandler({});
 

@@ -15,189 +15,102 @@
 </div>
 
 <div align="center">
-  <p>✨ An opinionated <strong>scaffolding CLI</strong> for modern developers ✨</p>
+  <p>An opinionated scaffolding CLI with a default registry and an authoring core.</p>
 </div>
 
-<br />
+`tuckshop` eliminates repetitive project setup by providing opinionated templates with pre-configured tooling, best practices, and reusable registry items. Now as a monorepo, it ships with three complementary packages:
 
-<div align="center">
-    <img src="https://cdn.rohit-agrawal.com/work/tuckshop/preview.gif" alt="Tuckshop Preview" style="margin: auto" />
-</div>
+- **`tuckshop`**: the CLI users run via `npx` to scaffold projects and add components
+- **`@tuckshop/core`**: the registry builder, validator, resolver, and authoring API for custom registries
+- **`@tuckshop/registry`**: the private default registry content bundled into the CLI
 
-<br />
+By default, `npx tuckshop` uses the bundled registry from this repository. To point the CLI at a custom registry, use `--registry` or set the `TUCKSHOP_REGISTRY` environment variable.
 
-`tuckshop` is a CLI tool for scaffolding modern software projects by performing common [yak-shaving](https://softwareengineering.stackexchange.com/a/388236) operations through opinionated templates, sensible tooling setup, and development best practices.
+## Quickstart
 
-I would usually spend hours re-configuring the _"same old tooling and workflow setup"_ for every new project instead of focusing on the actual functionality. `tuckshop` eliminates that duplicative work by generating a project structure _(based on my personal flavour)_ with essential pieces already configured _(pre-commit hooks, a linter and formatter, build and release workflows, basic documentation, etc.)_ - thus allowing me to build things I'm interested in without the distractions.
-
-## Table of Contents
-
-* [Features](#features)
-* [Supported Languages](#supported-languages)
-  * [Typescript](#typescript)
-* [Usage](#usage)
-  * [Requirements](#requirements)
-  * [Quickstart](#quickstart)
-  * [Examples](#examples)
-* [Commands Reference](#commands-reference)
-  * [`create`](#create)
-  * [`add`](#add)
-* [Contributing](#contributing)
-* [License](#license)
-
-## Features
-
-`tuckshop` sets you up with several best practices adopted in modern software development with pre-configured tooling that should cover most use-cases. `tuckshop` achieves this through:
-
-* Automatic dependency upgrades using [dependabot][]
-* Automatic builds, tests, and releases with [github actions][github-actions]
-* Automatically generated Readme with badges through [shields.io][shields]
-* Automatically generated MIT license with [spdx][spdx-license-list]
-* Automatically generated community files _(contribution guidelines, issue templates, and pull request checklists)_
-* A pre-configured [release process](CONTRIBUTING.md#release-process) for preview and production releases
-* Opinionated [registry items][registry-items] that cover common use cases encountered in modern software development
-* A collection of helpful **agent instructions and skills** that can be applied to new or existing projects.
-
-[github-actions]: https://github.com/features/actions
-[shields]: https://shields.io/
-[spdx-license-list]: https://github.com/sindresorhus/spdx-license-list
-[registry-items]: registry/
-[dependabot]: https://github.com/dependabot
-
-## Supported Languages
-
-In addition to the general features listed above, `tuckshop` also configures language-specific tooling to enable unit testing, type-safety, consistent code linting/formatting, and _much more_. It currently supports the following languages:
-
-### Typescript
-
-* Unit testing with [vitest][] and test quality checks using [stryker][]
-* Commit linting with [commitlint][]
-* Pre-commit checks with [husky][]
-* Pre-configured package bundling using [tsdown][]
-* Fast and disk-efficient dependency management using [pnpm][]
-* Type-safety using [typescript][]
-* Rapid utility-first styling and theme management using [tailwindcss][]
-* Code linting and formatting with [biome][]
-* Automated changelog generation using [git-cliff][]
-* Tag-driven releases with version management and package publishing to [npm][]
-
-[vitest]: https://vitest.dev/
-[stryker]: https://stryker-mutator.io/
-[commitlint]: https://github.com/marionebl/commitlint
-[husky]: https://github.com/typicode/husky
-[biome]: https://biomejs.dev/
-[tailwindcss]: https://tailwindcss.com/
-[git-cliff]: https://git-cliff.org/
-[typescript]: https://github.com/microsoft/TypeScript
-[node]: https://nodejs.org
-[tsdown]: https://tsdown.dev/
-[npm]: https://www.npmjs.com/
-[pnpm]: https://pnpm.io/
-[npx]: https://www.npmjs.com/package/npx
-
-> [!NOTE]
-> Support for other languages is still in the works
-
-## Usage
-
-### Requirements
-
-[Node.js v20+][node]
-
-### Quickstart
-
-The easiest way to start is to call the CLI through [npx][] to generate a new project from one of the provided templates:
+List available templates from the default registry:
 
 ```bash
-npx tuckshop create typescript-package
+npx tuckshop list
 ```
 
-> [!IMPORTANT]
-> Some workflows in the generated projects may require repository secrets to be set in the GitHub project _(Settings → Secrets and variables → Actions)_. Additionally, ensure that "Allow GitHub Actions to create and approve pull requests" is checked in Settings → Actions → General. Make sure to set them to prevent [github action][github-actions] failures before releasing your code out in the world.
-
-`tuckshop` uses a simple tag-driven release workflow for stress-free delivery _(This same workflow is configured for projects generated with `tuckshop`)_. See the [release process](CONTRIBUTING.md#release-process) section in [CONTRIBUTING.md](CONTRIBUTING.md) for details.
-
-### Examples
-
-#### Create a public NPM package
+Use a custom registry:
 
 ```bash
-npx tuckshop create typescript-package \
-  --name my-package \
-  --public
+npx tuckshop --registry https://example.com/registry.json list
 ```
 
-#### Create a private internal Typescript library
+Or set it as an environment variable for all commands:
 
 ```bash
-npx tuckshop create typescript-package \
-  --name internal-utils
+export TUCKSHOP_REGISTRY="https://example.com/registry.json"
+npx tuckshop list
 ```
 
-#### Add registry items to an existing project
+## Workspace layout
+
+```text
+packages/
+├── cli/        # published as `tuckshop`
+├── core/       # published as `@tuckshop/core`
+└── registry/   # private default registry content
+docs/           # documentation site
+```
+
+## Building a custom registry
+
+If you want to build your own registry, install `@tuckshop/core` and reuse the same primitives that power the default registry:
+
+```ts
+import { buildRegistry, parseRegistryDocument } from "@tuckshop/core";
+```
+
+`@tuckshop/core` exposes:
+
+- Schema types and `SCHEMA_VERSION` for your registry document
+- Registry validation to ensure your document is well-formed
+- Registry building from a structured `registry/` directory
+- Condition inference and variant resolution for cross-platform items
+- Local registry source resolution helpers
+
+## Development
+
+Requirements:
+
+- Node.js 20+
+- pnpm
+
+Get started:
 
 ```bash
-npx tuckshop add button@react workflow \
-  --include-instructions \
-  --ide-format cursor
+pnpm install
+pnpm run build
 ```
 
-## Commands Reference
-
-#### `create [template]`
-
-Create a new project from a registry template item. When `template` is omitted, `tuckshop` lists available templates from the registry and prompts you to choose one.
+Common development commands:
 
 ```bash
-npx tuckshop create
+pnpm run check:ci       # typecheck and lint
+pnpm run build          # build all packages
+pnpm run build:registry # rebuild compiled registry metadata
+pnpm run release:plan   # preview the next release plan
+pnpm cov                # run tests with coverage
+pnpm run audit          # code quality audit
 ```
 
-```bash
-npx tuckshop create typescript-react-app \
-  --name my-app \
-  --public \
-  --include-instructions \
-  --instructions-ide-format cursor
-```
+The default registry content lives under `packages/registry/registry/`, and the compiled metadata is written to `packages/registry/registry.json`.
 
-**Supported Flags**
+## Releases
 
-- `--name <project-name>`: Name of the project
-- `--public`: Optimise for open-source collaboration (license, release workflows, community files)
-- `--include-instructions`: Add agent instructions for the chosen template
-- `--instructions-ide-format <format>`: IDE format (`cursor`, `windsurf`, `cline`, `claude`)
+This repository uses a config-driven monorepo release workflow:
 
-#### `add [...items]`
+1. Contributors merge code using conventional commits
+2. Maintainers run the `Release` GitHub Actions workflow in dry-run mode
+3. The workflow computes per-package bumps from git history and previews the plan
+4. Rerunning with `dry_run: false` bumps versions, rebuilds registry metadata,
+   publishes affected public packages, and creates GitHub releases
 
-Add one or more registry items (components, instruction bundles, file groups) into the **current** project. When no items are provided, `tuckshop` lists addable registry items and prompts you to choose.
-
-```bash
-npx tuckshop add button --framework react
-```
-
-```bash
-npx tuckshop add workflow principles \
-  --include-instructions \
-  --ide-format cursor
-```
-
-**Supported Flags**
-
-- `--framework <framework>`: Target framework for cross-framework items (for example, `react`, `vue`)
-- `--ide-format <format>`: IDE format when adding instruction-type items
-- `--include-instructions`: Include instruction output for instruction-type items
-
-## Contributing
-
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to report issues, propose changes, and submit pull requests.
-
-If you create a project with `tuckshop`, you can show support by adding this badge to your README:
-
-![Made with Tuckshop](https://img.shields.io/badge/made_with-tuckshop-EFA607)
-
-```html
-<a href="https://github.com/agrawal-rohit/tuckshop"><img alt="Made with Tuckshop" src="https://img.shields.io/badge/made_with-tuckshop-EFA607"></a>
-```
+For details on the contributor and maintainer workflows, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

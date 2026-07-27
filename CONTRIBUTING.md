@@ -19,6 +19,7 @@ Thanks for your interest in contributing to `tuckshop`! This guide will help you
 ## Getting Help
 
 If you have questions, ideas, or need help:
+
 - Search existing [GitHub Discussions](https://github.com/agrawal-rohit/tuckshop/discussions) first
 - Open a new discussion for questions and proposals
 - Create a [GitHub Issue](https://github.com/agrawal-rohit/tuckshop/issues) for bug reports
@@ -29,15 +30,16 @@ Please be specific about your environment and include steps to reproduce issues 
 
 1. Fork the repository
 2. Install dependencies: `pnpm install`
-3. Create a local build: `pnpm pack`
-4. Test the package locally: `npx <path-to-local-build>.tgz`
+3. Build the workspace: `pnpm run build`
+4. Build the default registry: `pnpm run build:registry`
+5. Test the CLI package locally: `pnpm --filter tuckshop pack`
 
-The project uses:
-- **Node.js** v20+ for runtime
-- **pnpm** for package management
-- **TypeScript** for type safety
-- **Biome** for linting and formatting
-- **Vitest** for testing
+The repository is a pnpm workspace with the following structure:
+
+- `packages/cli`: published as `tuckshop`
+- `packages/core`: published as `@tuckshop/core`
+- `packages/registry`: private default registry content
+- `docs`: documentation site
 
 ## Making Changes
 
@@ -51,7 +53,7 @@ The project uses:
 
 This project follows [Conventional Commits](https://www.conventionalcommits.org/):
 
-```
+```text
 type(scope): short description
 
 Optional longer description
@@ -63,18 +65,20 @@ Common types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, 
 
 ### Pull Requests
 
-- Run tests with coverage: `pnpm cov`
+- Run `pnpm run check`, `pnpm audit`, and `pnpm cov` before opening a pull request
 - Include tests for new features and bug fixes
+- Use a conventional commit type that reflects the change impact
 - Reference related issues using GitHub keywords (e.g., `Closes #123`)
 - Use a clear title and explain the why behind changes
 - Keep PRs focused on a single purpose
 
 ## Testing & Code Quality
 
+- Typecheck and lint: `pnpm run check`
+- Build packages: `pnpm run build`
 - Run tests with coverage: `pnpm cov`
-- Check linting: `pnpm run lint`
+- Run code-quality audit: `pnpm run audit`
 - Format code: `pnpm run format`
-- Run type checks: `pnpm run check`
 
 Pre-commit hooks will automatically check your code quality. If they block your commit, run the appropriate fix commands and try again.
 
@@ -92,53 +96,67 @@ Small documentation fixes (typos, clarifications) are always welcome!
 ### Overview
 
 > [!IMPORTANT]
+>
 > - [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) must be configured
-> - Ensure that `"Allow GitHub Actions to create and approve pull requests"` is checked in your repository settings *(Settings > Actions > General > Workflow permissions)*
+> - Ensure GitHub Actions can push release commits and create tags on `main`
 
-This project uses a simple tag-driven release workflow powered by [npm trusted publishing](https://docs.npmjs.com/trusted-publishers). Majority of the release process is automated using [Github Actions](https://github.com/features/actions) which gets triggered when a new semver tag is pushed. The tag format determines what gets published:
+This repository uses a config-driven monorepo release workflow. Contributors
+focus on code and conventional commits; maintainers decide when to cut releases
+by manually dispatching a GitHub Actions workflow.
 
-- **Stable releases** (`v1.2.3`) → Published to npm with the `latest` tag
-  ```bash
-  git checkout main
-  git pull origin main
-  git tag v1.2.3
-  git push origin v1.2.3
-  ```
-- **Pre-release/Release candidates** (`v1.2.3-rc.1`, `v1.2.3-beta.1`, `v1.2.3-alpha.1`) → Published with the `rc`, `beta`, or `alpha` tags
-  ```bash
-  git tag v1.2.3-rc.1    # or -beta.1, -alpha.1
-  git push origin v1.2.3-rc.1
-  ```
+### For contributors
 
-When the tag is pushed, the [Github Actions](https://github.com/features/actions) workflow performs the following steps:
+1. Follow [Conventional Commits](https://www.conventionalcommits.org/)
+2. Choose the commit type that matches the intended release impact:
+   - `fix` / `perf` -> patch
+   - `feat` -> minor
+   - `!` or `BREAKING CHANGE:` -> major
+3. Merge the pull request when the code is ready
 
-1. Installs dependencies and builds the package
-2. Publishes to npm with the appropriate tag (`latest`, `rc`, `beta`, or `alpha`)
-3. Creates a GitHub Release with a changelog generated from the conventional commits using [git-cliff](https://git-cliff.org/)
-4. Opens a pull request with the updated package version back into the `main` branch.
+You do not need to create changesets or manually bump package versions.
+
+### For maintainers
+
+The release workflow is triggered manually from the Actions tab:
+
+1. Run `Release` with `dry_run: true`
+2. Review the computed plan in the GitHub Actions summary
+3. Optionally rerun with:
+   - `packages` to narrow the release scope
+   - `bump_override` when the inferred bump should be adjusted
+4. Rerun with `dry_run: false` to:
+   - bump versions for affected packages
+   - regenerate changelogs with `git-cliff`
+   - rebuild `packages/registry/registry.json` so `contentBaseUrl` matches the new CLI tag
+   - commit the release changes to `main`
+   - create package tags and GitHub releases
+   - publish public packages with npm trusted publishing
+
+The release logic is driven by [`release.config.json`](./release.config.json).
+That keeps the scripts generic enough to later ship as a reusable
+`monorepo-release` registry convention.
+
+**Note:** `tuckshop` and `@tuckshop/registry` are versioned together so
+default-registry content ships with matching CLI releases.
+`@tuckshop/registry` is private and never published to npm; `@tuckshop/core`
+is published independently when it changes.
 
 ### Testing Pre-releases
 
-After pushing a pre-release tag, you can test it before cutting a stable release:
+Pre-release automation is intentionally deferred for now. Stable releases use
+the manual workflow above. If a pre-release is needed, cut it explicitly and
+test it the same way you would test a stable publish:
 
 ```bash
 # For tuckshop itself
 npx tuckshop@1.2.3-rc.1 --help
 
-# For your scaffolded projects
-npm install my-package@1.2.3-rc.1
+# For @tuckshop/core
+npm install @tuckshop/core@1.2.3-rc.1
 ```
 
-Found a bug? Fix it on `main` and push a new pre-release tag (e.g., `v1.2.3-rc.2`). Rinse and repeat until it's ready to be rolled out as a stable release.
-
-### Promoting to Stable
-
-Once a pre-release has been tested and you're confident it's ready:
-
-```bash
-git tag v1.2.3
-git push origin v1.2.3
-```
+Found a bug? Fix it on `main`, merge the change, and rerun the release workflow
+when you are ready to publish the next version.
 
 ## Dependencies
 
@@ -151,26 +169,27 @@ git push origin v1.2.3
 
 `tuckshop` uses a JSON registry inspired by [shadcn](https://ui.shadcn.com/docs/registry) to distribute all registry items _(e.g. project templates, UI components, conventions, and agent instructions)_. Each unit is a self-contained folder holding its manifest and its source files. A unit can be wired to other items through the `registryDependencies` property to make composable units.
 
+The default registry content lives under `packages/registry/registry/`. Shared registry conditions are centralized in `packages/registry/registry/conditions.json`.
+
 ### Registry Layout
 
-Every item is a folder under `registry/` containing a `registry-item.json` manifest alongside the files it ships. Folder paths are just for convenience, the manifest holds the actual identity.
+Every item is a folder under `packages/registry/registry/` containing a `registry-item.json` manifest alongside the files it ships. Folder paths are just for convenience, the manifest holds the actual identity.
 
-```
-registry/
-├── convention/dependency-updater/     # id: dependency-updater, variant: dependabot
-├── convention/build/                  # id: build, variant: github-actions
-├── convention/git-cliff/              # id: git-cliff, variant: default
-├── component/button/                  # one item, react + vue variants
+```text
+packages/registry/registry/
+├── conditions.json
+├── convention/dependency-updater/     # id: dependency-updater
+├── convention/build/                  # id: build
+├── convention/changelog/              # id: changelog
+├── component/button/                  # id: button
 │   ├── registry-item.json
-│   ├── react/button.tsx
-│   └── vue/Button.vue
+│   └── react/button.tsx
 └── …
 ```
 
-The compiled registry is written to `registry.json` at the repository root by `pnpm run build:registry`, and is regenerated and staged automatically by the pre-commit hook whenever anything under `registry/` changes.
+The compiled registry is written to `packages/registry/registry.json` by `pnpm run build:registry`, and is regenerated and staged automatically by the pre-commit hook whenever anything under `packages/registry/registry/` changes.
 
-`registry.json` only holds metadata for individual items, so the index stays lean as the registry grows. Each file records a repo-relative `source`, and the CLI fetches the content at install time from `${contentBaseUrl}/${source}` _(pinned to the release tag)_.
-
+`registry.json` only holds metadata for individual items, so the index stays lean as the registry grows. Each file records a package-relative `source`, and the CLI fetches the content at install time from `${contentBaseUrl}/${source}` _(pinned to the release version)_.
 
 ### Authoring Guidelines
 
@@ -182,26 +201,26 @@ The compiled registry is written to `registry.json` at the repository root by `p
 
 When proposing a new registry item:
 
-1. Add a new folder under `registry/` with a `registry-item.json` (`id`, `title`, `description`, `type`, `variants`) and its files
+1. Add a new folder under `packages/registry/registry/` with a `registry-item.json` (`id`, `title`, `description`, `type`, `variants`) and its files
 2. Include everything needed for a complete working setup; depend on existing concern items instead of copying files
-3. Run `pnpm run build:registry`, `pnpm cov`, and `pnpm pack`
+3. Run `pnpm run build:registry`, `pnpm cov`, and `pnpm --filter tuckshop pack`
 4. Document what the item provides in your pull request
 5. Include examples of generated output
 
 ## Security
 
 - **Do not** report security vulnerabilities in public issues
-- Use GitHub's [private vulnerability reporting](https://github.com/agrawal-rohit/tuckshop/security/advisories)
+- Use GitHub's [private vulnerability reporting](https://github.com/agrawal-rohit/tuckshop/security/advisories/new)
 
 ## Maintainer Guidelines
 
 Some guidelines for maintainers:
 
 - Changes to `main` should be added through pull requests
-- Tag format must adhere to semver standards: `vX.Y.Z` for stable releases and `vX.Y.Z-rc.N`, `-beta.N`, `-alpha.N` for pre-releases
+- Prefer the manual `Release` workflow over ad-hoc local tagging or publishing
 - Keep required checks and branch protection enabled on `main` branch
 - Avoid modifying config files in the repository without discussion:
-  - Configuration files (`cliff.toml`, `biome.json`, etc.)
+  - Configuration files (`biome.json`, `.changeset/config.json`, etc.)
   - CI workflows (`.github/workflows/*`)
   - Release tooling
 
@@ -212,7 +231,7 @@ If changes to these areas are needed, open an issue to discuss first.
 Contributors are recognized through:
 
 - GitHub's contributor graph
-- Release notes (generated from commit messages)
+- Release notes (generated from conventional commits via git-cliff)
 - Community acknowledgments
 
 Your contributions are greatly appreciated!

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildRegistry } from "./builder";
-import type { Registry } from "./schema";
+import { type Registry, SCHEMA_VERSION } from "./schema";
 
 /**
  * Write a registry item fixture under a temp repo root.
@@ -131,6 +131,7 @@ describe("registry/builder", () => {
 
 		expect(document).toEqual(written);
 		expect(written.version).toBe("1.2.3");
+		expect(written.schemaVersion).toBe(SCHEMA_VERSION);
 		expect(written.contentBaseUrl).toBe(
 			"https://raw.githubusercontent.com/agrawal-rohit/tuckshop/v1.2.3",
 		);
@@ -226,7 +227,7 @@ describe("registry/builder", () => {
 		);
 	});
 
-	it("throws when the manifest shape is invalid", async () => {
+	it("accepts custom registry item types", async () => {
 		writeItem(
 			tempDir,
 			"component/button",
@@ -234,7 +235,7 @@ describe("registry/builder", () => {
 				id: "button",
 				title: "Button",
 				description: "A button",
-				type: "not-a-real-type",
+				type: "legacy-widget",
 				variants: [
 					{
 						id: "default",
@@ -247,9 +248,8 @@ describe("registry/builder", () => {
 			{ "button.tsx": "export {};\n" },
 		);
 
-		await expect(buildRegistry(tempDir)).rejects.toThrow(
-			'Registry item "button" has invalid type "not-a-real-type"',
-		);
+		const document = await buildRegistry(tempDir);
+		expect(document.items.button.type).toBe("legacy-widget");
 	});
 
 	it("throws when a variant has no files", async () => {

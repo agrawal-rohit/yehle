@@ -1,11 +1,8 @@
+import type { Registry, RegistryItem } from "@tuckshop/core";
+import { RegistryItemType } from "@tuckshop/core";
 import chalk from "chalk";
 import { defaultText, primaryText } from "../cli/colors";
 import { parseMultiValueOption } from "../cli/options";
-import {
-	type Registry,
-	type RegistryItem,
-	RegistryItemType,
-} from "../registry/schema";
 
 /** Options accepted by the list command. */
 type ListCommandOptions = {
@@ -106,9 +103,7 @@ function printItemsByType(matches: RegistryItem[], typeOrder: string[]): void {
 		const group = byType.get(type);
 		if (!group) continue;
 
-		const meta = REGISTRY_ITEM_TYPE_META[type as RegistryItemType] as
-			| { label: string; description: string }
-			| undefined;
+		const meta = REGISTRY_ITEM_TYPE_META[type as RegistryItemType];
 		console.log(primaryText(meta?.label ?? type));
 		if (meta?.description) console.log(meta.description);
 		console.log();
