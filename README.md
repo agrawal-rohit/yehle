@@ -95,7 +95,8 @@ pnpm run build          # build all packages
 pnpm run build:registry # rebuild compiled registry metadata
 pnpm run release:plan   # preview the next release plan
 pnpm cov                # run tests with coverage
-pnpm run audit          # code quality audit
+pnpm run quality:changes # quality gate on changed files (pre-PR)
+pnpm run quality         # full codebase quality scan
 ```
 
 The default registry content lives under `packages/registry/registry/`, and the compiled metadata is written to `packages/registry/registry.json`.

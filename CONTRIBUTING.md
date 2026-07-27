@@ -65,7 +65,7 @@ Common types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, 
 
 ### Pull Requests
 
-- Run `pnpm run check`, `pnpm audit`, and `pnpm cov` before opening a pull request
+- Run `pnpm run check` and `pnpm cov` before opening a pull request
 - Include tests for new features and bug fixes
 - Use a conventional commit type that reflects the change impact
 - Reference related issues using GitHub keywords (e.g., `Closes #123`)
@@ -77,7 +77,8 @@ Common types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, 
 - Typecheck and lint: `pnpm run check`
 - Build packages: `pnpm run build`
 - Run tests with coverage: `pnpm cov`
-- Run code-quality audit: `pnpm run audit`
+- Quality gate on changed files: `pnpm run quality:changes`
+- Full codebase quality scan: `pnpm run quality` (or `pnpm run quality dead-code`, `pnpm run quality health`, etc.)
 - Format code: `pnpm run format`
 
 Pre-commit hooks will automatically check your code quality. If they block your commit, run the appropriate fix commands and try again.
