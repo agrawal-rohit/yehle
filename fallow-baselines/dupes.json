@@ -1,0 +1,5 @@
+{
+  "clone_groups": [
+    "src/cli/animated-intro.ts:138-147|src/cli/animated-intro.ts:73-82"
+  ]
+}

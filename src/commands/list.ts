@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { defaultText, primaryText } from "../cli/logger";
+import { defaultText, primaryText } from "../cli/colors";
 import { parseMultiValueOption } from "../cli/options";
 import {
 	type Registry,
@@ -8,7 +8,7 @@ import {
 } from "../registry/schema";
 
 /** Options accepted by the list command. */
-export type ListCommandOptions = {
+type ListCommandOptions = {
 	/** Comma-separated registry item types, or `all`. */
 	type?: string;
 };
@@ -139,7 +139,7 @@ function printItemsByType(matches: RegistryItem[], typeOrder: string[]): void {
  * @param itemTypes - Item types present in the registry.
  * @param options - Optional list command options.
  */
-export async function listCommand(
+async function listCommand(
 	registry: Registry,
 	itemTypes: string[],
 	options: ListCommandOptions = {},

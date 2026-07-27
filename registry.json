@@ -104,6 +104,57 @@
         }
       ]
     },
+    "code-quality": {
+      "id": "code-quality",
+      "title": "Code Quality",
+      "description": "Fallow codebase intelligence for dead code, duplication, and complexity — with CI audit gate and agent cleanup guidance.",
+      "type": "convention",
+      "variants": [
+        {
+          "id": "github-actions",
+          "title": "GitHub Actions",
+          "description": "Fallow config and GitHub Actions audit workflow for TypeScript/JavaScript projects.",
+          "files": [
+            {
+              "source": "registry/convention/code-quality/typescript/.fallowrc.json",
+              "target": ".fallowrc.json"
+            },
+            {
+              "source": "registry/convention/code-quality/github-actions/.github/workflows/code-quality.yml",
+              "target": ".github/workflows/code-quality.yml"
+            }
+          ],
+          "devDependencies": [
+            "fallow@^3"
+          ]
+        },
+        {
+          "id": "typescript",
+          "title": "TypeScript",
+          "description": "Fallow config, GitHub Actions audit workflow, and agent instruction for TypeScript projects.",
+          "when": {
+            "language": "typescript"
+          },
+          "files": [
+            {
+              "source": "registry/convention/code-quality/typescript/.fallowrc.json",
+              "target": ".fallowrc.json"
+            },
+            {
+              "source": "registry/convention/code-quality/github-actions/.github/workflows/code-quality.yml",
+              "target": ".github/workflows/code-quality.yml"
+            },
+            {
+              "source": "registry/convention/code-quality/agent-instruction/fallow.md",
+              "target": ".cursor/rules/fallow.mdc"
+            }
+          ],
+          "devDependencies": [
+            "fallow@^3"
+          ]
+        }
+      ]
+    },
     "dependency-updater": {
       "id": "dependency-updater",
       "title": "Dependency Updater",

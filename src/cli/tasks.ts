@@ -4,7 +4,7 @@ import {
 	type ListrTaskWrapper,
 	type SimpleRenderer,
 } from "listr2";
-import { defaultText, primaryText } from "./logger";
+import { defaultText, primaryText } from "./colors";
 
 /** A single executable subtask. */
 export type Subtask = {

@@ -1,7 +1,7 @@
 import readline from "node:readline";
 import chalk from "chalk";
 import { stripAnsi } from "consola/utils";
-import { primaryText } from "./logger";
+import { primaryText } from "./colors";
 
 type Message = string | Promise<string>;
 
@@ -9,7 +9,7 @@ type Message = string | Promise<string>;
 const LOGO_FRAMES = ["●", "◔", "◕", "◑", "◒", "◓", "◐", "○"] as const;
 const LOGO_REST_FRAME = LOGO_FRAMES[0];
 
-export type AnimatedIntroOptions = {
+type AnimatedIntroOptions = {
 	title?: string;
 	stdout?: NodeJS.WriteStream;
 
@@ -84,7 +84,7 @@ async function printIntroPlain(
 	}
 }
 
-export async function animatedIntro(
+async function animatedIntro(
 	msg: Message | Message[] = [],
 	{
 		title = "tuckshop",

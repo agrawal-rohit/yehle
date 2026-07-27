@@ -18,6 +18,9 @@ coverage/
 .stryker-tmp
 reports/
 
+# Fallow (machine-local parse cache)
+.fallow/
+
 # Docs (Next / Fumadocs)
 docs/.next/
 docs/node_modules/

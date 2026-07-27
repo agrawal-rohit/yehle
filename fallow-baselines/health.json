@@ -1,0 +1,34 @@
+{
+  "finding_counts": {
+    "src/cli/animated-intro.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "src/commands/list.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "src/core/shell.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "src/registry/builder.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 2
+      }
+    }
+  },
+  "runtime_coverage_findings": [],
+  "target_keys": [
+    "src/registry/builder.ts:complexity"
+  ]
+}

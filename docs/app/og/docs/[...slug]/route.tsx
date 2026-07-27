@@ -27,6 +27,7 @@ export async function GET(
 	);
 }
 
+/** @public Next.js App Router static params for this route. */
 export function generateStaticParams() {
 	return source.getPages().map((page) => ({
 		lang: page.locale,

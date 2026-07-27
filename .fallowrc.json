@@ -1,0 +1,35 @@
+{
+	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+	"entry": [
+		"bin/cli.mjs",
+		"src/index.ts",
+		"scripts/build-registry.ts",
+		"docs/app/**/*.{ts,tsx}",
+		"docs/next.config.mjs",
+		"docs/source.config.ts",
+		"docs/components/mdx.tsx"
+	],
+	"ignorePatterns": [
+		"dist/**",
+		"docs/.next/**",
+		"docs/.source/**",
+		"coverage/**",
+		"registry/**",
+		"**/*.mustache.*",
+		"fallow-baselines/**"
+	],
+	"ignoreDependencies": [
+		"@stryker-mutator/api",
+		"collections"
+	],
+	"rules": {
+		"unresolved-imports": "error",
+		"unlisted-dependencies": "error",
+		"unused-exports": "warn"
+	},
+	"audit": {
+		"deadCodeBaseline": "fallow-baselines/dead-code.json",
+		"healthBaseline": "fallow-baselines/health.json",
+		"dupesBaseline": "fallow-baselines/dupes.json"
+	}
+}

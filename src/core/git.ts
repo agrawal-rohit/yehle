@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { runAsync } from "./shell";
 
-
 /**
  * Determine whether a directory already contains a git repository.
  * @param cwd - Absolute path to the target directory.
