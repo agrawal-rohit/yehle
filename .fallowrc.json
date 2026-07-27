@@ -1,9 +1,10 @@
 {
 	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
 	"entry": [
-		"bin/cli.mjs",
-		"src/index.ts",
-		"scripts/build-registry.ts",
+		"packages/cli/bin/cli.mjs",
+		"packages/cli/src/index.ts",
+		"packages/core/src/index.ts",
+		"packages/registry/scripts/build.ts",
 		"docs/app/**/*.{ts,tsx}",
 		"docs/next.config.mjs",
 		"docs/source.config.ts",
@@ -11,16 +12,18 @@
 	],
 	"ignorePatterns": [
 		"dist/**",
+		"packages/*/dist/**",
 		"docs/.next/**",
 		"docs/.source/**",
 		"coverage/**",
-		"registry/**",
+		"packages/registry/registry/**",
 		"**/*.mustache.*",
 		"fallow-baselines/**"
 	],
 	"ignoreDependencies": [
 		"@stryker-mutator/api",
-		"collections"
+		"collections",
+		"lucide-react"
 	],
 	"rules": {
 		"unresolved-imports": "error",

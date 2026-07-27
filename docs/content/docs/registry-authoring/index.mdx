@@ -1,0 +1,32 @@
+---
+title: Registry Authoring
+description: Building and validating registries with @tuckshop/core.
+---
+
+## Installing the core package
+
+```bash
+pnpm add @tuckshop/core
+```
+
+## What `@tuckshop/core` provides
+
+- registry schema types and `SCHEMA_VERSION`
+- `buildRegistry()` for compiling a `registry/` directory into `registry.json`
+- `parseRegistryDocument()` and `validateRegistryItem()` for runtime validation
+- condition inference and variant resolution helpers
+
+## Example
+
+```ts
+import { buildRegistry, parseRegistryDocument } from "@tuckshop/core";
+
+await buildRegistry({
+  repoRoot: process.cwd(),
+  contentBaseUrl: "https://raw.githubusercontent.com/acme/registry/main"
+});
+
+const registry = parseRegistryDocument(JSON.parse(registryJson));
+```
+
+Unknown item types are allowed as long as the document shape is valid, so you can extend the registry model without forking the CLI.

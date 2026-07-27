@@ -4,11 +4,12 @@
  */
 export default {
 	// Only run Biome on code/config files that Biome actually processes (see biome.json).
-	"src/**/*.{js,ts,jsx,tsx,cjs,mjs,json,css}": "pnpm check",
+	"packages/**/*.{js,ts,jsx,tsx,cjs,mjs,json,css}": "pnpm check",
 	"docs/**/*.{js,ts,jsx,tsx,mjs,json,css}": "pnpm exec biome check --write --no-errors-on-unmatched",
-	// Recompile the built registry to the repo root whenever any registry item
-	// (manifest or source file) changes, and stage the regenerated index.
-	"registry/**/*": () => "pnpm run build:registry && git add registry.json",
-	"scripts/build-registry.ts": () =>
-		"pnpm run build:registry && git add registry.json",
+	// Rebuild packages/registry/registry.json whenever registry content or the
+	// build script changes, then stage the regenerated document.
+	"packages/registry/registry/**/*": () =>
+		"pnpm run build:registry && git add packages/registry/registry.json",
+	"packages/registry/scripts/build.ts": () =>
+		"pnpm run build:registry && git add packages/registry/registry.json",
 };

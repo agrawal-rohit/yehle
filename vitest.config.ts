@@ -9,17 +9,19 @@ export default defineConfig({
 		// Preserve Vitest's default excludes (already includes node_modules, etc.)
 		exclude: [
 			...configDefaults.exclude,
-			"registry/**",
+			"packages/*/dist/**",
+			"packages/registry/registry/**",
 			"**/.stryker-tmp/**",
 		],
 		coverage: {
 			reporter: ["text", "lcov", "html"],
 			exclude: [
 				...(configDefaults.coverage.exclude || []),
-				"registry/**",
+				"packages/*/dist/**",
+				"packages/registry/registry/**",
 				"**/commitlint.config.js",
 				"**/lint-staged.config.js",
-				"bin/**",
+				"packages/cli/bin/**",
 				"**/docs/**",
 				"**/stryker.config.mjs",
 			],

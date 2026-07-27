@@ -1,0 +1,37 @@
+---
+title: CLI
+description: Running tuckshop with the bundled or custom registry.
+---
+
+## Default behavior
+
+`npx tuckshop` uses the default registry bundled into the CLI package.
+
+```bash
+npx tuckshop list
+```
+
+That keeps the default experience fast and offline-capable after install.
+
+## Using a custom registry
+
+Pass `--registry` to point `tuckshop` at another registry document:
+
+```bash
+npx tuckshop --registry https://example.com/registry.json list
+```
+
+You can also set an environment variable:
+
+```bash
+export TUCKSHOP_REGISTRY="https://example.com/registry.json"
+npx tuckshop list
+```
+
+Resolution order is:
+
+1. `--registry <url-or-path>`
+2. `TUCKSHOP_REGISTRY`
+3. `./registry.json` in the current working directory
+4. the registry document bundled into the CLI package (after install / `prepack`)
+5. workspace fallback `packages/registry/registry.json` during local development
