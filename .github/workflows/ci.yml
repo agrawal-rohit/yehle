@@ -7,93 +7,147 @@ on:
   pull_request:
     branches:
       - main
+  schedule:
+    - cron: "0 6 * * 1" # every Monday at 6:00 AM
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
   commitlint:
-    name: Commitlint
+    name: Quality Gates (Commitlint)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Validate conventional commits
-        uses: wagoid/commitlint-github-action@v6
+        uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1
         with:
-          configFile: commitlint.config.js
+          configFile: commitlint.config.mjs
 
-  checks:
-    name: Checks
+  build:
+    name: Build
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Setup PNPM
-        uses: pnpm/action-setup@v4
-
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-      - name: Cache pnpm store
-        uses: actions/cache@v5.0.5
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Setup workspace
+        uses: ./.github/actions/setup
 
       - name: Run checks
         run: pnpm run check:ci
-
-      - name: Build
-        run: pnpm run build
 
       - name: Verify CLI tarball includes bundled registry
         shell: bash
         run: |
           pnpm --filter tuckshop run prepack
-          PACK_OUTPUT="$(pnpm --filter tuckshop exec npm pack --dry-run)"
-          printf '%s\n' "$PACK_OUTPUT"
-          printf '%s\n' "$PACK_OUTPUT" | rg "registry\\.json"
+          pnpm --filter tuckshop exec npm pack --dry-run --json > pack.json
+          jq -e '.[0].files[] | select(.path == "registry.json")' pack.json
 
-  code-quality:
-    name: Code Quality
+  test:
+    name: Test (Coverage)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup
+
+      - name: Run tests with coverage
+        run: pnpm cov
+
+      - name: Build coverage badge JSON
+        id: badge
+        shell: bash
+        run: |
+          pct=$(jq -r '.total.lines.pct' coverage/coverage-summary.json)
+          pct_int=${pct%.*}
+          if (( pct_int >= 80 )); then
+            color=brightgreen
+          elif (( pct_int >= 60 )); then
+            color=yellow
+          elif (( pct_int >= 40 )); then
+            color=orange
+          else
+            color=red
+          fi
+          jq -n \
+            --arg message "${pct_int}%" \
+            --arg color "$color" \
+            '{schemaVersion: 1, label: "coverage", message: $message, color: $color}' \
+            > .github/badges/coverage.json
+          echo "message=${pct_int}%" >> "$GITHUB_OUTPUT"
+          echo "color=$color" >> "$GITHUB_OUTPUT"
+          echo "Coverage: ${pct_int}%"
+
+      - name: Publish coverage badge to gist
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: schneegans/dynamic-badges-action@e5f1304e872a1f574dd9bc9465b1d7b08b5b3291 # v1.7.0
+        with:
+          auth: ${{ secrets.COVERAGE_GIST_SECRET }}
+          gistID: ${{ secrets.COVERAGE_GIST_ID }}
+          filename: coverage.json
+          label: coverage
+          message: ${{ steps.badge.outputs.message }}
+          color: ${{ steps.badge.outputs.color }}
+        continue-on-error: true
+
+      - name: Commit coverage badge
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: stefanzweifel/git-auto-commit-action@6c370f5a47ade0b199f2497bfb1682cb9fa1b240 # v5.0.3
+        with:
+          commit_message: "ci: update coverage badge [skip ci]"
+          file_pattern: .github/badges/coverage.json
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.0
+        with:
+          name: coverage
+          path: |
+            coverage/lcov.info
+            coverage/coverage-summary.json
+          retention-days: 7
+
+  fallow:
+    name: Quality Gates (Fallow)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       security-events: write
-      pull-requests: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Fallow audit
-        uses: fallow-rs/fallow@v3
+        uses: fallow-rs/fallow@630722b016a5b785d6fa05ee54db6b339eb3c4fa # v3.0.0
         with:
           command: audit
           gate: new-only
@@ -103,102 +157,152 @@ jobs:
           health-baseline: fallow-baselines/health.json
           dupes-baseline: fallow-baselines/dupes.json
 
-      - name: Upload SARIF
+      - name: Upload Fallow SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
           sarif_file: fallow-results.sarif
+          category: fallow
         continue-on-error: true
 
-  test:
-    name: Test
+  dependency-review:
+    name: Code Security (Dependency Review)
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    needs: checks
+    timeout-minutes: 10
     permissions:
       contents: read
+      pull-requests: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+      - name: Dependency review
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
 
-      - name: Setup PNPM
-        uses: pnpm/action-setup@v4
-
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-      - name: Cache pnpm store
-        uses: actions/cache@v5.0.5
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run tests with coverage
-        run: pnpm cov
-
-      - name: Upload coverage
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage
-          path: coverage/
-
-  code-scanning:
-    name: Code Scanning
+  zizmor:
+    name: Workflow Security (Zizmor)
     runs-on: ubuntu-latest
-    needs: test
+    timeout-minutes: 10
     permissions:
-      contents: write
-      actions: write
+      contents: read
+      actions: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Download coverage
-        uses: actions/download-artifact@v8
+      - name: Scan GitHub Actions workflows
+        uses: zizmorcore/zizmor-action@6fc4b006235f201fdab3722e17240ab420d580e5 # v0.6.1
+
+  codeql:
+    name: Code Security (CodeQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: coverage
-          path: coverage/
+          persist-credentials: false
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
-          node-version: 20
+          languages: actions, javascript-typescript
+          config-file: .github/codeql/config.yml
+          build-mode: none
 
-      - name: Setup PNPM
-        uses: pnpm/action-setup@v4
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        with:
+          category: codeql
 
-      - name: Get pnpm store directory
-        shell: bash
+  semgrep:
+    name: Code Security (Semgrep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: semgrep/semgrep
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Install git
         run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+          apt-get update
+          apt-get install -y --no-install-recommends git
 
-      - name: Cache pnpm store
-        uses: actions/cache@v5.0.5
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+          persist-credentials: false
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Run Semgrep
+        run: |
+          semgrep scan \
+            --config p/default \
+            --config p/typescript \
+            --config p/secrets \
+            --sarif \
+            --output semgrep.sarif
 
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v8
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - name: Upload Semgrep SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+        continue-on-error: true
+
+  ci-success:
+    name: CI success
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - build
+      - test
+      - fallow
+      - commitlint
+      - dependency-review
+      - zizmor
+      - codeql
+      - semgrep
+    if: ${{ always() }}
+    steps:
+      - name: Require all checks
+        run: |
+          check_job() {
+            local job="$1"
+            local result="$2"
+            if [[ "$result" != "success" ]]; then
+              echo "Required job '$job' finished with result: $result"
+              exit 1
+            fi
+          }
+
+          check_job_pr_optional() {
+            local job="$1"
+            local result="$2"
+            if [[ "$result" == "skipped" ]]; then
+              return 0
+            fi
+            check_job "$job" "$result"
+          }
+
+          check_job build "${{ needs.build.result }}"
+          check_job test "${{ needs.test.result }}"
+          check_job fallow "${{ needs.fallow.result }}"
+          check_job zizmor "${{ needs.zizmor.result }}"
+          check_job codeql "${{ needs.codeql.result }}"
+          check_job semgrep "${{ needs.semgrep.result }}"
+          check_job_pr_optional commitlint "${{ needs.commitlint.result }}"
+          check_job_pr_optional dependency-review "${{ needs.dependency-review.result }}"
+          echo "CI checks passed."

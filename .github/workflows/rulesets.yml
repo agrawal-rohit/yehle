@@ -1,0 +1,61 @@
+name: Rulesets
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/rulesets/**
+      - scripts/sync-rulesets.ts
+      - .github/workflows/rulesets.yml
+  pull_request:
+    paths:
+      - .github/rulesets/**
+      - scripts/sync-rulesets.ts
+  workflow_dispatch:
+
+concurrency:
+  group: rulesets
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan ruleset changes
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup
+
+      - name: Preview ruleset diff
+        env:
+          GH_TOKEN: ${{ secrets.RULESETS_TOKEN }}
+        run: pnpm run rulesets:plan
+
+  apply:
+    name: Apply rulesets
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup
+
+      - name: Apply ruleset changes
+        env:
+          GH_TOKEN: ${{ secrets.RULESETS_TOKEN }}
+        run: pnpm run rulesets:apply

@@ -14,12 +14,15 @@ export default defineConfig({
 			"**/.stryker-tmp/**",
 		],
 		coverage: {
-			reporter: ["text", "lcov", "html"],
+			reporter: ["text", "lcov", "html", "json-summary"],
+			thresholds: {
+				lines: 45,
+			},
 			exclude: [
 				...(configDefaults.coverage.exclude || []),
 				"packages/*/dist/**",
 				"packages/registry/registry/**",
-				"**/commitlint.config.js",
+				"**/commitlint.config.*",
 				"**/lint-staged.config.js",
 				"packages/cli/bin/**",
 				"**/docs/**",

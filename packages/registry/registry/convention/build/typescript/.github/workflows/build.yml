@@ -19,17 +19,17 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
 
       - name: Setup PNPM
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@008330803749db0355799c700092d9a85fd074e9 # v6.0.9
 
       - name: Get pnpm store directory
         shell: bash
@@ -37,7 +37,7 @@ jobs:
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
       - name: Cache pnpm store
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ env.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
@@ -54,24 +54,24 @@ jobs:
         run: pnpm run build
 
   test:
-    name: Test
+    name: Test (Coverage)
     runs-on: ubuntu-latest
     needs: build
     permissions:
-      contents: read
+      contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
 
       - name: Setup PNPM
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@008330803749db0355799c700092d9a85fd074e9 # v6.0.9
 
       - name: Get pnpm store directory
         shell: bash
@@ -79,7 +79,7 @@ jobs:
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
       - name: Cache pnpm store
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ env.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
@@ -91,3 +91,56 @@ jobs:
 
       - name: Run tests with coverage
         run: pnpm cov
+
+      - name: Build coverage badge JSON
+        id: badge
+        shell: bash
+        run: |
+          pct=$(jq -r '.total.lines.pct' coverage/coverage-summary.json)
+          pct_int=${pct%.*}
+          if (( pct_int >= 80 )); then
+            color=brightgreen
+          elif (( pct_int >= 60 )); then
+            color=yellow
+          elif (( pct_int >= 40 )); then
+            color=orange
+          else
+            color=red
+          fi
+          mkdir -p .github/badges
+          jq -n \
+            --arg message "${pct_int}%" \
+            --arg color "$color" \
+            '{schemaVersion: 1, label: "coverage", message: $message, color: $color}' \
+            > .github/badges/coverage.json
+          echo "message=${pct_int}%" >> "$GITHUB_OUTPUT"
+          echo "color=$color" >> "$GITHUB_OUTPUT"
+
+      - name: Publish coverage badge to gist
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: schneegans/dynamic-badges-action@e5f1304e872a1f574dd9bc9465b1d7b08b5b3291 # v1.7.0
+        with:
+          auth: ${{ secrets.COVERAGE_GIST_SECRET }}
+          gistID: ${{ secrets.COVERAGE_GIST_ID }}
+          filename: coverage.json
+          label: coverage
+          message: ${{ steps.badge.outputs.message }}
+          color: ${{ steps.badge.outputs.color }}
+        continue-on-error: true
+
+      - name: Commit coverage badge
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: stefanzweifel/git-auto-commit-action@6c370f5a47ade0b199f2497bfb1682cb9fa1b240 # v5.0.3
+        with:
+          commit_message: "ci: update coverage badge [skip ci]"
+          file_pattern: .github/badges/coverage.json
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.0
+        with:
+          name: coverage
+          path: |
+            coverage/lcov.info
+            coverage/coverage-summary.json
+          retention-days: 7

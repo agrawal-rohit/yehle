@@ -1,0 +1,5 @@
+name: tuckshop-codeql
+paths-ignore:
+  - packages/*/dist
+  - docs/.next
+  - packages/registry/registry/**

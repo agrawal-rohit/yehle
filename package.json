@@ -27,6 +27,8 @@
 		"prepack": "pnpm --filter tuckshop run prepack",
 		"release:plan": "pnpm exec tsx scripts/analyze-release.ts --dry-run",
 		"release:apply": "pnpm exec tsx scripts/apply-release.ts --plan .release-plan.json",
+		"rulesets:plan": "pnpm exec tsx scripts/sync-rulesets.ts --dry-run",
+		"rulesets:apply": "pnpm exec tsx scripts/sync-rulesets.ts",
 		"release:notes": "pnpm exec git-cliff --unreleased",
 		"prepare": "husky",
 		"docs:dev": "pnpm -C docs dev",
