@@ -121,7 +121,7 @@ describe("cli/tasks", () => {
 
 			await runWithTasks(goalTitle);
 
-			expect(chalk.hex).toHaveBeenCalledWith("#EFA607");
+			expect(chalk.hex).toHaveBeenCalledWith("#DFAD8D");
 			const mockedHex = vi.mocked(chalk.hex);
 			const colorFn = mockedHex.mock.results[0]?.value as ReturnType<
 				typeof mockedHex
