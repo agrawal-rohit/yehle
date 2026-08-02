@@ -1,4 +1,4 @@
-name: Auto Assign
+name: Assign PRs
 
 on:
   issues:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   assign:
-    name: Assign repository owner
+    name: Assign owner
     runs-on: ubuntu-latest
     steps:
       - uses: pozil/auto-assign-issue@af6beea6bdf1e8eb373f061c5bc168681fc6d011 # v4.0.1

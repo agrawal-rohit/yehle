@@ -1,4 +1,4 @@
-name: Rulesets
+name: Repository Settings
 
 on:
   push:
@@ -6,16 +6,15 @@ on:
       - main
     paths:
       - .github/rulesets/**
-      - scripts/sync-rulesets.ts
       - .github/workflows/rulesets.yml
   pull_request:
     paths:
       - .github/rulesets/**
-      - scripts/sync-rulesets.ts
+      - .github/workflows/rulesets.yml
   workflow_dispatch:
 
 concurrency:
-  group: rulesets
+  group: repository-settings
   cancel-in-progress: false
 
 permissions:
@@ -23,7 +22,7 @@ permissions:
 
 jobs:
   plan:
-    name: Plan ruleset changes
+    name: Plan settings changes
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -33,16 +32,31 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup workspace
-        uses: ./.github/actions/setup
-
-      - name: Preview ruleset diff
-        env:
-          GH_TOKEN: ${{ secrets.RULESETS_TOKEN }}
-        run: pnpm run rulesets:plan
+      - name: Preview settings changes
+        uses: joshjohanning/bulk-github-repo-settings-sync-action@904eddbcb8abdbe583f89d05a19a60fc9371e21d # v2.10.4
+        with:
+          github-token: ${{ secrets.RULESETS_TOKEN }}
+          repositories: ${{ github.repository }}
+          rulesets-file: .github/rulesets/protected-branches.json,.github/rulesets/release-tags.json
+          allow-squash-merge: true
+          allow-merge-commit: false
+          allow-rebase-merge: false
+          allow-auto-merge: true
+          delete-branch-on-merge: true
+          allow-update-branch: true
+          squash-merge-commit-title: PR_TITLE
+          squash-merge-commit-message: COMMIT_MESSAGES
+          immutable-releases: true
+          code-scanning: true
+          secret-scanning: true
+          secret-scanning-push-protection: true
+          dependabot-alerts: true
+          dependabot-security-updates: true
+          private-vulnerability-reporting: true
+          dry-run: true
 
   apply:
-    name: Apply rulesets
+    name: Apply settings
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -52,10 +66,25 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup workspace
-        uses: ./.github/actions/setup
-
-      - name: Apply ruleset changes
-        env:
-          GH_TOKEN: ${{ secrets.RULESETS_TOKEN }}
-        run: pnpm run rulesets:apply
+      - name: Apply settings changes
+        uses: joshjohanning/bulk-github-repo-settings-sync-action@904eddbcb8abdbe583f89d05a19a60fc9371e21d # v2.10.4
+        with:
+          github-token: ${{ secrets.RULESETS_TOKEN }}
+          repositories: ${{ github.repository }}
+          rulesets-file: .github/rulesets/protected-branches.json,.github/rulesets/release-tags.json
+          allow-squash-merge: true
+          allow-merge-commit: false
+          allow-rebase-merge: false
+          allow-auto-merge: true
+          delete-branch-on-merge: true
+          allow-update-branch: true
+          squash-merge-commit-title: PR_TITLE
+          squash-merge-commit-message: COMMIT_MESSAGES
+          immutable-releases: true
+          code-scanning: true
+          secret-scanning: true
+          secret-scanning-push-protection: true
+          dependabot-alerts: true
+          dependabot-security-updates: true
+          private-vulnerability-reporting: true
+          dry-run: false
