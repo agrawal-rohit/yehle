@@ -99,11 +99,10 @@ Small documentation fixes (typos, clarifications) are always welcome!
 > [!IMPORTANT]
 >
 > - [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) must be configured
-> - Ensure GitHub Actions can push release commits and create tags on `main`
+> - `GH_ADMIN_TOKEN` must be added to the repository secrets and able to open pull requests that trigger CI and create protected release tags
 
-This repository uses a config-driven monorepo release workflow. Contributors
-focus on code and conventional commits; maintainers decide when to cut releases
-by manually dispatching a GitHub Actions workflow.
+This repository uses [release-please](https://github.com/googleapis/release-please)
+for the release workflow.
 
 ### For contributors
 
@@ -114,38 +113,41 @@ by manually dispatching a GitHub Actions workflow.
    - `!` or `BREAKING CHANGE:` -> major
 3. Merge the pull request when the code is ready
 
-You do not need to create changesets or manually bump package versions.
+Only packages whose files changed are versioned; commits under a package path
+drive that package's bump.
+
+To force a specific next version for a package, include a `Release-As: x.y.z`
+footer in a commit message on `main`.
 
 ### For maintainers
 
-The release workflow is triggered manually from the Actions tab:
+Every push to `main` runs the `Release` workflow:
 
-1. Run `Release` with `dry_run: true`
-2. Review the computed plan in the GitHub Actions summary
-3. Optionally rerun with:
-   - `packages` to narrow the release scope
-   - `bump_override` when the inferred bump should be adjusted
-4. Rerun with `dry_run: false` to:
-   - bump versions for affected packages
-   - regenerate changelogs with `git-cliff`
-   - rebuild `packages/registry/registry.json` so `contentBaseUrl` matches the new CLI tag
-   - commit the release changes to `main`
-   - create package tags and GitHub releases
-   - publish public packages with npm trusted publishing
+1. [release-please](https://github.com/googleapis/release-please) opens or
+   updates a single Release PR with version bumps and changelogs for whichever
+   packages have releasable changes
+2. Review the Release PR (CI must pass; one approval is required)
+3. Squash-merge the Release PR to:
+   - bump only the packages that changed (`tuckshop` and/or `@tuckshop/core`)
+   - create component tags such as `tuckshop@v0.3.0` and `core@v0.3.0`
+   - publish only the released packages to npm with trusted publishing
 
-The release logic is driven by [`release.config.json`](./release.config.json).
-That keeps the scripts generic enough to later ship as a reusable
-`monorepo-release` registry convention.
+Configuration lives in [`release-please-config.json`](./release-please-config.json)
+and [`.release-please-manifest.json`](./.release-please-manifest.json). The only
+language-specific piece is the npm publish job in
+[`.github/workflows/release.yml`](./.github/workflows/release.yml); for a
+Python or Rust repo you would keep the same release-please job and swap that
+publish step.
 
-**Note:** `tuckshop` and `@tuckshop/registry` are versioned together so
-default-registry content ships with matching CLI releases.
-`@tuckshop/registry` is private and never published to npm; `@tuckshop/core`
-is published independently when it changes.
+**Note:** `tuckshop` and `@tuckshop/core` version independently.
+`@tuckshop/registry` is private, excluded from release-please, and never
+published to npm. Because the CLI depends on core via `workspace:*`, releasing
+core also patch-bumps the CLI so a core fix always ships in a new CLI release.
 
 ### Testing Pre-releases
 
 Pre-release automation is intentionally deferred for now. Stable releases use
-the manual workflow above. If a pre-release is needed, cut it explicitly and
+the Release PR flow above. If a pre-release is needed, cut it explicitly and
 test it the same way you would test a stable publish:
 
 ```bash
@@ -156,7 +158,7 @@ npx tuckshop@1.2.3-rc.1 --help
 npm install @tuckshop/core@1.2.3-rc.1
 ```
 
-Found a bug? Fix it on `main`, merge the change, and rerun the release workflow
+Found a bug? Fix it on `main`, merge the change, and merge the next Release PR
 when you are ready to publish the next version.
 
 ## Dependencies
@@ -218,10 +220,10 @@ When proposing a new registry item:
 Some guidelines for maintainers:
 
 - Changes to `main` should be added through pull requests
-- Prefer the manual `Release` workflow over ad-hoc local tagging or publishing
+- Prefer merging the release-please Release PR over ad-hoc local tagging or publishing
 - Keep required checks and branch protection enabled on `main` branch
 - Avoid modifying config files in the repository without discussion:
-  - Configuration files (`biome.json`, `.changeset/config.json`, etc.)
+  - Configuration files (`biome.json`, `release-please-config.json`, etc.)
   - CI workflows (`.github/workflows/*`)
   - Release tooling
 
@@ -232,7 +234,7 @@ If changes to these areas are needed, open an issue to discuss first.
 Contributors are recognized through:
 
 - GitHub's contributor graph
-- Release notes (generated from conventional commits via git-cliff)
+- Release notes (generated from conventional commits by release-please)
 - Community acknowledgments
 
 Your contributions are greatly appreciated!

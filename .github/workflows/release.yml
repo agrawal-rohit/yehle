@@ -1,45 +1,51 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      packages:
-        description: "Comma-separated package ids to release, or all"
-        required: false
-        default: "all"
-      bump_override:
-        description: "Override the computed bump level"
-        required: false
-        type: choice
-        options:
-          - ""
-          - patch
-          - minor
-          - major
-      dry_run:
-        description: "Preview the release plan without publishing"
-        required: false
-        type: boolean
-        default: true
-
-permissions:
-  contents: write
-  id-token: write
+  push:
+    branches:
+      - main
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+permissions: {}
+
 jobs:
-  release:
-    name: Plan and Publish
+  release-please:
+    name: Release Please
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      cli_released: ${{ steps.release.outputs['packages/cli--release_created'] }}
+      core_released: ${{ steps.release.outputs['packages/core--release_created'] }}
+    steps:
+      - name: Create release PR or tag
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          # PAT/App token that can open PRs triggering CI and create protected tags.
+          token: ${{ secrets.GH_ADMIN_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    name: Publish to npm
+    needs: release-please
+    if: needs.release-please.outputs.cli_released == 'true' || needs.release-please.outputs.core_released == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
-          fetch-tags: true
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -47,8 +53,6 @@ jobs:
           node-version: 20
           registry-url: "https://registry.npmjs.org"
 
-      # TypeScript variant toolchain setup. Other language variants can keep the
-      # same workflow shape and swap only this setup block plus config commands.
       - name: Setup PNPM
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
@@ -66,32 +70,19 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Build workspace
         run: pnpm run build
 
-      - name: Analyze release plan
+      - name: Publish @tuckshop/core
+        if: needs.release-please.outputs.core_released == 'true'
         env:
-          BUMP_OVERRIDE: ${{ inputs.bump_override }}
-          PACKAGE_IDS: ${{ inputs.packages }}
-        run: |
-          ARGS=(--output .release-plan.json --packages "$PACKAGE_IDS")
-          if [[ -n "$BUMP_OVERRIDE" ]]; then
-            ARGS+=(--bump-override "$BUMP_OVERRIDE")
-          fi
-          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
-            ARGS+=(--dry-run)
-          fi
-          pnpm exec tsx scripts/analyze-release.ts "${ARGS[@]}"
-
-      - name: Stop after dry-run
-        if: ${{ inputs.dry_run == true }}
-        run: echo "Dry-run complete."
-
-      - name: Apply release plan
-        if: ${{ !inputs.dry_run }}
-        run: pnpm exec tsx scripts/apply-release.ts --plan .release-plan.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
+        run: pnpm --filter @tuckshop/core publish --provenance --access public --no-git-checks
+
+      - name: Publish tuckshop
+        if: needs.release-please.outputs.cli_released == 'true'
+        env:
+          NPM_CONFIG_PROVENANCE: true
+        run: pnpm --filter tuckshop publish --provenance --access public --no-git-checks

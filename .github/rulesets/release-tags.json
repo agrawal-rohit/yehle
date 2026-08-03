@@ -6,6 +6,8 @@
     "ref_name": {
       "exclude": [],
       "include": [
+        "refs/tags/tuckshop@*",
+        "refs/tags/core@*",
         "refs/tags/v*"
       ]
     }

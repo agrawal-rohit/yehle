@@ -93,7 +93,6 @@ Common development commands:
 pnpm run check:ci       # typecheck and lint
 pnpm run build          # build all packages
 pnpm run build:registry # rebuild compiled registry metadata
-pnpm run release:plan   # preview the next release plan
 pnpm cov                # run tests with coverage
 pnpm run quality:changes # quality gate on changed files (pre-PR)
 pnpm run quality         # full codebase quality scan
@@ -103,13 +102,12 @@ The default registry content lives under `packages/registry/registry/`, and the 
 
 ## Releases
 
-This repository uses a config-driven monorepo release workflow:
+This repository uses [release-please](https://github.com/googleapis/release-please):
 
 1. Contributors merge code using conventional commits
-2. Maintainers run the `Release` GitHub Actions workflow in dry-run mode
-3. The workflow computes per-package bumps from git history and previews the plan
-4. Rerunning with `dry_run: false` bumps versions, rebuilds registry metadata,
-   publishes affected public packages, and creates GitHub releases
+2. Every push to `main` opens or updates a Release PR with version bumps and changelog
+3. Maintainers review and squash-merge the Release PR to tag changed packages
+   (for example `tuckshop@v0.3.0`, `core@v0.3.0`) and publish only those packages to npm
 
 For details on the contributor and maintainer workflows, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
