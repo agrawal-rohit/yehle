@@ -128,16 +128,16 @@ Every push to `main` runs the `Release` workflow:
    packages have releasable changes
 2. Review the Release PR (CI must pass; one approval is required)
 3. Squash-merge the Release PR to:
-   - bump only the packages that changed (`tuckshop` and/or `@tuckshop/core`)
-   - create component tags such as `tuckshop@v0.3.0` and `core@v0.3.0`
+   - bump only the packages that changed
+   - create component tags (for example `tuckshop@v0.3.0`, `core@v0.3.0`)
    - publish only the released packages to npm with trusted publishing
 
-Configuration lives in [`release-please-config.json`](./release-please-config.json)
-and [`.release-please-manifest.json`](./.release-please-manifest.json). The only
-language-specific piece is the npm publish job in
-[`.github/workflows/release.yml`](./.github/workflows/release.yml); for a
-Python or Rust repo you would keep the same release-please job and swap that
-publish step.
+The workflow in [`.github/workflows/release.yml`](./.github/workflows/release.yml)
+is package-agnostic: it runs release-please, then `pnpm -r publish`, which
+skips private packages and versions already on the registry. To add or rename a
+package, edit only [`release-please-config.json`](./release-please-config.json)
+and [`.release-please-manifest.json`](./.release-please-manifest.json). For a
+Python or Rust repo, keep the release-please job and swap the publish step.
 
 **Note:** `tuckshop` and `@tuckshop/core` version independently.
 `@tuckshop/registry` is private, excluded from release-please, and never

@@ -20,8 +20,7 @@ jobs:
       contents: write
       pull-requests: write
     outputs:
-      cli_released: ${{ steps.release.outputs['packages/cli--release_created'] }}
-      core_released: ${{ steps.release.outputs['packages/core--release_created'] }}
+      releases_created: ${{ steps.release.outputs.releases_created }}
     steps:
       - name: Create release PR or tag
         id: release
@@ -29,13 +28,11 @@ jobs:
         with:
           # PAT/App token that can open PRs triggering CI and create protected tags.
           token: ${{ secrets.GH_ADMIN_TOKEN }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
 
   publish:
     name: Publish to npm
     needs: release-please
-    if: needs.release-please.outputs.cli_released == 'true' || needs.release-please.outputs.core_released == 'true'
+    if: needs.release-please.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -75,14 +72,7 @@ jobs:
       - name: Build workspace
         run: pnpm run build
 
-      - name: Publish @tuckshop/core
-        if: needs.release-please.outputs.core_released == 'true'
+      - name: Publish packages
         env:
           NPM_CONFIG_PROVENANCE: true
-        run: pnpm --filter @tuckshop/core publish --provenance --access public --no-git-checks
-
-      - name: Publish tuckshop
-        if: needs.release-please.outputs.cli_released == 'true'
-        env:
-          NPM_CONFIG_PROVENANCE: true
-        run: pnpm --filter tuckshop publish --provenance --access public --no-git-checks
+        run: pnpm -r publish --provenance --access public --no-git-checks
