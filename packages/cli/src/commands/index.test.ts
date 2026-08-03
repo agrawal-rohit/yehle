@@ -1,22 +1,11 @@
-import { RegistryItemType, SCHEMA_VERSION } from "@tuckshop/core";
+import { SCHEMA_VERSION } from "@tuckshop/core";
 import type { CAC } from "cac";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mockGetRegistryItemTypes = vi.fn();
 const mockListCommand = vi.fn();
 const mockPickStringOptions = vi.fn();
 const mockLoggerIntro = vi.fn();
 const mockLoggerError = vi.fn();
-
-vi.mock("@tuckshop/core", async () => {
-	const actual =
-		await vi.importActual<typeof import("@tuckshop/core")>("@tuckshop/core");
-	return {
-		...actual,
-		getRegistryItemTypes: (...args: unknown[]) =>
-			mockGetRegistryItemTypes(...args),
-	};
-});
 
 vi.mock("./list", () => ({
 	default: (...args: unknown[]) => mockListCommand(...args),
@@ -59,21 +48,24 @@ describe("commands/index", () => {
 		version: "1.0.0",
 		schemaVersion: SCHEMA_VERSION,
 		contentBaseUrl: "https://example.com",
+		types: {
+			component: { label: "Components" },
+			theme: { label: "Themes" },
+		},
 		items: {
 			"theme-a": {
 				id: "theme-a",
 				title: "Theme A",
 				description: "A theme",
-				type: RegistryItemType.THEME,
+				type: "theme",
 				variants: [],
 			},
 		},
 	};
-	const itemTypes = ["theme"];
+	const itemTypes = ["component", "theme"];
 
 	beforeEach(() => {
 		vi.clearAllMocks();
-		mockGetRegistryItemTypes.mockReturnValue(itemTypes);
 		mockPickStringOptions.mockReturnValue({ type: "theme" });
 		mockListCommand.mockResolvedValue(undefined);
 		mockLoggerIntro.mockResolvedValue(undefined);
@@ -89,14 +81,13 @@ describe("commands/index", () => {
 		await registerCommandsCli(app, registry);
 
 		expect(app.usage).toHaveBeenCalledWith("<command> [options]");
-		expect(mockGetRegistryItemTypes).toHaveBeenCalledWith(registry);
 		expect(command).toHaveBeenCalledWith(
 			"list",
 			"List available registry items",
 		);
 		expect(option).toHaveBeenCalledWith(
 			"--type <types>",
-			expect.stringContaining("theme"),
+			expect.stringContaining("component, theme"),
 		);
 	});
 

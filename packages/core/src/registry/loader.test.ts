@@ -1,7 +1,7 @@
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadRegistry, resolveRegistrySource } from "./loader";
-import { type Registry, RegistryItemType, SCHEMA_VERSION } from "./schema";
+import { type Registry, SCHEMA_VERSION } from "./schema";
 
 const mockIsRegularFileAsync = vi.fn<(candidate: string) => Promise<boolean>>();
 const mockReadJSONFileAsync = vi.fn<(candidate: string) => Promise<unknown>>();
@@ -15,12 +15,15 @@ const sampleRegistry: Registry = {
 	version: "1.0.0",
 	schemaVersion: SCHEMA_VERSION,
 	contentBaseUrl: "https://example.com/content",
+	types: {
+		theme: { label: "Themes" },
+	},
 	items: {
 		"sample-theme": {
 			id: "sample-theme",
 			title: "Sample Theme",
 			description: "A sample theme",
-			type: RegistryItemType.THEME,
+			type: "theme",
 			variants: [
 				{
 					id: "default",

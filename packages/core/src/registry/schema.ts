@@ -1,19 +1,5 @@
-/** Registry item types */
-export enum RegistryItemType {
-	TEMPLATE = "template",
-	COMPONENT = "component",
-	THEME = "theme",
-	CONVENTION = "convention",
-	AGENT_INSTRUCTION = "agent-instruction",
-	AGENT_SKILL = "agent-skill",
-	SUBAGENT = "subagent",
-}
-
 /** Schema version supported by this build of `@tuckshop/core`. */
 export const SCHEMA_VERSION = 1;
-
-/** Registry items may use built-in types or custom author-defined strings. */
-export type RegistryItemTypeValue = RegistryItemType | (string & {});
 
 /** Supported condition inference modes. */
 export enum RegistryConditionInference {
@@ -41,6 +27,12 @@ export type RegistryCondition = {
 	values: RegistryConditionValue[];
 };
 
+/** Display metadata for a registry item type. */
+export type RegistryItemTypeDefinition = {
+	label: string;
+	description?: string;
+};
+
 /** Built registry variant (installable slice). */
 export type RegistryVariant = {
 	id: string;
@@ -63,6 +55,8 @@ export type Registry = {
 	contentBaseUrl: string;
 	/** Shared condition definitions keyed by condition key. */
 	conditions?: Record<string, RegistryCondition>;
+	/** Item type display metadata keyed by type value. */
+	types: Record<string, RegistryItemTypeDefinition>;
 	/** Registry items keyed by id. */
 	items: Record<string, RegistryItem>;
 };
@@ -72,21 +66,10 @@ export type RegistryItem = {
 	id: string;
 	title: string;
 	description: string;
-	type: RegistryItemTypeValue;
+	type: string;
 	files?: RegistryFile[];
 	dependencies?: string[];
 	devDependencies?: string[];
 	variants: RegistryVariant[];
 	registryDependencies?: Array<string | { name: string }>;
 };
-
-/**
- * Collect the unique item types declared across a registry.
- * @param registry - Loaded registry document.
- * @returns Sorted unique type values.
- */
-export function getRegistryItemTypes(registry: Registry): string[] {
-	const types = new Set<string>();
-	for (const item of Object.values(registry.items)) types.add(item.type);
-	return Array.from(types).sort((a, b) => a.localeCompare(b));
-}

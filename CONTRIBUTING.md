@@ -172,7 +172,7 @@ when you are ready to publish the next version.
 
 `tuckshop` uses a JSON registry inspired by [shadcn](https://ui.shadcn.com/docs/registry) to distribute all registry items _(e.g. project templates, UI components, conventions, and agent instructions)_. Each unit is a self-contained folder holding its manifest and its source files. A unit can be wired to other items through the `registryDependencies` property to make composable units.
 
-The default registry content lives under `packages/registry/registry/`. Shared registry conditions are centralized in `packages/registry/registry/conditions.json`.
+The default registry content lives under `packages/registry/registry/`. Shared registry conditions are centralized in `packages/registry/registry/conditions.json`. Item type display metadata is centralized in `packages/registry/registry/types.json`.
 
 ### Registry Layout
 
@@ -181,6 +181,7 @@ Every item is a folder under `packages/registry/registry/` containing a `registr
 ```text
 packages/registry/registry/
 ├── conditions.json
+├── types.json
 ├── convention/dependency-updater/     # id: dependency-updater
 ├── convention/build/                  # id: build
 ├── convention/changelog/              # id: changelog
@@ -205,10 +206,11 @@ The compiled registry is written to `packages/registry/registry.json` by `pnpm r
 When proposing a new registry item:
 
 1. Add a new folder under `packages/registry/registry/` with a `registry-item.json` (`id`, `title`, `description`, `type`, `variants`) and its files
-2. Include everything needed for a complete working setup; depend on existing concern items instead of copying files
-3. Run `pnpm run build:registry`, `pnpm cov`, and `pnpm --filter tuckshop pack`
-4. Document what the item provides in your pull request
-5. Include examples of generated output
+2. Declare the item `type` in `packages/registry/registry/types.json` with a `label` and optional `description` _(required for every registry)_
+3. Include everything needed for a complete working setup; depend on existing concern items instead of copying files
+4. Run `pnpm run build:registry`, `pnpm cov`, and `pnpm --filter tuckshop pack`
+5. Document what the item provides in your pull request
+6. Include examples of generated output
 
 ## Security
 

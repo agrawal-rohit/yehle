@@ -11,8 +11,10 @@ import {
 	SCHEMA_VERSION,
 } from "./schema";
 import {
+	crossValidateItemTypes,
 	crossValidateWhen,
 	parseRegistryConditions,
+	parseRegistryItemTypes,
 	validateRegistryItem,
 } from "./validate";
 
@@ -312,8 +314,18 @@ export async function buildRegistry(
 		conditions = parseRegistryConditions(rawConditions);
 	}
 
+	// Types are a required part of every registry
+	const typesPath = path.join(registryDir, "types.json");
+	if (!fs.existsSync(typesPath))
+		throw new Error(
+			`Registry types not found at ${path.relative(repoRoot, typesPath)}.`,
+		);
+	const rawTypes = JSON.parse(fs.readFileSync(typesPath, "utf8")) as unknown;
+	const types = parseRegistryItemTypes(rawTypes);
+
 	// Validate the when keys and values against the conditions
 	crossValidateWhen(sortedItems, conditions);
+	crossValidateItemTypes(sortedItems, types);
 
 	// Use the environment variable for the content base URL if it is set
 	const override = process.env.TUCKSHOP_REGISTRY_BASE_URL;
@@ -330,6 +342,7 @@ export async function buildRegistry(
 		schemaVersion: SCHEMA_VERSION,
 		contentBaseUrl,
 		...(conditions ? { conditions } : {}),
+		types,
 		items: sortedItems,
 	};
 

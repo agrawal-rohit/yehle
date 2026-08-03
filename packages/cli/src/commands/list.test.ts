@@ -1,8 +1,4 @@
-import {
-	type Registry,
-	RegistryItemType,
-	SCHEMA_VERSION,
-} from "@tuckshop/core";
+import { type Registry, SCHEMA_VERSION } from "@tuckshop/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockParseMultiValueOption = vi.fn((value: string) =>
@@ -28,10 +24,41 @@ vi.mock("chalk", () => ({
 
 import listCommand from "./list";
 
+const DEFAULT_TYPES: NonNullable<Registry["types"]> = {
+	component: {
+		label: "Components",
+		description: "Reusable UI primitives for building interfaces.",
+	},
+	convention: {
+		label: "Conventions",
+		description: "Project workflows and tooling configuration.",
+	},
+	"agent-instruction": {
+		label: "Agent Instructions",
+		description: "Instruction files that guide coding agents.",
+	},
+	"agent-skill": {
+		label: "Agent Skills",
+		description: "Reusable skills that extend coding agents.",
+	},
+	subagent: {
+		label: "Subagents",
+		description: "Specialised agents for focused tasks.",
+	},
+	template: {
+		label: "Templates",
+		description: "Starter scaffolds for new projects.",
+	},
+	theme: {
+		label: "Themes",
+		description: "Design tokens and styling presets.",
+	},
+};
+
 function makeItem(
 	overrides: Partial<Registry["items"][string]> & {
 		id: string;
-		type: RegistryItemType;
+		type: string;
 		title: string;
 	},
 ): Registry["items"][string] {
@@ -49,11 +76,15 @@ function makeItem(
 	};
 }
 
-function makeRegistry(items: Registry["items"]): Registry {
+function makeRegistry(
+	items: Registry["items"],
+	types: Registry["types"] = DEFAULT_TYPES,
+): Registry {
 	return {
 		version: "0.0.0",
 		schemaVersion: SCHEMA_VERSION,
 		contentBaseUrl: "https://example.com",
+		types,
 		items,
 	};
 }
@@ -75,17 +106,17 @@ describe("commands/list", () => {
 			"theme-z": makeItem({
 				id: "theme-z",
 				title: "Zebra Theme",
-				type: RegistryItemType.THEME,
+				type: "theme",
 			}),
 			"theme-a": makeItem({
 				id: "theme-a",
 				title: "Alpha Theme",
-				type: RegistryItemType.THEME,
+				type: "theme",
 			}),
 			"component-a": makeItem({
 				id: "component-a",
 				title: "Alpha Component",
-				type: RegistryItemType.COMPONENT,
+				type: "component",
 			}),
 		});
 
@@ -107,12 +138,12 @@ describe("commands/list", () => {
 			"theme-a": makeItem({
 				id: "theme-a",
 				title: "Alpha Theme",
-				type: RegistryItemType.THEME,
+				type: "theme",
 			}),
 			"component-a": makeItem({
 				id: "component-a",
 				title: "Alpha Component",
-				type: RegistryItemType.COMPONENT,
+				type: "component",
 			}),
 		});
 
@@ -129,7 +160,7 @@ describe("commands/list", () => {
 			"theme-a": makeItem({
 				id: "theme-a",
 				title: "Alpha Theme",
-				type: RegistryItemType.THEME,
+				type: "theme",
 			}),
 		});
 
@@ -146,7 +177,7 @@ describe("commands/list", () => {
 			"theme-a": makeItem({
 				id: "theme-a",
 				title: "Alpha Theme",
-				type: RegistryItemType.THEME,
+				type: "theme",
 				variants: [
 					{
 						id: "light",
@@ -175,7 +206,7 @@ describe("commands/list", () => {
 			"theme-a": makeItem({
 				id: "theme-a",
 				title: "Alpha Theme",
-				type: RegistryItemType.THEME,
+				type: "theme",
 			}),
 		});
 
@@ -193,7 +224,7 @@ describe("commands/list", () => {
 			"theme-a": makeItem({
 				id: "theme-a",
 				title: "Alpha Theme",
-				type: RegistryItemType.THEME,
+				type: "theme",
 			}),
 		});
 
@@ -209,12 +240,12 @@ describe("commands/list", () => {
 			"theme-a": makeItem({
 				id: "theme-a",
 				title: "Alpha Theme",
-				type: RegistryItemType.THEME,
+				type: "theme",
 			}),
 			"component-a": makeItem({
 				id: "component-a",
 				title: "Alpha Component",
-				type: RegistryItemType.COMPONENT,
+				type: "component",
 			}),
 		});
 
@@ -248,52 +279,52 @@ describe("commands/list", () => {
 		);
 	});
 
-	it("formats every known registry item type label", async () => {
+	it("formats labels from registry.types", async () => {
 		const registry = makeRegistry({
 			component: makeItem({
 				id: "component",
 				title: "Component",
-				type: RegistryItemType.COMPONENT,
+				type: "component",
 			}),
 			convention: makeItem({
 				id: "convention",
 				title: "Convention",
-				type: RegistryItemType.CONVENTION,
+				type: "convention",
 			}),
 			"agent-instruction": makeItem({
 				id: "agent-instruction",
 				title: "Agent Instruction",
-				type: RegistryItemType.AGENT_INSTRUCTION,
+				type: "agent-instruction",
 			}),
 			"agent-skill": makeItem({
 				id: "agent-skill",
 				title: "Agent Skill",
-				type: RegistryItemType.AGENT_SKILL,
+				type: "agent-skill",
 			}),
 			subagent: makeItem({
 				id: "subagent",
 				title: "Subagent",
-				type: RegistryItemType.SUBAGENT,
+				type: "subagent",
 			}),
 			template: makeItem({
 				id: "template",
 				title: "Template",
-				type: RegistryItemType.TEMPLATE,
+				type: "template",
 			}),
 			theme: makeItem({
 				id: "theme",
 				title: "Theme",
-				type: RegistryItemType.THEME,
+				type: "theme",
 			}),
 		});
 
 		await listCommand(
 			registry,
 			[
-				"agent-instruction",
-				"agent-skill",
 				"component",
 				"convention",
+				"agent-instruction",
+				"agent-skill",
 				"subagent",
 				"template",
 				"theme",
@@ -312,15 +343,22 @@ describe("commands/list", () => {
 		expect(output).toContain("7 item(s)");
 	});
 
-	it("returns the raw type string for unknown registry item types at runtime", async () => {
-		const unknownType = "legacy";
-		const registry = makeRegistry({
-			"legacy-item": makeItem({
-				id: "legacy-item",
-				title: "Legacy Item",
-				type: unknownType,
-			}),
-		});
+	it("falls back to the raw type string when a type has no display metadata", async () => {
+		const registry = makeRegistry(
+			{
+				"legacy-item": makeItem({
+					id: "legacy-item",
+					title: "Legacy Item",
+					type: "legacy",
+				}),
+			},
+			{
+				theme: {
+					label: "Themes",
+					description: "Design tokens and styling presets.",
+				},
+			},
+		);
 
 		await listCommand(registry, ["legacy"], { type: "legacy" });
 

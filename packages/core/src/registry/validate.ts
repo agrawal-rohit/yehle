@@ -11,6 +11,7 @@ import {
 	type RegistryConditionValue,
 	type RegistryFile,
 	type RegistryItem,
+	type RegistryItemTypeDefinition,
 	type RegistryVariant,
 	SCHEMA_VERSION,
 } from "./schema";
@@ -288,6 +289,57 @@ export function crossValidateWhen(
 }
 
 /**
+ * Parse item type display metadata from a registry document.
+ * @param raw - Raw types object.
+ * @returns Normalized types map.
+ * @throws Error when types are absent, empty, or a type entry is malformed.
+ */
+export function parseRegistryItemTypes(
+	raw: unknown,
+): Record<string, RegistryItemTypeDefinition> {
+	if (raw === undefined || raw === null)
+		throw new Error("Registry types must be declared.");
+
+	const source = asRecord(raw, "Registry types");
+	const types: Record<string, RegistryItemTypeDefinition> = {};
+
+	for (const [key, rawType] of Object.entries(source)) {
+		const entry = asRecord(rawType, `Registry type "${key}"`);
+		assertNonEmptyString(entry.label, `Registry type "${key}" label`);
+
+		types[key] = {
+			label: entry.label,
+			...(typeof entry.description === "string" && entry.description.length > 0
+				? { description: entry.description }
+				: {}),
+		};
+	}
+
+	if (Object.keys(types).length === 0)
+		throw new Error("Registry types must declare at least one type.");
+
+	return types;
+}
+
+/**
+ * Ensure every item type is declared in the types map.
+ * @param items - Registry items to validate.
+ * @param types - Shared type definitions.
+ * @throws Error when an item type is undeclared.
+ */
+export function crossValidateItemTypes(
+	items: Record<string, RegistryItem>,
+	types: Record<string, RegistryItemTypeDefinition>,
+): void {
+	for (const item of Object.values(items)) {
+		if (!(item.type in types))
+			throw new Error(
+				`Registry item "${item.id}" has undeclared type "${item.type}".`,
+			);
+	}
+}
+
+/**
  * Parse and validate a registry document.
  * @param raw - Raw JSON value loaded from registry.json.
  * @returns Normalized registry document.
@@ -319,11 +371,15 @@ export function parseRegistryDocument(raw: unknown): Registry {
 	const conditions = parseRegistryConditions(source.conditions);
 	crossValidateWhen(items, conditions);
 
+	const types = parseRegistryItemTypes(source.types);
+	crossValidateItemTypes(items, types);
+
 	return {
 		version: source.version,
 		schemaVersion: source.schemaVersion,
 		contentBaseUrl: source.contentBaseUrl.replace(/\/+$/, ""),
 		...(conditions ? { conditions } : {}),
+		types,
 		items,
 	};
 }

@@ -1,5 +1,8 @@
-import type { Registry, RegistryItem } from "@tuckshop/core";
-import { RegistryItemType } from "@tuckshop/core";
+import type {
+	Registry,
+	RegistryItem,
+	RegistryItemTypeDefinition,
+} from "@tuckshop/core";
 import chalk from "chalk";
 import { defaultText, primaryText } from "../cli/colors";
 import { parseMultiValueOption } from "../cli/options";
@@ -9,41 +12,6 @@ type ListCommandOptions = {
 	/** Comma-separated registry item types, or `all`. */
 	type?: string;
 };
-
-/** Display metadata for each registry item type. */
-const REGISTRY_ITEM_TYPE_META = {
-	[RegistryItemType.COMPONENT]: {
-		label: "Components",
-		description: "Reusable UI primitives for building interfaces.",
-	},
-	[RegistryItemType.CONVENTION]: {
-		label: "Conventions",
-		description: "Project workflows and tooling configuration.",
-	},
-	[RegistryItemType.AGENT_INSTRUCTION]: {
-		label: "Agent Instructions",
-		description: "Instruction files that guide coding agents.",
-	},
-	[RegistryItemType.AGENT_SKILL]: {
-		label: "Agent Skills",
-		description: "Reusable skills that extend coding agents.",
-	},
-	[RegistryItemType.SUBAGENT]: {
-		label: "Subagents",
-		description: "Specialised agents for focused tasks.",
-	},
-	[RegistryItemType.TEMPLATE]: {
-		label: "Templates",
-		description: "Starter scaffolds for new projects.",
-	},
-	[RegistryItemType.THEME]: {
-		label: "Themes",
-		description: "Design tokens and styling presets.",
-	},
-} as const satisfies Record<
-	RegistryItemType,
-	{ label: string; description: string }
->;
 
 /**
  * Resolve which item types to include from `--type`.
@@ -89,8 +57,13 @@ function resolveFilterTypes(
  * Print matching registry items grouped by type.
  * @param matches - Items to print.
  * @param typeOrder - Section order for types.
+ * @param typeMeta - Display metadata keyed by type value.
  */
-function printItemsByType(matches: RegistryItem[], typeOrder: string[]): void {
+function printItemsByType(
+	matches: RegistryItem[],
+	typeOrder: string[],
+	typeMeta: Record<string, RegistryItemTypeDefinition>,
+): void {
 	const byType = new Map<string, RegistryItem[]>();
 
 	for (const item of matches) {
@@ -103,7 +76,7 @@ function printItemsByType(matches: RegistryItem[], typeOrder: string[]): void {
 		const group = byType.get(type);
 		if (!group) continue;
 
-		const meta = REGISTRY_ITEM_TYPE_META[type as RegistryItemType];
+		const meta = typeMeta[type];
 		console.log(primaryText(meta?.label ?? type));
 		if (meta?.description) console.log(meta.description);
 		console.log();
@@ -157,7 +130,7 @@ async function listCommand(
 	console.log(defaultText("─".repeat(40)));
 	console.log();
 	const typeOrder = itemTypes.filter((type) => allowedTypes.has(type));
-	printItemsByType(matches, typeOrder);
+	printItemsByType(matches, typeOrder, registry.types);
 	console.log(defaultText(`${matches.length} item(s)`));
 	console.log();
 }

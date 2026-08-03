@@ -50,6 +50,21 @@ function writeConditions(
 	);
 }
 
+/**
+ * Write a shared types map under registry/types.json.
+ * @param repoRoot - Absolute temp repo root.
+ * @param types - Types object written as JSON.
+ */
+function writeTypes(repoRoot: string, types: Record<string, unknown>): void {
+	const registryDir = path.join(repoRoot, "registry");
+	fs.mkdirSync(registryDir, { recursive: true });
+	fs.writeFileSync(
+		path.join(registryDir, "types.json"),
+		`${JSON.stringify(types, null, 2)}\n`,
+		"utf8",
+	);
+}
+
 describe("registry/builder", () => {
 	let tempDir: string;
 	const previousEnv = process.env.TUCKSHOP_REGISTRY_BASE_URL;
@@ -62,6 +77,11 @@ describe("registry/builder", () => {
 			"utf8",
 		);
 		delete process.env.TUCKSHOP_REGISTRY_BASE_URL;
+		writeTypes(tempDir, {
+			component: { label: "Components" },
+			convention: { label: "Conventions" },
+			"legacy-widget": { label: "Legacy Widgets" },
+		});
 	});
 
 	afterEach(() => {
@@ -617,6 +637,105 @@ describe("registry/builder", () => {
 
 		await expect(buildRegistry(tempDir)).rejects.toThrow(
 			'Registry condition "language" values[0].files[0] must be a non-empty string.',
+		);
+	});
+
+	it("embeds types from types.json when present", async () => {
+		writeTypes(tempDir, {
+			component: {
+				label: "Components",
+				description: "Reusable UI primitives.",
+			},
+			theme: {
+				label: "Themes",
+			},
+		});
+		writeItem(
+			tempDir,
+			"component/button",
+			{
+				id: "button",
+				title: "Button",
+				description: "A button",
+				type: "component",
+				variants: [
+					{
+						id: "default",
+						title: "Default",
+						description: "Default",
+						files: [{ source: "a.txt", target: "a.txt" }],
+					},
+				],
+			},
+			{ "a.txt": "a\n" },
+		);
+
+		const document = await buildRegistry(tempDir);
+
+		expect(document.types).toEqual({
+			component: {
+				label: "Components",
+				description: "Reusable UI primitives.",
+			},
+			theme: {
+				label: "Themes",
+			},
+		});
+	});
+
+	it("throws when types.json is absent", async () => {
+		fs.rmSync(path.join(tempDir, "registry", "types.json"));
+		writeItem(
+			tempDir,
+			"component/button",
+			{
+				id: "button",
+				title: "Button",
+				description: "A button",
+				type: "component",
+				variants: [
+					{
+						id: "default",
+						title: "Default",
+						description: "Default",
+						files: [{ source: "a.txt", target: "a.txt" }],
+					},
+				],
+			},
+			{ "a.txt": "a\n" },
+		);
+
+		await expect(buildRegistry(tempDir)).rejects.toThrow(
+			"Registry types not found at registry/types.json.",
+		);
+	});
+
+	it("throws when an item type is not declared in types.json", async () => {
+		writeTypes(tempDir, {
+			theme: { label: "Themes" },
+		});
+		writeItem(
+			tempDir,
+			"component/button",
+			{
+				id: "button",
+				title: "Button",
+				description: "A button",
+				type: "component",
+				variants: [
+					{
+						id: "default",
+						title: "Default",
+						description: "Default",
+						files: [{ source: "a.txt", target: "a.txt" }],
+					},
+				],
+			},
+			{ "a.txt": "a\n" },
+		);
+
+		await expect(buildRegistry(tempDir)).rejects.toThrow(
+			'Registry item "button" has undeclared type "component" (declared: theme).',
 		);
 	});
 });
