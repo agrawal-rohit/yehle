@@ -155,6 +155,30 @@ describe("index", () => {
 			);
 		});
 
+		it("should pass through a global --registry=value override before registration", async () => {
+			vi.stubGlobal("process", {
+				argv: [
+					"node",
+					"tuckshop",
+					"--registry=https://example.com/registry.json",
+					"list",
+				],
+			});
+			vi.mocked(mockApp.parse).mockImplementation(() => {});
+
+			await run();
+
+			expect(loadRuntimeRegistry).toHaveBeenCalledWith(
+				"https://example.com/registry.json",
+				undefined,
+			);
+			expect(registerCommandsCli).toHaveBeenCalledWith(
+				mockApp,
+				expect.objectContaining({ schemaVersion: SCHEMA_VERSION }),
+				{ registryFlag: "https://example.com/registry.json" },
+			);
+		});
+
 		it("should forward a saved registry when no flag is present", async () => {
 			vi.stubGlobal("process", { argv: ["node", "tuckshop", "list"] });
 			vi.mocked(readConfig).mockResolvedValue({

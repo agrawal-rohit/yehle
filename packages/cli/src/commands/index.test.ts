@@ -173,7 +173,7 @@ describe("commands/index", () => {
 
 			await actions.get("config get")?.();
 
-			expect(mockLoggerIntro).toHaveBeenCalledWith("checking the pantry");
+			expect(mockLoggerIntro).toHaveBeenCalledWith("checking the shelves");
 			expect(mockConfigGetCommand).toHaveBeenCalledWith({
 				flag: "https://example.com/flag-registry.json",
 				envRegistry: "https://example.com/env-registry.json",
@@ -216,5 +216,55 @@ describe("commands/index", () => {
 		await actions.get("config set <source>")?.("nope");
 
 		expect(mockLoggerError).toHaveBeenCalledWith("bad source");
+	});
+
+	it("logs non-Error failures from config set as strings", async () => {
+		const { app, actions } = createMockApp();
+		mockConfigSetCommand.mockRejectedValue("set failure");
+		await registerCommandsCli(app, registry);
+
+		await actions.get("config set <source>")?.("nope");
+
+		expect(mockLoggerError).toHaveBeenCalledWith("set failure");
+	});
+
+	it("logs Error messages when config get fails", async () => {
+		const { app, actions } = createMockApp();
+		mockConfigGetCommand.mockRejectedValue(new Error("read failed"));
+		await registerCommandsCli(app, registry);
+
+		await actions.get("config get")?.();
+
+		expect(mockLoggerError).toHaveBeenCalledWith("read failed");
+	});
+
+	it("logs non-Error failures from config get as strings", async () => {
+		const { app, actions } = createMockApp();
+		mockConfigGetCommand.mockRejectedValue("get failure");
+		await registerCommandsCli(app, registry);
+
+		await actions.get("config get")?.();
+
+		expect(mockLoggerError).toHaveBeenCalledWith("get failure");
+	});
+
+	it("logs Error messages when config unset fails", async () => {
+		const { app, actions } = createMockApp();
+		mockConfigUnsetCommand.mockRejectedValue(new Error("clear failed"));
+		await registerCommandsCli(app, registry);
+
+		await actions.get("config unset")?.();
+
+		expect(mockLoggerError).toHaveBeenCalledWith("clear failed");
+	});
+
+	it("logs non-Error failures from config unset as strings", async () => {
+		const { app, actions } = createMockApp();
+		mockConfigUnsetCommand.mockRejectedValue("unset failure");
+		await registerCommandsCli(app, registry);
+
+		await actions.get("config unset")?.();
+
+		expect(mockLoggerError).toHaveBeenCalledWith("unset failure");
 	});
 });

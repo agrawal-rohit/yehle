@@ -58,7 +58,7 @@ export async function registerCommandsCli(
 	);
 	configGet.action(async () => {
 		try {
-			await logger.intro("checking the pantry");
+			await logger.intro("checking the shelves");
 			await configGetCommand({
 				flag: options.registryFlag,
 				envRegistry: process.env.TUCKSHOP_REGISTRY,
@@ -75,7 +75,7 @@ export async function registerCommandsCli(
 	);
 	configSet.action(async (source: string) => {
 		try {
-			await logger.intro("stocking the pantry");
+			await logger.intro("stocking the shelves");
 			await configSetCommand(source);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
@@ -89,7 +89,7 @@ export async function registerCommandsCli(
 	);
 	configUnset.action(async () => {
 		try {
-			await logger.intro("clearing the pantry");
+			await logger.intro("clearing the shelves");
 			await configUnsetCommand();
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);

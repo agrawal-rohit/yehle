@@ -20,6 +20,7 @@ export default defineConfig({
 			},
 			exclude: [
 				...(configDefaults.coverage.exclude || []),
+				"**/coverage/**",
 				"packages/*/dist/**",
 				"packages/registry/registry/**",
 				"**/commitlint.config.*",
