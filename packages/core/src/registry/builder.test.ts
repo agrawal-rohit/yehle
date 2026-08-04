@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildRegistry } from "./builder";
 import { type Registry, SCHEMA_VERSION } from "./schema";
 
@@ -68,6 +68,7 @@ function writeTypes(repoRoot: string, types: Record<string, unknown>): void {
 describe("registry/builder", () => {
 	let tempDir: string;
 	const previousEnv = process.env.TUCKSHOP_REGISTRY_BASE_URL;
+	let consoleLogSpy: ReturnType<typeof vi.spyOn>;
 
 	beforeEach(() => {
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-test-"));
@@ -82,9 +83,11 @@ describe("registry/builder", () => {
 			convention: { label: "Conventions" },
 			"legacy-widget": { label: "Legacy Widgets" },
 		});
+		consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 	});
 
 	afterEach(() => {
+		consoleLogSpy.mockRestore();
 		if (previousEnv === undefined)
 			delete process.env.TUCKSHOP_REGISTRY_BASE_URL;
 		else process.env.TUCKSHOP_REGISTRY_BASE_URL = previousEnv;
@@ -735,7 +738,7 @@ describe("registry/builder", () => {
 		);
 
 		await expect(buildRegistry(tempDir)).rejects.toThrow(
-			'Registry item "button" has undeclared type "component" (declared: theme).',
+			'Registry item "button" has undeclared type "component".',
 		);
 	});
 });

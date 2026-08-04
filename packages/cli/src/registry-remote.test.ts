@@ -50,6 +50,26 @@ describe("registry-remote", () => {
 		expect(mockLoadRegistry).toHaveBeenCalledWith("/workspace/registry.json");
 	});
 
+	it("forwards flag and saved registry sources to resolveRegistrySource", async () => {
+		mockResolveRegistrySource.mockResolvedValue({
+			kind: "path",
+			location: "/workspace/registry.json",
+		});
+		mockLoadRegistry.mockResolvedValue(sampleRegistry);
+
+		await loadRuntimeRegistry(
+			"https://example.com/flag-registry.json",
+			"https://example.com/saved-registry.json",
+		);
+
+		expect(mockResolveRegistrySource).toHaveBeenCalledWith(
+			expect.objectContaining({
+				registry: "https://example.com/flag-registry.json",
+				savedRegistry: "https://example.com/saved-registry.json",
+			}),
+		);
+	});
+
 	it("rejects private-network registry hosts", async () => {
 		mockResolveRegistrySource.mockResolvedValue({
 			kind: "url",

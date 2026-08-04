@@ -11,6 +11,8 @@ export interface RegistrySource {
 export interface ResolveRegistrySourceOptions {
 	/** Explicit registry flag value from the CLI. */
 	registry?: string;
+	/** Registry source persisted via `tuckshop config set`. */
+	savedRegistry?: string;
 	/** Current working directory used to resolve relative registry paths. */
 	cwd?: string;
 	/** Environment variables consulted for TUCKSHOP_REGISTRY. */
@@ -70,7 +72,9 @@ export async function resolveRegistrySource(
 		options.bundledRegistryPath ??
 		path.resolve(__dirname, "../../", "registry.json");
 	const fallbackRegistryPaths = options.fallbackRegistryPaths ?? [];
-	const configuredSource = options.registry ?? env.TUCKSHOP_REGISTRY;
+	// Precedence: --registry flag > TUCKSHOP_REGISTRY env > saved global config.
+	const configuredSource =
+		options.registry ?? env.TUCKSHOP_REGISTRY ?? options.savedRegistry;
 
 	if (configuredSource) {
 		if (isUrlSource(configuredSource))

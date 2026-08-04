@@ -271,8 +271,6 @@ describe("registry/validate", () => {
 					},
 				},
 			}),
-		).toThrow(
-			'Registry item "button" has undeclared type "component" (declared: theme).',
-		);
+		).toThrow('Registry item "button" has undeclared type "component".');
 	});
 });

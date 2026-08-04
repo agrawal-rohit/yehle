@@ -178,16 +178,19 @@ async function fetchRemoteRegistry(registryUrl: string): Promise<Registry> {
 }
 
 /**
- * Load the registry selected by CLI flags, env, or bundled defaults.
+ * Load the registry selected by CLI flags, env, saved config, or bundled defaults.
  * @param registryOverride - Optional `--registry` flag value.
+ * @param savedRegistry - Optional registry source persisted via `tuckshop config set`.
  * @returns Registry document used for the current CLI invocation.
  * @throws Error when the resolved registry source cannot be loaded safely.
  */
 export async function loadRuntimeRegistry(
 	registryOverride?: string,
+	savedRegistry?: string,
 ): Promise<Registry> {
 	const source = await resolveRegistrySource({
 		registry: registryOverride,
+		savedRegistry,
 		bundledRegistryPath,
 		fallbackRegistryPaths: [workspaceRegistryPath],
 	});

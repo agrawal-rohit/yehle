@@ -26,7 +26,12 @@ vi.mock("./registry-remote", () => ({
 	})),
 }));
 
+vi.mock("./cli/config", () => ({
+	readConfig: vi.fn(async () => ({})),
+}));
+
 import cac from "cac";
+import { readConfig } from "./cli/config";
 import { registerCommandsCli } from "./commands";
 import run from "./index";
 import { loadRuntimeRegistry } from "./registry-remote";
@@ -35,6 +40,7 @@ describe("index", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.mocked(registerCommandsCli).mockResolvedValue();
+		vi.mocked(readConfig).mockResolvedValue({});
 	});
 
 	afterEach(() => {
@@ -48,10 +54,11 @@ describe("index", () => {
 			await run();
 
 			expect(cac).toHaveBeenCalledWith("tuckshop");
-			expect(loadRuntimeRegistry).toHaveBeenCalledWith(undefined);
+			expect(loadRuntimeRegistry).toHaveBeenCalledWith(undefined, undefined);
 			expect(registerCommandsCli).toHaveBeenCalledWith(
 				mockApp,
 				expect.objectContaining({ schemaVersion: SCHEMA_VERSION }),
+				{ registryFlag: undefined },
 			);
 			expect(mockApp.help).toHaveBeenCalled();
 		});
@@ -139,6 +146,50 @@ describe("index", () => {
 
 			expect(loadRuntimeRegistry).toHaveBeenCalledWith(
 				"https://example.com/registry.json",
+				undefined,
+			);
+			expect(registerCommandsCli).toHaveBeenCalledWith(
+				mockApp,
+				expect.objectContaining({ schemaVersion: SCHEMA_VERSION }),
+				{ registryFlag: "https://example.com/registry.json" },
+			);
+		});
+
+		it("should forward a saved registry when no flag is present", async () => {
+			vi.stubGlobal("process", { argv: ["node", "tuckshop", "list"] });
+			vi.mocked(readConfig).mockResolvedValue({
+				registry: "https://example.com/saved-registry.json",
+			});
+			vi.mocked(mockApp.parse).mockImplementation(() => {});
+
+			await run();
+
+			expect(loadRuntimeRegistry).toHaveBeenCalledWith(
+				undefined,
+				"https://example.com/saved-registry.json",
+			);
+		});
+
+		it("should prefer the flag over a saved registry", async () => {
+			vi.stubGlobal("process", {
+				argv: [
+					"node",
+					"tuckshop",
+					"--registry",
+					"https://example.com/flag-registry.json",
+					"list",
+				],
+			});
+			vi.mocked(readConfig).mockResolvedValue({
+				registry: "https://example.com/saved-registry.json",
+			});
+			vi.mocked(mockApp.parse).mockImplementation(() => {});
+
+			await run();
+
+			expect(loadRuntimeRegistry).toHaveBeenCalledWith(
+				"https://example.com/flag-registry.json",
+				"https://example.com/saved-registry.json",
 			);
 		});
 	});

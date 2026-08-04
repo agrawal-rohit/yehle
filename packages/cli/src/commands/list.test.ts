@@ -201,6 +201,23 @@ describe("commands/list", () => {
 		expect(output).toContain("Alpha Theme [Light, Dark]");
 	});
 
+	it("omits the variant suffix when an item has no variants", async () => {
+		const registry = makeRegistry({
+			"theme-a": makeItem({
+				id: "theme-a",
+				title: "Alpha Theme",
+				type: "theme",
+				variants: [],
+			}),
+		});
+
+		await listCommand(registry, ["theme"], { type: "theme" });
+
+		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
+		expect(output).toContain("Alpha Theme: Alpha Theme description");
+		expect(output).not.toContain("Alpha Theme [");
+	});
+
 	it("prints an empty-state message when no items match", async () => {
 		const registry = makeRegistry({
 			"theme-a": makeItem({

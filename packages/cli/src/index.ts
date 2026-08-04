@@ -1,4 +1,5 @@
 import cac from "cac";
+import { readConfig } from "./cli/config";
 import { registerCommandsCli } from "./commands";
 import { loadRuntimeRegistry } from "./registry-remote";
 
@@ -24,16 +25,19 @@ function readRegistryOverride(argv: string[]): string | undefined {
  */
 export default async function run(): Promise<void> {
 	const app = cac("tuckshop");
-	app.option(
-		"--registry <source>",
-		"Use an alternate registry URL or local registry.json path",
-	);
+	app.option("--registry <source>", "Use a custom registry URL");
 
 	const args = process.argv.slice(2).filter(Boolean);
 	const registryOverride = readRegistryOverride(args);
-	const registry = await loadRuntimeRegistry(registryOverride);
+	const savedConfig = await readConfig();
+	const registry = await loadRuntimeRegistry(
+		registryOverride,
+		savedConfig.registry,
+	);
 
-	await registerCommandsCli(app, registry);
+	await registerCommandsCli(app, registry, {
+		registryFlag: registryOverride,
+	});
 
 	app.help();
 

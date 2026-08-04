@@ -24,7 +24,7 @@
 - **`@tuckshop/core`**: the registry builder, validator, resolver, and authoring API for custom registries
 - **`@tuckshop/registry`**: the private default registry content bundled into the CLI
 
-By default, `npx tuckshop` uses the bundled registry from this repository. To point the CLI at a custom registry, use `--registry` or set the `TUCKSHOP_REGISTRY` environment variable.
+By default, `npx tuckshop` uses the bundled registry from this repository. To point the CLI at a custom registry, use `--registry`, set the `TUCKSHOP_REGISTRY` environment variable, or persist a default with `tuckshop config set`.
 
 ## Quickstart
 
@@ -34,10 +34,24 @@ List available templates from the default registry:
 npx tuckshop list
 ```
 
-Use a custom registry:
+Use a custom registry for one invocation:
 
 ```bash
 npx tuckshop --registry https://example.com/registry.json list
+```
+
+Persist a default registry source (stored in `~/.config/tuckshop/config.json`):
+
+```bash
+npx tuckshop config set https://example.com/registry.json
+npx tuckshop list
+```
+
+Inspect or clear the saved source:
+
+```bash
+npx tuckshop config get
+npx tuckshop config unset
 ```
 
 Or set it as an environment variable for all commands:
@@ -47,6 +61,7 @@ export TUCKSHOP_REGISTRY="https://example.com/registry.json"
 npx tuckshop list
 ```
 
+Registry source precedence: `--registry` flag > `TUCKSHOP_REGISTRY` env > saved config > bundled default.
 ## Workspace layout
 
 ```text

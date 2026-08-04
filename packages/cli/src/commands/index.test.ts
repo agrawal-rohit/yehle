@@ -6,9 +6,18 @@ const mockListCommand = vi.fn();
 const mockPickStringOptions = vi.fn();
 const mockLoggerIntro = vi.fn();
 const mockLoggerError = vi.fn();
+const mockConfigGetCommand = vi.fn();
+const mockConfigSetCommand = vi.fn();
+const mockConfigUnsetCommand = vi.fn();
 
 vi.mock("./list", () => ({
 	default: (...args: unknown[]) => mockListCommand(...args),
+}));
+
+vi.mock("./config", () => ({
+	configGetCommand: (...args: unknown[]) => mockConfigGetCommand(...args),
+	configSetCommand: (...args: unknown[]) => mockConfigSetCommand(...args),
+	configUnsetCommand: (...args: unknown[]) => mockConfigUnsetCommand(...args),
 }));
 
 vi.mock("../cli/options", () => ({
@@ -25,22 +34,30 @@ vi.mock("../cli/logger", () => ({
 import { registerCommandsCli } from "./index";
 
 function createMockApp() {
-	const actionHandler = vi.fn();
+	const actions = new Map<string, (...args: unknown[]) => Promise<void>>();
 	const option = vi.fn().mockReturnThis();
-	const command = vi.fn(() => ({
-		option,
-		action: (handler: (options: Record<string, unknown>) => Promise<void>) => {
-			actionHandler.mockImplementation(handler);
-			return { option, action: actionHandler };
-		},
-	}));
+	const command = vi.fn((name: string) => {
+		const commandApi = {
+			option,
+			action: (handler: (...args: unknown[]) => Promise<void>) => {
+				actions.set(name, handler);
+				return commandApi;
+			},
+		};
+		return commandApi;
+	});
 
 	const app = {
 		usage: vi.fn(),
 		command,
 	};
 
-	return { app: app as unknown as CAC, command, option, actionHandler };
+	return {
+		app: app as unknown as CAC,
+		command,
+		option,
+		actions,
+	};
 }
 
 describe("commands/index", () => {
@@ -69,13 +86,16 @@ describe("commands/index", () => {
 		mockPickStringOptions.mockReturnValue({ type: "theme" });
 		mockListCommand.mockResolvedValue(undefined);
 		mockLoggerIntro.mockResolvedValue(undefined);
+		mockConfigGetCommand.mockResolvedValue(undefined);
+		mockConfigSetCommand.mockResolvedValue("/tmp/config.json");
+		mockConfigUnsetCommand.mockResolvedValue(true);
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	it("registers the list command with usage and type option", async () => {
+	it("registers the list and config commands with usage and type option", async () => {
 		const { app, command, option } = createMockApp();
 
 		await registerCommandsCli(app, registry);
@@ -85,6 +105,18 @@ describe("commands/index", () => {
 			"list",
 			"List available registry items",
 		);
+		expect(command).toHaveBeenCalledWith(
+			"config get",
+			"Show the configured registry source",
+		);
+		expect(command).toHaveBeenCalledWith(
+			"config set <source>",
+			"Persist a default registry source",
+		);
+		expect(command).toHaveBeenCalledWith(
+			"config unset",
+			"Clear the saved registry source",
+		);
 		expect(option).toHaveBeenCalledWith(
 			"--type <types>",
 			expect.stringContaining("component, theme"),
@@ -92,10 +124,12 @@ describe("commands/index", () => {
 	});
 
 	it("runs the list command action with picked options", async () => {
-		const { app, actionHandler } = createMockApp();
+		const { app, actions } = createMockApp();
 		await registerCommandsCli(app, registry);
 
-		await actionHandler({ type: "theme" });
+		const listAction = actions.get("list");
+		expect(listAction).toBeDefined();
+		await listAction?.({ type: "theme" });
 
 		expect(mockLoggerIntro).toHaveBeenCalledWith("here's the menu");
 		expect(mockPickStringOptions).toHaveBeenCalledWith({ type: "theme" }, [
@@ -108,22 +142,79 @@ describe("commands/index", () => {
 	});
 
 	it("logs Error messages when the list command fails", async () => {
-		const { app, actionHandler } = createMockApp();
+		const { app, actions } = createMockApp();
 		mockListCommand.mockRejectedValue(new Error("boom"));
 		await registerCommandsCli(app, registry);
 
-		await actionHandler({});
+		await actions.get("list")?.({});
 
 		expect(mockLoggerError).toHaveBeenCalledWith("boom");
 	});
 
 	it("logs non-Error failures as strings", async () => {
-		const { app, actionHandler } = createMockApp();
+		const { app, actions } = createMockApp();
 		mockListCommand.mockRejectedValue("string failure");
 		await registerCommandsCli(app, registry);
 
-		await actionHandler({});
+		await actions.get("list")?.({});
 
 		expect(mockLoggerError).toHaveBeenCalledWith("string failure");
+	});
+
+	it("runs config get with the current registry flag and env", async () => {
+		const { app, actions } = createMockApp();
+		const previous = process.env.TUCKSHOP_REGISTRY;
+		process.env.TUCKSHOP_REGISTRY = "https://example.com/env-registry.json";
+
+		try {
+			await registerCommandsCli(app, registry, {
+				registryFlag: "https://example.com/flag-registry.json",
+			});
+
+			await actions.get("config get")?.();
+
+			expect(mockLoggerIntro).toHaveBeenCalledWith("checking the pantry");
+			expect(mockConfigGetCommand).toHaveBeenCalledWith({
+				flag: "https://example.com/flag-registry.json",
+				envRegistry: "https://example.com/env-registry.json",
+			});
+		} finally {
+			if (previous === undefined) delete process.env.TUCKSHOP_REGISTRY;
+			else process.env.TUCKSHOP_REGISTRY = previous;
+		}
+	});
+
+	it("runs config set with the provided source", async () => {
+		const { app, actions } = createMockApp();
+		await registerCommandsCli(app, registry);
+
+		await actions.get("config set <source>")?.(
+			"https://example.com/registry.json",
+		);
+
+		expect(mockLoggerIntro).toHaveBeenCalledWith("stocking the shelves");
+		expect(mockConfigSetCommand).toHaveBeenCalledWith(
+			"https://example.com/registry.json",
+		);
+	});
+
+	it("runs config unset", async () => {
+		const { app, actions } = createMockApp();
+		await registerCommandsCli(app, registry);
+
+		await actions.get("config unset")?.();
+
+		expect(mockLoggerIntro).toHaveBeenCalledWith("clearing the shelves");
+		expect(mockConfigUnsetCommand).toHaveBeenCalled();
+	});
+
+	it("logs config command failures", async () => {
+		const { app, actions } = createMockApp();
+		mockConfigSetCommand.mockRejectedValue(new Error("bad source"));
+		await registerCommandsCli(app, registry);
+
+		await actions.get("config set <source>")?.("nope");
+
+		expect(mockLoggerError).toHaveBeenCalledWith("bad source");
 	});
 });

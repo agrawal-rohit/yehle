@@ -7,8 +7,8 @@ const mockIsRegularFileAsync = vi.fn<(candidate: string) => Promise<boolean>>();
 const mockReadJSONFileAsync = vi.fn<(candidate: string) => Promise<unknown>>();
 
 vi.mock("../core/fs", () => ({
-	isRegularFileAsync: (...args: unknown[]) => mockIsRegularFileAsync(...args),
-	readJSONFileAsync: (...args: unknown[]) => mockReadJSONFileAsync(...args),
+	isRegularFileAsync: (candidate: string) => mockIsRegularFileAsync(candidate),
+	readJSONFileAsync: (candidate: string) => mockReadJSONFileAsync(candidate),
 }));
 
 const sampleRegistry: Registry = {
@@ -132,6 +132,53 @@ describe("registry/loader", () => {
 		).resolves.toEqual({
 			kind: "url",
 			location: "https://example.com/env-registry.json",
+		});
+	});
+
+	it("uses a saved registry config when flag and env are absent", async () => {
+		await expect(
+			resolveRegistrySource({
+				cwd: "/workspace",
+				env: {},
+				savedRegistry: "https://example.com/saved-registry.json",
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).resolves.toEqual({
+			kind: "url",
+			location: "https://example.com/saved-registry.json",
+		});
+	});
+
+	it("prefers TUCKSHOP_REGISTRY over a saved registry config", async () => {
+		await expect(
+			resolveRegistrySource({
+				cwd: "/workspace",
+				env: {
+					TUCKSHOP_REGISTRY: "https://example.com/env-registry.json",
+				},
+				savedRegistry: "https://example.com/saved-registry.json",
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).resolves.toEqual({
+			kind: "url",
+			location: "https://example.com/env-registry.json",
+		});
+	});
+
+	it("prefers an explicit flag over env and saved registry config", async () => {
+		await expect(
+			resolveRegistrySource({
+				registry: "https://example.com/flag-registry.json",
+				cwd: "/workspace",
+				env: {
+					TUCKSHOP_REGISTRY: "https://example.com/env-registry.json",
+				},
+				savedRegistry: "https://example.com/saved-registry.json",
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).resolves.toEqual({
+			kind: "url",
+			location: "https://example.com/flag-registry.json",
 		});
 	});
 
