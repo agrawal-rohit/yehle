@@ -283,8 +283,6 @@ export async function buildRegistry(
 	const outputPath = path.join(repoRoot, "registry.json");
 
 	const itemFolderPaths = collectItemDirs(registryDir);
-	if (itemFolderPaths.length === 0)
-		throw new Error(`No registry items found under ${registryDir}.`);
 
 	const pkg = await readJSONFileAsync<{ version: string }>(
 		path.join(repoRoot, "package.json"),
@@ -347,8 +345,11 @@ export async function buildRegistry(
 	};
 
 	await writeFileAsync(outputPath, `${JSON.stringify(document, null, 2)}\n`);
+	const itemCount = Object.keys(sortedItems).length;
 	console.log(
-		`Built ${Object.keys(sortedItems).length} registry items at ${path.relative(repoRoot, outputPath)}.`,
+		itemCount === 0
+			? `Built empty registry at ${path.relative(repoRoot, outputPath)}.`
+			: `Built ${itemCount} registry items at ${path.relative(repoRoot, outputPath)}.`,
 	);
 
 	return document;

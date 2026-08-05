@@ -195,11 +195,13 @@ describe("registry/builder", () => {
 		expect(document.contentBaseUrl).toBe("https://example.com/mirror");
 	});
 
-	it("throws when no registry items exist", async () => {
+	it("builds an empty items map when no registry items exist", async () => {
 		fs.mkdirSync(path.join(tempDir, "registry"), { recursive: true });
-		await expect(buildRegistry(tempDir)).rejects.toThrow(
-			`No registry items found under ${path.join(tempDir, "registry")}.`,
-		);
+
+		const document = await buildRegistry(tempDir);
+
+		expect(document.items).toEqual({});
+		expect(fs.existsSync(path.join(tempDir, "registry.json"))).toBe(true);
 	});
 
 	it("throws on duplicate registry item ids", async () => {
