@@ -36,11 +36,17 @@ import { registerCommandsCli } from "./commands";
 import run from "./index";
 import { loadRuntimeRegistry } from "./registry-remote";
 
+/** Default shape returned by cac's `parse(..., { run: false })`. */
+function emptyParseResult() {
+	return { args: [] as string[], options: {} as Record<string, unknown> };
+}
+
 describe("index", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.mocked(registerCommandsCli).mockResolvedValue();
 		vi.mocked(readConfig).mockResolvedValue({});
+		vi.mocked(mockApp.parse).mockReturnValue(emptyParseResult());
 	});
 
 	afterEach(() => {
@@ -54,6 +60,9 @@ describe("index", () => {
 			await run();
 
 			expect(cac).toHaveBeenCalledWith("tuckshop");
+			expect(mockApp.parse).toHaveBeenCalledWith(["node", "tuckshop"], {
+				run: false,
+			});
 			expect(loadRuntimeRegistry).toHaveBeenCalledWith(undefined, undefined);
 			expect(registerCommandsCli).toHaveBeenCalledWith(
 				mockApp,
@@ -69,16 +78,19 @@ describe("index", () => {
 			await run();
 
 			expect(mockApp.outputHelp).toHaveBeenCalled();
-			expect(mockApp.parse).not.toHaveBeenCalled();
+			expect(mockApp.parse).toHaveBeenCalledTimes(1);
+			expect(mockApp.parse).toHaveBeenCalledWith(["node", "tuckshop"], {
+				run: false,
+			});
 		});
 
 		it("should parse arguments when provided", async () => {
 			const argv = ["node", "tuckshop", "package"];
 			vi.stubGlobal("process", { argv });
-			vi.mocked(mockApp.parse).mockImplementation(() => {});
 
 			await run();
 
+			expect(mockApp.parse).toHaveBeenCalledWith(argv, { run: false });
 			expect(mockApp.parse).toHaveBeenCalledWith(argv);
 			expect(mockApp.outputHelp).not.toHaveBeenCalled();
 		});
@@ -87,13 +99,15 @@ describe("index", () => {
 			const argv = ["node", "tuckshop", "package"];
 			vi.stubGlobal("process", { argv });
 			vi.mocked(mockApp.parse)
+				.mockReturnValueOnce(emptyParseResult())
 				.mockImplementationOnce(() => {
 					throw new Error("Parse error");
 				})
-				.mockImplementationOnce(() => {});
+				.mockImplementationOnce(() => emptyParseResult());
 
 			await run();
 
+			expect(mockApp.parse).toHaveBeenCalledWith(argv, { run: false });
 			expect(mockApp.parse).toHaveBeenCalledWith(argv);
 			expect(mockApp.parse).toHaveBeenCalledWith([...argv, "--help"]);
 			expect(mockApp.outputHelp).not.toHaveBeenCalled();
@@ -103,6 +117,7 @@ describe("index", () => {
 			const argv = ["node", "tuckshop", "package"];
 			vi.stubGlobal("process", { argv });
 			vi.mocked(mockApp.parse)
+				.mockReturnValueOnce(emptyParseResult())
 				.mockImplementationOnce(() => {
 					throw new Error("Parse error");
 				})
@@ -112,38 +127,29 @@ describe("index", () => {
 
 			await run();
 
+			expect(mockApp.parse).toHaveBeenCalledWith(argv, { run: false });
 			expect(mockApp.parse).toHaveBeenCalledWith(argv);
 			expect(mockApp.parse).toHaveBeenCalledWith([...argv, "--help"]);
 			expect(mockApp.outputHelp).toHaveBeenCalled();
 		});
 
-		it("should filter out empty arguments", async () => {
-			vi.stubGlobal("process", { argv: ["node", "tuckshop", "package"] });
-			vi.mocked(mockApp.parse).mockImplementation(() => {});
-
-			await run();
-
-			expect(mockApp.parse).toHaveBeenCalledWith([
+		it("should pass through a global --registry override before registration", async () => {
+			const argv = [
 				"node",
 				"tuckshop",
-				"package",
-			]);
-		});
-
-		it("should pass through a global --registry override before registration", async () => {
-			vi.stubGlobal("process", {
-				argv: [
-					"node",
-					"tuckshop",
-					"--registry",
-					"https://example.com/registry.json",
-					"list",
-				],
+				"--registry",
+				"https://example.com/registry.json",
+				"list",
+			];
+			vi.stubGlobal("process", { argv });
+			vi.mocked(mockApp.parse).mockReturnValue({
+				args: ["list"],
+				options: { registry: "https://example.com/registry.json" },
 			});
-			vi.mocked(mockApp.parse).mockImplementation(() => {});
 
 			await run();
 
+			expect(mockApp.parse).toHaveBeenCalledWith(argv, { run: false });
 			expect(loadRuntimeRegistry).toHaveBeenCalledWith(
 				"https://example.com/registry.json",
 				undefined,
@@ -156,18 +162,21 @@ describe("index", () => {
 		});
 
 		it("should pass through a global --registry=value override before registration", async () => {
-			vi.stubGlobal("process", {
-				argv: [
-					"node",
-					"tuckshop",
-					"--registry=https://example.com/registry.json",
-					"list",
-				],
+			const argv = [
+				"node",
+				"tuckshop",
+				"--registry=https://example.com/registry.json",
+				"list",
+			];
+			vi.stubGlobal("process", { argv });
+			vi.mocked(mockApp.parse).mockReturnValue({
+				args: ["list"],
+				options: { registry: "https://example.com/registry.json" },
 			});
-			vi.mocked(mockApp.parse).mockImplementation(() => {});
 
 			await run();
 
+			expect(mockApp.parse).toHaveBeenCalledWith(argv, { run: false });
 			expect(loadRuntimeRegistry).toHaveBeenCalledWith(
 				"https://example.com/registry.json",
 				undefined,
@@ -179,12 +188,43 @@ describe("index", () => {
 			);
 		});
 
+		it("should reject a missing --registry value before registration", async () => {
+			vi.stubGlobal("process", {
+				argv: ["node", "tuckshop", "list", "--registry"],
+			});
+			vi.mocked(mockApp.parse).mockReturnValue({
+				args: ["list"],
+				options: { registry: true },
+			});
+
+			await expect(run()).rejects.toThrow(
+				"option `--registry <source>` value is missing",
+			);
+			expect(loadRuntimeRegistry).not.toHaveBeenCalled();
+			expect(registerCommandsCli).not.toHaveBeenCalled();
+		});
+
+		it("should reject an empty --registry value before registration", async () => {
+			vi.stubGlobal("process", {
+				argv: ["node", "tuckshop", "--registry=", "list"],
+			});
+			vi.mocked(mockApp.parse).mockReturnValue({
+				args: ["list"],
+				options: { registry: "" },
+			});
+
+			await expect(run()).rejects.toThrow(
+				"option `--registry <source>` value is missing",
+			);
+			expect(loadRuntimeRegistry).not.toHaveBeenCalled();
+			expect(registerCommandsCli).not.toHaveBeenCalled();
+		});
+
 		it("should forward a saved registry when no flag is present", async () => {
 			vi.stubGlobal("process", { argv: ["node", "tuckshop", "list"] });
 			vi.mocked(readConfig).mockResolvedValue({
 				registry: "https://example.com/saved-registry.json",
 			});
-			vi.mocked(mockApp.parse).mockImplementation(() => {});
 
 			await run();
 
@@ -207,7 +247,10 @@ describe("index", () => {
 			vi.mocked(readConfig).mockResolvedValue({
 				registry: "https://example.com/saved-registry.json",
 			});
-			vi.mocked(mockApp.parse).mockImplementation(() => {});
+			vi.mocked(mockApp.parse).mockReturnValue({
+				args: ["list"],
+				options: { registry: "https://example.com/flag-registry.json" },
+			});
 
 			await run();
 

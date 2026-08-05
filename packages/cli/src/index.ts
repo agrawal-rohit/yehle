@@ -3,32 +3,33 @@ import { readConfig } from "./cli/config";
 import { registerCommandsCli } from "./commands";
 import { loadRuntimeRegistry } from "./registry-remote";
 
-/**
- * Read a global `--registry` option before command registration.
- * @param argv - Raw CLI args excluding the node executable and script path.
- * @returns Explicit registry override, or undefined when absent.
- */
-function readRegistryOverride(argv: string[]): string | undefined {
-	for (let index = 0; index < argv.length; index += 1) {
-		const token = argv[index];
-		if (token === "--registry") return argv[index + 1];
-		if (token.startsWith("--registry="))
-			return token.slice("--registry=".length);
-	}
+function readRegistryOverride(value: unknown): string | undefined {
+	if (value === undefined) return undefined;
 
-	return undefined;
+	// Throw an error if the value is true or an empty string
+	if (value === true || value === "")
+		throw new Error(
+			"option `--registry <source>` value is missing. Provide a registry URL or local path.",
+		);
+
+	// Throw an error if the value is not a string
+	if (typeof value !== "string")
+		throw new TypeError(
+			`option \`--registry <source>\` received an unexpected value (${typeof value}).`,
+		);
+
+	return value;
 }
 
-/**
- * Bootstrap the tuckshop CLI: register commands, then parse argv or show help.
- * Registration is async because command flags are derived from the registry.
- */
 export default async function run(): Promise<void> {
 	const app = cac("tuckshop");
 	app.option("--registry <source>", "Use a custom registry URL");
 
-	const args = process.argv.slice(2).filter(Boolean);
-	const registryOverride = readRegistryOverride(args);
+	// Parse the arguments without running the command
+	const { options } = app.parse(process.argv, { run: false });
+	const registryOverride = readRegistryOverride(options.registry);
+
+	// Read the saved global config
 	const savedConfig = await readConfig();
 	const registry = await loadRuntimeRegistry(
 		registryOverride,
@@ -41,22 +42,18 @@ export default async function run(): Promise<void> {
 
 	app.help();
 
-	// Show global help when just the root command is called
+	const args = process.argv.slice(2).filter(Boolean);
 	if (args.length === 0) {
 		app.outputHelp();
 		return;
 	}
 
 	try {
-		// Run the command
 		app.parse(process.argv);
 	} catch {
-		// If the command failed (due to incorrect arguments, missing commands, etc)
-		// Attempt to show help for the command by appending --help to the original args
 		try {
 			app.parse([...process.argv, "--help"]);
 		} catch {
-			// Final fallback: show top-level help
 			app.outputHelp();
 		}
 	}

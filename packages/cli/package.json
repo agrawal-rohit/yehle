@@ -17,7 +17,7 @@
 		"build": "pnpm --filter @tuckshop/core run build && tsc -p tsconfig.json",
 		"typecheck": "pnpm --filter @tuckshop/core run build && tsc -p tsconfig.json --noEmit",
 		"test": "vitest run",
-		"prepack": "pnpm run build && pnpm --filter @tuckshop/registry run build && node ./scripts/embed-default-registry.mjs"
+		"prepack": "pnpm run build && pnpm --filter @tuckshop/registry run build && cp ../registry/registry.json ./registry.json"
 	},
 	"dependencies": {
 		"@tuckshop/core": "workspace:*",
