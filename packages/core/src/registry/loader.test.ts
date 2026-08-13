@@ -1,6 +1,10 @@
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { loadRegistry, resolveRegistrySource } from "./loader";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	loadRegistry,
+	RegistrySourceKind,
+	resolveRegistrySource,
+} from "./loader";
 import { type Registry, SCHEMA_VERSION } from "./schema";
 
 const mockIsRegularFileAsync = vi.fn<(candidate: string) => Promise<boolean>>();
@@ -39,17 +43,23 @@ const sampleRegistry: Registry = {
 describe("registry/loader", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.spyOn(process, "cwd").mockReturnValue("/workspace");
+		Reflect.deleteProperty(process.env, "TUCKSHOP_REGISTRY");
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.restoreAllMocks();
 	});
 
 	it("prefers an explicit URL registry override", async () => {
 		await expect(
 			resolveRegistrySource({
 				registry: "https://example.com/registry.json",
-				cwd: "/workspace",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
 		).resolves.toEqual({
-			kind: "url",
+			kind: RegistrySourceKind.URL,
 			location: "https://example.com/registry.json",
 		});
 		expect(mockIsRegularFileAsync).not.toHaveBeenCalled();
@@ -59,11 +69,10 @@ describe("registry/loader", () => {
 		await expect(
 			resolveRegistrySource({
 				registry: "./custom/registry.json",
-				cwd: "/workspace",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
 		).resolves.toEqual({
-			kind: "path",
+			kind: RegistrySourceKind.PATH,
 			location: path.resolve("/workspace", "./custom/registry.json"),
 		});
 	});
@@ -76,11 +85,10 @@ describe("registry/loader", () => {
 
 		await expect(
 			resolveRegistrySource({
-				cwd: "/workspace",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
 		).resolves.toEqual({
-			kind: "path",
+			kind: RegistrySourceKind.PATH,
 			location: cwdRegistry,
 		});
 	});
@@ -93,11 +101,10 @@ describe("registry/loader", () => {
 
 		await expect(
 			resolveRegistrySource({
-				cwd: "/workspace",
 				bundledRegistryPath: packagedRegistry,
 			}),
 		).resolves.toEqual({
-			kind: "bundled",
+			kind: RegistrySourceKind.BUNDLED,
 			location: packagedRegistry,
 		});
 	});
@@ -110,27 +117,24 @@ describe("registry/loader", () => {
 
 		await expect(
 			resolveRegistrySource({
-				cwd: "/workspace",
 				bundledRegistryPath: "/bundle/registry.json",
 				fallbackRegistryPaths: [fallbackRegistry],
 			}),
 		).resolves.toEqual({
-			kind: "path",
+			kind: RegistrySourceKind.PATH,
 			location: fallbackRegistry,
 		});
 	});
 
 	it("uses TUCKSHOP_REGISTRY from the environment when no flag is provided", async () => {
+		vi.stubEnv("TUCKSHOP_REGISTRY", "https://example.com/env-registry.json");
+
 		await expect(
 			resolveRegistrySource({
-				cwd: "/workspace",
-				env: {
-					TUCKSHOP_REGISTRY: "https://example.com/env-registry.json",
-				},
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
 		).resolves.toEqual({
-			kind: "url",
+			kind: RegistrySourceKind.URL,
 			location: "https://example.com/env-registry.json",
 		});
 	});
@@ -138,46 +142,40 @@ describe("registry/loader", () => {
 	it("uses a saved registry config when flag and env are absent", async () => {
 		await expect(
 			resolveRegistrySource({
-				cwd: "/workspace",
-				env: {},
 				savedRegistry: "https://example.com/saved-registry.json",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
 		).resolves.toEqual({
-			kind: "url",
+			kind: RegistrySourceKind.URL,
 			location: "https://example.com/saved-registry.json",
 		});
 	});
 
 	it("prefers TUCKSHOP_REGISTRY over a saved registry config", async () => {
+		vi.stubEnv("TUCKSHOP_REGISTRY", "https://example.com/env-registry.json");
+
 		await expect(
 			resolveRegistrySource({
-				cwd: "/workspace",
-				env: {
-					TUCKSHOP_REGISTRY: "https://example.com/env-registry.json",
-				},
 				savedRegistry: "https://example.com/saved-registry.json",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
 		).resolves.toEqual({
-			kind: "url",
+			kind: RegistrySourceKind.URL,
 			location: "https://example.com/env-registry.json",
 		});
 	});
 
 	it("prefers an explicit flag over env and saved registry config", async () => {
+		vi.stubEnv("TUCKSHOP_REGISTRY", "https://example.com/env-registry.json");
+
 		await expect(
 			resolveRegistrySource({
 				registry: "https://example.com/flag-registry.json",
-				cwd: "/workspace",
-				env: {
-					TUCKSHOP_REGISTRY: "https://example.com/env-registry.json",
-				},
 				savedRegistry: "https://example.com/saved-registry.json",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
 		).resolves.toEqual({
-			kind: "url",
+			kind: RegistrySourceKind.URL,
 			location: "https://example.com/flag-registry.json",
 		});
 	});
@@ -187,7 +185,6 @@ describe("registry/loader", () => {
 
 		await expect(
 			resolveRegistrySource({
-				cwd: "/workspace",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
 		).rejects.toThrow(

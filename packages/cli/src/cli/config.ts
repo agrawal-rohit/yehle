@@ -10,16 +10,14 @@ export interface TuckshopConfig {
 
 /** Options that control where the config file is resolved. */
 export interface ConfigPathOptions {
-	/** Environment variables used for XDG_CONFIG_HOME / HOME. */
+	/** Environment variables used for XDG_CONFIG_HOME. */
 	env?: NodeJS.ProcessEnv;
-	/** Homedir used when XDG_CONFIG_HOME is unset. Defaults to `os.homedir()`. */
-	homedir?: string;
 }
 
 /**
  * Resolve the absolute path to the global tuckshop config file.
  * Prefers `$XDG_CONFIG_HOME/tuckshop/config.json`, otherwise `~/.config/tuckshop/config.json`.
- * @param options - Optional env/homedir overrides for tests.
+ * @param options - Optional env overrides for tests.
  * @returns Absolute config file path.
  */
 export function configPath(options: ConfigPathOptions = {}): string {
@@ -27,9 +25,7 @@ export function configPath(options: ConfigPathOptions = {}): string {
 	const xdg = env.XDG_CONFIG_HOME?.trim();
 
 	// Honour XDG_CONFIG_HOME when set, otherwise use the home directory.
-	const base = xdg
-		? path.resolve(xdg)
-		: path.join(options.homedir ?? os.homedir(), ".config");
+	const base = xdg ? path.resolve(xdg) : path.join(os.homedir(), ".config");
 	return path.join(base, "tuckshop", "config.json");
 }
 
@@ -49,23 +45,26 @@ export async function readConfig(
 	try {
 		raw = await fs.promises.readFile(filePath, "utf8");
 	} catch (error) {
-		// If the file does not exist, return an empty config.
-		const code =
-			error && typeof error === "object" && "code" in error
-				? (error as NodeJS.ErrnoException).code
-				: undefined;
-		if (code === "ENOENT") return {};
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
 		throw error;
 	}
 
 	try {
-		// Parse the raw config file as JSON.
 		const parsed = JSON.parse(raw) as unknown;
 		if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed))
 			throw new Error("Config root must be a JSON object.");
+
+		const { registry } = parsed as Record<string, unknown>;
+		if (
+			registry !== undefined &&
+			(typeof registry !== "string" || !registry.trim())
+		)
+			throw new Error(
+				'"registry" must be a non-empty string URL or file path.',
+			);
+
 		return parsed as TuckshopConfig;
 	} catch (error) {
-		// If the config file is malformed, throw an error.
 		const message = error instanceof Error ? error.message : String(error);
 		throw new Error(
 			`Malformed tuckshop config at ${filePath}: ${message}. Fix or delete the file, then retry.`,
@@ -75,7 +74,6 @@ export async function readConfig(
 
 /**
  * Write the global tuckshop config, creating parent directories as needed.
- * The file is written with mode `0o600`.
  * @param config - Config object to persist.
  * @param options - Optional path resolution overrides for tests.
  */
@@ -104,27 +102,16 @@ export async function writeConfig(
 export async function unsetRegistryConfig(
 	options: ConfigPathOptions = {},
 ): Promise<boolean> {
-	// Read the config file.
 	const config = await readConfig(options);
 	if (config.registry === undefined) return false;
 
-	// If the config file is empty, delete it and return true.
+	// Leave no empty config file on disk when registry was the only key.
 	const { registry: _removed, ...rest } = config;
 	if (Object.keys(rest).length === 0) {
-		const filePath = configPath(options);
-		try {
-			await fs.promises.unlink(filePath);
-		} catch (error) {
-			const code =
-				error && typeof error === "object" && "code" in error
-					? (error as NodeJS.ErrnoException).code
-					: undefined;
-			if (code !== "ENOENT") throw error;
-		}
+		await fs.promises.rm(configPath(options), { force: true });
 		return true;
 	}
 
-	// Write the config file.
 	await writeConfig(rest, options);
 	return true;
 }

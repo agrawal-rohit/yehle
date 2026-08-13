@@ -3,8 +3,15 @@ import { isRegularFileAsync, readJSONFileAsync } from "../core/fs";
 import type { Registry } from "./schema";
 import { parseRegistryDocument } from "./validate";
 
+/** How a resolved registry source was located. */
+export enum RegistrySourceKind {
+	BUNDLED = "bundled",
+	PATH = "path",
+	URL = "url",
+}
+
 export interface RegistrySource {
-	kind: "bundled" | "path" | "url";
+	kind: RegistrySourceKind;
 	location: string;
 }
 
@@ -13,10 +20,6 @@ export interface ResolveRegistrySourceOptions {
 	registry?: string;
 	/** Registry source persisted via `tuckshop config set`. */
 	savedRegistry?: string;
-	/** Current working directory used to resolve relative registry paths. */
-	cwd?: string;
-	/** Environment variables consulted for TUCKSHOP_REGISTRY. */
-	env?: NodeJS.ProcessEnv;
 	/** Absolute path to the packaged default registry.json. */
 	bundledRegistryPath?: string;
 	/** Additional absolute registry.json paths to probe before failing. */
@@ -66,28 +69,31 @@ async function resolveBuiltRegistryPath(
 export async function resolveRegistrySource(
 	options: ResolveRegistrySourceOptions = {},
 ): Promise<RegistrySource> {
-	const cwd = options.cwd ?? process.cwd();
-	const env = options.env ?? process.env;
 	const bundledRegistryPath =
 		options.bundledRegistryPath ??
 		path.resolve(__dirname, "../../", "registry.json");
 	const fallbackRegistryPaths = options.fallbackRegistryPaths ?? [];
-	// Precedence: --registry flag > TUCKSHOP_REGISTRY env > saved global config.
-	const configuredSource =
-		options.registry ?? env.TUCKSHOP_REGISTRY ?? options.savedRegistry;
 
-	if (configuredSource) {
-		if (isUrlSource(configuredSource))
-			return { kind: "url", location: configuredSource };
+	// Source reading order: CLI flag > env > saved config > bundled.
+	const source =
+		options.registry ?? process.env.TUCKSHOP_REGISTRY ?? options.savedRegistry;
 
+	// If a source is explicitly provided, use it.
+	if (source) {
+		// If the source is a URL, use it as is.
+		if (isUrlSource(source))
+			return { kind: RegistrySourceKind.URL, location: source };
+
+		// Otherwise, resolve it relative to the current working directory.
 		return {
-			kind: "path",
-			location: path.resolve(cwd, configuredSource),
+			kind: RegistrySourceKind.PATH,
+			location: path.resolve(process.cwd(), source),
 		};
 	}
 
+	// If no source is explicitly provided, resolve the built registry path.
 	const builtRegistryPath = await resolveBuiltRegistryPath(
-		cwd,
+		process.cwd(),
 		bundledRegistryPath,
 		fallbackRegistryPaths,
 	);
@@ -97,7 +103,10 @@ export async function resolveRegistrySource(
 		);
 
 	return {
-		kind: builtRegistryPath === bundledRegistryPath ? "bundled" : "path",
+		kind:
+			builtRegistryPath === bundledRegistryPath
+				? RegistrySourceKind.BUNDLED
+				: RegistrySourceKind.PATH,
 		location: builtRegistryPath,
 	};
 }

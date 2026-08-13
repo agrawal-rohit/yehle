@@ -36,19 +36,15 @@ describe("cli/config", () => {
 	it("resolves under XDG_CONFIG_HOME when set", () => {
 		const filePath = configPath({
 			env: { XDG_CONFIG_HOME: "/custom/xdg" },
-			homedir: "/home/user",
 		});
 
 		expect(filePath).toBe(path.join("/custom/xdg", "tuckshop", "config.json"));
 	});
 
 	it("falls back to ~/.config when XDG_CONFIG_HOME is unset", () => {
-		const filePath = configPath({
-			env: {},
-			homedir: "/home/user",
-		});
+		vi.spyOn(os, "homedir").mockReturnValue("/home/user");
 
-		expect(filePath).toBe(
+		expect(configPath({ env: {} })).toBe(
 			path.join("/home/user", ".config", "tuckshop", "config.json"),
 		);
 	});
@@ -58,7 +54,7 @@ describe("cli/config", () => {
 		process.env.XDG_CONFIG_HOME = "/from-process-env";
 
 		try {
-			expect(configPath({ homedir: "/home/user" })).toBe(
+			expect(configPath()).toBe(
 				path.join("/from-process-env", "tuckshop", "config.json"),
 			);
 		} finally {
@@ -67,18 +63,11 @@ describe("cli/config", () => {
 		}
 	});
 
-	it("uses os.homedir when neither XDG_CONFIG_HOME nor homedir is provided", () => {
-		vi.spyOn(os, "homedir").mockReturnValue("/mock-home");
-
-		expect(configPath({ env: {} })).toBe(
-			path.join("/mock-home", ".config", "tuckshop", "config.json"),
-		);
-	});
-
 	it("treats whitespace-only XDG_CONFIG_HOME as unset", () => {
+		vi.spyOn(os, "homedir").mockReturnValue("/home/user");
+
 		const filePath = configPath({
 			env: { XDG_CONFIG_HOME: "   " },
-			homedir: "/home/user",
 		});
 
 		expect(filePath).toBe(
@@ -157,6 +146,30 @@ describe("cli/config", () => {
 		);
 	});
 
+	it("throws when registry is not a string", async () => {
+		const root = await makeTempRoot();
+		const options = { env: { XDG_CONFIG_HOME: root } };
+		const filePath = configPath(options);
+		await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+		await fs.promises.writeFile(filePath, '{"registry":42}\n', "utf8");
+
+		await expect(readConfig(options)).rejects.toThrow(
+			`Malformed tuckshop config at ${filePath}: "registry" must be a non-empty string URL or file path.`,
+		);
+	});
+
+	it("throws when registry is an empty string", async () => {
+		const root = await makeTempRoot();
+		const options = { env: { XDG_CONFIG_HOME: root } };
+		const filePath = configPath(options);
+		await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+		await fs.promises.writeFile(filePath, '{"registry":""}\n', "utf8");
+
+		await expect(readConfig(options)).rejects.toThrow(
+			`Malformed tuckshop config at ${filePath}: "registry" must be a non-empty string URL or file path.`,
+		);
+	});
+
 	it("stringifies non-Error parse failures in the malformed-config message", async () => {
 		const root = await makeTempRoot();
 		const options = { env: { XDG_CONFIG_HOME: root } };
@@ -204,21 +217,7 @@ describe("cli/config", () => {
 		await expect(readConfig(options)).resolves.toEqual({ future: true });
 	});
 
-	it("treats a raced ENOENT on unlink as a successful unset", async () => {
-		const root = await makeTempRoot();
-		const options = { env: { XDG_CONFIG_HOME: root } };
-
-		await writeConfig(
-			{ registry: "https://example.com/registry.json" },
-			options,
-		);
-		const error = Object.assign(new Error("already gone"), { code: "ENOENT" });
-		vi.spyOn(fs.promises, "unlink").mockRejectedValueOnce(error);
-
-		await expect(unsetRegistryConfig(options)).resolves.toBe(true);
-	});
-
-	it("rethrows non-ENOENT unlink errors when unsetting", async () => {
+	it("rethrows non-ENOENT rm errors when unsetting", async () => {
 		const root = await makeTempRoot();
 		const options = { env: { XDG_CONFIG_HOME: root } };
 
@@ -229,12 +228,12 @@ describe("cli/config", () => {
 		const error = Object.assign(new Error("permission denied"), {
 			code: "EACCES",
 		});
-		vi.spyOn(fs.promises, "unlink").mockRejectedValueOnce(error);
+		vi.spyOn(fs.promises, "rm").mockRejectedValueOnce(error);
 
 		await expect(unsetRegistryConfig(options)).rejects.toBe(error);
 	});
 
-	it("rethrows unexpected unlink errors without an errno code", async () => {
+	it("rethrows unexpected rm errors without an errno code", async () => {
 		const root = await makeTempRoot();
 		const options = { env: { XDG_CONFIG_HOME: root } };
 
@@ -242,8 +241,8 @@ describe("cli/config", () => {
 			{ registry: "https://example.com/registry.json" },
 			options,
 		);
-		const error = new Error("unlink boom");
-		vi.spyOn(fs.promises, "unlink").mockRejectedValueOnce(error);
+		const error = new Error("rm boom");
+		vi.spyOn(fs.promises, "rm").mockRejectedValueOnce(error);
 
 		await expect(unsetRegistryConfig(options)).rejects.toBe(error);
 	});

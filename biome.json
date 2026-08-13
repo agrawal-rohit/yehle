@@ -5,6 +5,7 @@
 			"packages/**/*.{js,ts,jsx,tsx,json,cjs,mjs,yaml,css}",
 			"docs/**/*.{js,ts,jsx,tsx,mjs,json,css}",
 			"!packages/*/dist",
+			"!packages/*/coverage",
 			"!packages/registry/registry",
 			"!packages/registry/registry.json",
 			"!packages/cli/registry.json",
