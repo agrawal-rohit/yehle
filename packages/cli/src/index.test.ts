@@ -217,6 +217,22 @@ describe("index", () => {
 			expect(registerCommandsCli).not.toHaveBeenCalled();
 		});
 
+		it("should reject a non-string --registry value before registration", async () => {
+			vi.stubGlobal("process", {
+				argv: ["node", "tuckshop", "list", "--registry"],
+			});
+			vi.mocked(mockApp.parse).mockReturnValue({
+				args: ["list"],
+				options: { registry: 42 },
+			});
+
+			await expect(run()).rejects.toThrow(
+				"option `--registry <source>` received an unexpected value (number)",
+			);
+			expect(loadRuntimeRegistry).not.toHaveBeenCalled();
+			expect(registerCommandsCli).not.toHaveBeenCalled();
+		});
+
 		it("should forward a saved registry when no flag is present", async () => {
 			vi.stubGlobal("process", { argv: ["node", "tuckshop", "list"] });
 			vi.mocked(readConfig).mockResolvedValue({

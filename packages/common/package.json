@@ -7,7 +7,7 @@
 	"types": "./dist/index.d.ts",
 	"exports": {
 		".": "./dist/index.js",
-		"./ui/labels": "./dist/ui/labels.js"
+		"./labels": "./dist/labels.js"
 	},
 	"files": [
 		"dist"
@@ -15,7 +15,7 @@
 	"scripts": {
 		"build": "tsc -p tsconfig.json",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
-		"test": "vitest run --passWithNoTests"
+		"test": "vitest run"
 	},
 	"dependencies": {
 		"chalk": "^5.6.2"

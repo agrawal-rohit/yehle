@@ -60,7 +60,9 @@ interface MockResponseOptions {
 	statusCode?: number;
 	statusMessage?: string;
 	headers?: Record<string, string | string[] | undefined>;
-	body?: string;
+	body?: string | Buffer;
+	/** When true, leave statusCode/statusMessage unset on the response. */
+	omitStatus?: boolean;
 }
 
 /**
@@ -81,8 +83,10 @@ function mockHttpsOk(response: MockResponseOptions = {}): void {
 			req.end = () => {
 				const body = response.body ?? publicRegistryBody;
 				const stream = Readable.from([body]) as IncomingMessage;
-				stream.statusCode = response.statusCode ?? 200;
-				stream.statusMessage = response.statusMessage ?? "OK";
+				if (!response.omitStatus) {
+					stream.statusCode = response.statusCode ?? 200;
+					stream.statusMessage = response.statusMessage ?? "OK";
+				}
 				stream.headers = response.headers ?? {
 					"content-length": String(Buffer.byteLength(body)),
 				};
@@ -261,6 +265,32 @@ describe("registry-remote", () => {
 
 		await expect(loadRuntimeRegistry()).rejects.toThrow(
 			"Failed to fetch registry (500 Internal Server Error).",
+		);
+	});
+
+	it("treats missing status code and message as a failed fetch", async () => {
+		mockRemoteSource("https://example.com/no-status-registry.json");
+		mockHttpsOk({
+			omitStatus: true,
+			headers: {},
+			body: "no status",
+		});
+
+		await expect(loadRuntimeRegistry()).rejects.toThrow(
+			"Failed to fetch registry (0 ).",
+		);
+	});
+
+	it("accepts Buffer chunks when reading a remote registry body", async () => {
+		mockRemoteSource("https://example.com/buffer-registry.json");
+		mockHttpsOk({
+			headers: {},
+			body: Buffer.from(publicRegistryBody),
+		});
+
+		await expect(loadRuntimeRegistry()).resolves.toEqual(sampleRegistry);
+		expect(mockParseRegistryDocument).toHaveBeenCalledWith(
+			JSON.parse(publicRegistryBody),
 		);
 	});
 
