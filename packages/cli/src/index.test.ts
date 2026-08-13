@@ -64,10 +64,9 @@ describe("index", () => {
 			expect(mockApp.parse).toHaveBeenCalledWith(["node", "tuckshop"], {
 				run: false,
 			});
-			expect(loadRuntimeRegistry).toHaveBeenCalledWith(undefined, undefined);
 			expect(registerCommandsCli).toHaveBeenCalledWith(
 				mockApp,
-				expect.objectContaining({ contentBaseUrl: "https://example.com" }),
+				expect.any(Function),
 			);
 		});
 
@@ -172,13 +171,13 @@ describe("index", () => {
 			await run();
 
 			expect(mockApp.parse).toHaveBeenCalledWith(argv, { run: false });
+			const loader = vi.mocked(registerCommandsCli).mock
+				.calls[0]?.[1] as () => Promise<unknown>;
+			expect(loader).toBeTypeOf("function");
+			await loader();
 			expect(loadRuntimeRegistry).toHaveBeenCalledWith(
 				"https://example.com/registry.json",
 				undefined,
-			);
-			expect(registerCommandsCli).toHaveBeenCalledWith(
-				mockApp,
-				expect.objectContaining({ contentBaseUrl: "https://example.com" }),
 			);
 		});
 
@@ -198,13 +197,12 @@ describe("index", () => {
 			await run();
 
 			expect(mockApp.parse).toHaveBeenCalledWith(argv, { run: false });
+			const loader = vi.mocked(registerCommandsCli).mock
+				.calls[0]?.[1] as () => Promise<unknown>;
+			await loader();
 			expect(loadRuntimeRegistry).toHaveBeenCalledWith(
 				"https://example.com/registry.json",
 				undefined,
-			);
-			expect(registerCommandsCli).toHaveBeenCalledWith(
-				mockApp,
-				expect.objectContaining({ contentBaseUrl: "https://example.com" }),
 			);
 		});
 
@@ -264,6 +262,9 @@ describe("index", () => {
 
 			await run();
 
+			const loader = vi.mocked(registerCommandsCli).mock
+				.calls[0]?.[1] as () => Promise<unknown>;
+			await loader();
 			expect(loadRuntimeRegistry).toHaveBeenCalledWith(
 				undefined,
 				"https://example.com/saved-registry.json",
@@ -290,46 +291,18 @@ describe("index", () => {
 
 			await run();
 
+			const loader = vi.mocked(registerCommandsCli).mock
+				.calls[0]?.[1] as () => Promise<unknown>;
+			await loader();
 			expect(loadRuntimeRegistry).toHaveBeenCalledWith(
 				"https://example.com/flag-registry.json",
 				"https://example.com/saved-registry.json",
 			);
 		});
 
-		it("should skip registry loading for config commands", async () => {
+		it("should skip registry loading when only config commands run", async () => {
 			vi.stubGlobal("process", {
 				argv: ["node", "tuckshop", "config", "get"],
-			});
-			vi.mocked(readConfig).mockResolvedValue({
-				registry: "https://example.com/broken-registry.json",
-			});
-			mockApp.matchedCommandName = "config";
-
-			await run();
-
-			expect(loadRuntimeRegistry).not.toHaveBeenCalled();
-			expect(readConfig).not.toHaveBeenCalled();
-			expect(registerCommandsCli).toHaveBeenCalledWith(mockApp, {
-				contentBaseUrl: "",
-				types: {},
-				items: {},
-			});
-		});
-
-		it("should skip registry loading for config even with --registry ahead", async () => {
-			vi.stubGlobal("process", {
-				argv: [
-					"node",
-					"tuckshop",
-					"--registry",
-					"https://example.com/flag-registry.json",
-					"config",
-					"unset",
-				],
-			});
-			vi.mocked(mockApp.parse).mockReturnValue({
-				args: ["config", "unset"],
-				options: { registry: "https://example.com/flag-registry.json" },
 			});
 			mockApp.matchedCommandName = "config";
 

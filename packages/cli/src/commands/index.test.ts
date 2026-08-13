@@ -1,3 +1,4 @@
+import type { Registry } from "@tuckshop/core";
 import type { CAC } from "cac";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +11,7 @@ const mockConfigSetCommand = vi.fn();
 const mockConfigUnsetCommand = vi.fn();
 const mockConsolaPrompt = vi.fn();
 const mockReadConfig = vi.fn();
+const mockLoadRegistry = vi.fn();
 
 vi.mock("./list", () => ({
 	default: (...args: unknown[]) => mockListCommand(...args),
@@ -93,7 +95,7 @@ describe("commands/index", () => {
 				variants: [],
 			},
 		},
-	};
+	} as Registry;
 	const itemTypes = ["component", "theme"];
 
 	beforeEach(() => {
@@ -108,6 +110,7 @@ describe("commands/index", () => {
 			"https://example.com/prompted-registry.json",
 		);
 		mockReadConfig.mockResolvedValue({});
+		mockLoadRegistry.mockResolvedValue(registry);
 	});
 
 	afterEach(() => {
@@ -117,7 +120,7 @@ describe("commands/index", () => {
 	it("registers the list and config commands with usage and type option", async () => {
 		const { app, command, option, example, help } = createMockApp();
 
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		expect(app.usage).toHaveBeenCalledWith("<command> [options]");
 		expect(command).toHaveBeenCalledWith(
@@ -130,7 +133,7 @@ describe("commands/index", () => {
 		);
 		expect(option).toHaveBeenCalledWith(
 			"--type <types>",
-			expect.stringContaining("component, theme"),
+			"Filter by type: all, or comma-separated types. Lists all types when omitted",
 		);
 		expect(example).toHaveBeenCalledTimes(3);
 		expect(help).toHaveBeenCalledWith(expect.any(Function));
@@ -138,7 +141,7 @@ describe("commands/index", () => {
 
 	it("enriches config help with action and source documentation", async () => {
 		const { app, help } = createMockApp();
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		const helpCallback = vi.mocked(help).mock.calls[0]?.[0] as (
 			sections: Array<{ title?: string; body: string }>,
@@ -175,12 +178,13 @@ describe("commands/index", () => {
 
 	it("runs the list command action with picked options", async () => {
 		const { app, actions } = createMockApp();
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		const listAction = actions.get("list");
 		expect(listAction).toBeDefined();
 		await listAction?.({ type: "theme" });
 
+		expect(mockLoadRegistry).toHaveBeenCalled();
 		expect(mockLoggerIntro).toHaveBeenCalledWith("here's the menu");
 		expect(mockPickStringOptions).toHaveBeenCalledWith({ type: "theme" }, [
 			"type",
@@ -191,10 +195,20 @@ describe("commands/index", () => {
 		expect(mockLoggerError).not.toHaveBeenCalled();
 	});
 
+	it("logs list failures from the registry loader", async () => {
+		const { app, actions } = createMockApp();
+		mockLoadRegistry.mockRejectedValue(new Error("load failed"));
+		await registerCommandsCli(app, mockLoadRegistry);
+
+		await actions.get("list")?.({});
+
+		expect(mockLoggerError).toHaveBeenCalledWith("load failed");
+	});
+
 	it("logs Error messages when the list command fails", async () => {
 		const { app, actions } = createMockApp();
 		mockListCommand.mockRejectedValue(new Error("boom"));
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("list")?.({});
 
@@ -204,7 +218,7 @@ describe("commands/index", () => {
 	it("logs non-Error failures as strings", async () => {
 		const { app, actions } = createMockApp();
 		mockListCommand.mockRejectedValue("string failure");
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("list")?.({});
 
@@ -213,17 +227,18 @@ describe("commands/index", () => {
 
 	it("runs config get", async () => {
 		const { app, actions } = createMockApp();
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("config <action> [source]")?.("get");
 
+		expect(mockLoadRegistry).not.toHaveBeenCalled();
 		expect(mockLoggerIntro).toHaveBeenCalledWith("fetching the configuration");
 		expect(mockConfigGetCommand).toHaveBeenCalledWith();
 	});
 
 	it("rejects bare config without an action", async () => {
 		const { app, actions } = createMockApp();
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("config <action> [source]")?.();
 
@@ -235,7 +250,7 @@ describe("commands/index", () => {
 
 	it("runs config set with the provided source", async () => {
 		const { app, actions } = createMockApp();
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("config <action> [source]")?.(
 			"set",
@@ -251,7 +266,7 @@ describe("commands/index", () => {
 
 	it("prompts for a source when config set omits one", async () => {
 		const { app, actions } = createMockApp();
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("config <action> [source]")?.("set");
 
@@ -267,7 +282,7 @@ describe("commands/index", () => {
 	it("rejects an empty prompted source", async () => {
 		const { app, actions } = createMockApp();
 		mockConsolaPrompt.mockResolvedValue("   ");
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("config <action> [source]")?.("set");
 
@@ -282,7 +297,7 @@ describe("commands/index", () => {
 		mockReadConfig.mockResolvedValue({
 			registry: "https://example.com/registry.json",
 		});
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("config <action> [source]")?.("unset");
 
@@ -295,7 +310,7 @@ describe("commands/index", () => {
 	it("notes when unset is already on the default registry", async () => {
 		const { app, actions } = createMockApp();
 		mockReadConfig.mockResolvedValue({});
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("config <action> [source]")?.("unset");
 
@@ -307,7 +322,7 @@ describe("commands/index", () => {
 
 	it("rejects unknown config actions", async () => {
 		const { app, actions } = createMockApp();
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("config <action> [source]")?.("bogus");
 
@@ -319,7 +334,7 @@ describe("commands/index", () => {
 	it("logs config command failures", async () => {
 		const { app, actions } = createMockApp();
 		mockConfigSetCommand.mockRejectedValue(new Error("bad source"));
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("config <action> [source]")?.("set", "nope");
 
@@ -329,7 +344,7 @@ describe("commands/index", () => {
 	it("logs non-Error failures from config set as strings", async () => {
 		const { app, actions } = createMockApp();
 		mockConfigSetCommand.mockRejectedValue("set failure");
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("config <action> [source]")?.("set", "nope");
 
@@ -339,7 +354,7 @@ describe("commands/index", () => {
 	it("logs Error messages when config get fails", async () => {
 		const { app, actions } = createMockApp();
 		mockConfigGetCommand.mockRejectedValue(new Error("read failed"));
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("config <action> [source]")?.("get");
 
@@ -349,7 +364,7 @@ describe("commands/index", () => {
 	it("logs non-Error failures from config get as strings", async () => {
 		const { app, actions } = createMockApp();
 		mockConfigGetCommand.mockRejectedValue("get failure");
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("config <action> [source]")?.("get");
 
@@ -359,7 +374,7 @@ describe("commands/index", () => {
 	it("logs Error messages when config unset fails", async () => {
 		const { app, actions } = createMockApp();
 		mockConfigUnsetCommand.mockRejectedValue(new Error("clear failed"));
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("config <action> [source]")?.("unset");
 
@@ -369,7 +384,7 @@ describe("commands/index", () => {
 	it("logs non-Error failures from config unset as strings", async () => {
 		const { app, actions } = createMockApp();
 		mockConfigUnsetCommand.mockRejectedValue("unset failure");
-		await registerCommandsCli(app, registry);
+		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("config <action> [source]")?.("unset");
 

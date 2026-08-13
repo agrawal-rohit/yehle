@@ -19,27 +19,28 @@ enum ConfigAction {
 }
 
 /**
- * Register CLI commands against the loaded registry.
+ * Register CLI commands. Registry-dependent commands load the registry lazily
+ * in their action so config commands never need one.
  * @param app - CAC application instance.
- * @param registry - Registry loaded for this invocation.
+ * @param loadRegistry - Loader used by commands that need registry data.
  */
 export async function registerCommandsCli(
 	app: CAC,
-	registry: Registry,
+	loadRegistry: () => Promise<Registry>,
 ): Promise<void> {
 	app.usage("<command> [options]");
-
-	// Get the declared item types from the registry.
-	const itemTypes = Object.keys(registry.types);
 
 	// Create the list command
 	const listCmd = app.command("list", "List available registry items");
 	listCmd.option(
 		"--type <types>",
-		`Filter by type: all, or comma-separated types (${itemTypes.join(", ")}). Lists all types when omitted`,
+		"Filter by type: all, or comma-separated types. Lists all types when omitted",
 	);
 	listCmd.action(async (commandOptions: Record<string, unknown>) => {
 		try {
+			const registry = await loadRegistry();
+			const itemTypes = Object.keys(registry.types);
+
 			await logger.intro("here's the menu");
 			await listCommand(
 				registry,

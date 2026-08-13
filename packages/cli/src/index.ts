@@ -1,15 +1,7 @@
-import type { Registry } from "@tuckshop/core";
 import cac from "cac";
 import { readConfig } from "./cli/config";
 import { registerCommandsCli } from "./commands";
 import { loadRuntimeRegistry } from "./registry-remote";
-
-/** Minimal registry used when the invoked command does not need one. */
-const PLACEHOLDER_REGISTRY: Registry = {
-	contentBaseUrl: "",
-	types: {},
-	items: {},
-};
 
 /**
  * Read a validated `--registry` override from parsed CAC options.
@@ -35,32 +27,7 @@ function readRegistryOverride(value: unknown): string | undefined {
 	return value;
 }
 
-/**
- * Whether argv targets `config` (which only reads/writes local preferences).
- * @param argv - Full process argv including node and script path.
- * @returns True when the first positional command is `config`.
- */
-function isConfigCommand(argv: string[]): boolean {
-	const args = argv.slice(2);
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i];
-		if (!arg || arg === "--") break;
-		if (arg === "config") return true;
-		if (arg === "--registry") {
-			i += 1;
-			continue;
-		}
-		if (arg.startsWith("--registry=") || arg === "--help" || arg === "-h")
-			continue;
-		if (arg.startsWith("-")) continue;
-		return false;
-	}
-	return false;
-}
-
-/**
- * Run the tuckshop CLI.
- */
+/** Run the tuckshop CLI. */
 export default async function run(): Promise<void> {
 	const app = cac("tuckshop");
 	app.option("--registry <source>", "Use a custom registry URL");
@@ -69,16 +36,13 @@ export default async function run(): Promise<void> {
 	const { options } = app.parse(process.argv, { run: false });
 	const registryOverride = readRegistryOverride(options.registry);
 
-	// Config commands only touch local preferences — skip remote registry load so
-	// a broken saved URL cannot block get/set/unset.
-	const registry = isConfigCommand(process.argv)
-		? PLACEHOLDER_REGISTRY
-		: await loadRuntimeRegistry(
-				registryOverride,
-				(await readConfig()).registry,
-			);
+	// List loads the registry on demand so config commands can run even if it fails
+	async function loadRegistry() {
+		const saved = await readConfig();
+		return loadRuntimeRegistry(registryOverride, saved.registry);
+	}
 
-	await registerCommandsCli(app, registry);
+	await registerCommandsCli(app, loadRegistry);
 
 	const args = process.argv.slice(2).filter(Boolean);
 	if (args.length === 0) {
