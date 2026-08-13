@@ -6,6 +6,8 @@ const mockApp = {
 	option: vi.fn().mockReturnThis(),
 	outputHelp: vi.fn(),
 	parse: vi.fn(),
+	matchedCommandName: undefined as string | undefined,
+	options: {} as Record<string, unknown>,
 };
 
 vi.mock("cac", () => ({
@@ -41,6 +43,8 @@ function emptyParseResult() {
 describe("index", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockApp.matchedCommandName = undefined;
+		mockApp.options = {};
 		vi.mocked(registerCommandsCli).mockResolvedValue();
 		vi.mocked(readConfig).mockResolvedValue({});
 		vi.mocked(mockApp.parse).mockReturnValue(emptyParseResult());
@@ -64,9 +68,7 @@ describe("index", () => {
 			expect(registerCommandsCli).toHaveBeenCalledWith(
 				mockApp,
 				expect.objectContaining({ contentBaseUrl: "https://example.com" }),
-				{ registryFlag: undefined },
 			);
-			expect(mockApp.help).toHaveBeenCalled();
 		});
 
 		it("should output help when no arguments are provided", async () => {
@@ -82,13 +84,36 @@ describe("index", () => {
 		});
 
 		it("should parse arguments when provided", async () => {
-			const argv = ["node", "tuckshop", "package"];
+			const argv = ["node", "tuckshop", "list"];
 			vi.stubGlobal("process", { argv });
+			mockApp.matchedCommandName = "list";
 
 			await run();
 
 			expect(mockApp.parse).toHaveBeenCalledWith(argv, { run: false });
 			expect(mockApp.parse).toHaveBeenCalledWith(argv);
+			expect(mockApp.outputHelp).not.toHaveBeenCalled();
+		});
+
+		it("should output help when no command matches", async () => {
+			const argv = ["node", "tuckshop", "nope"];
+			vi.stubGlobal("process", { argv });
+			mockApp.matchedCommandName = undefined;
+
+			await run();
+
+			expect(mockApp.parse).toHaveBeenCalledWith(argv);
+			expect(mockApp.outputHelp).toHaveBeenCalled();
+		});
+
+		it("should not re-print help after cac already handled --help", async () => {
+			const argv = ["node", "tuckshop", "config", "--help"];
+			vi.stubGlobal("process", { argv });
+			mockApp.matchedCommandName = undefined;
+			mockApp.options = { help: true };
+
+			await run();
+
 			expect(mockApp.outputHelp).not.toHaveBeenCalled();
 		});
 
@@ -154,7 +179,6 @@ describe("index", () => {
 			expect(registerCommandsCli).toHaveBeenCalledWith(
 				mockApp,
 				expect.objectContaining({ contentBaseUrl: "https://example.com" }),
-				{ registryFlag: "https://example.com/registry.json" },
 			);
 		});
 
@@ -181,7 +205,6 @@ describe("index", () => {
 			expect(registerCommandsCli).toHaveBeenCalledWith(
 				mockApp,
 				expect.objectContaining({ contentBaseUrl: "https://example.com" }),
-				{ registryFlag: "https://example.com/registry.json" },
 			);
 		});
 
@@ -271,6 +294,48 @@ describe("index", () => {
 				"https://example.com/flag-registry.json",
 				"https://example.com/saved-registry.json",
 			);
+		});
+
+		it("should skip registry loading for config commands", async () => {
+			vi.stubGlobal("process", {
+				argv: ["node", "tuckshop", "config", "get"],
+			});
+			vi.mocked(readConfig).mockResolvedValue({
+				registry: "https://example.com/broken-registry.json",
+			});
+			mockApp.matchedCommandName = "config";
+
+			await run();
+
+			expect(loadRuntimeRegistry).not.toHaveBeenCalled();
+			expect(readConfig).not.toHaveBeenCalled();
+			expect(registerCommandsCli).toHaveBeenCalledWith(mockApp, {
+				contentBaseUrl: "",
+				types: {},
+				items: {},
+			});
+		});
+
+		it("should skip registry loading for config even with --registry ahead", async () => {
+			vi.stubGlobal("process", {
+				argv: [
+					"node",
+					"tuckshop",
+					"--registry",
+					"https://example.com/flag-registry.json",
+					"config",
+					"unset",
+				],
+			});
+			vi.mocked(mockApp.parse).mockReturnValue({
+				args: ["config", "unset"],
+				options: { registry: "https://example.com/flag-registry.json" },
+			});
+			mockApp.matchedCommandName = "config";
+
+			await run();
+
+			expect(loadRuntimeRegistry).not.toHaveBeenCalled();
 		});
 	});
 });
