@@ -1,5 +1,5 @@
+import { dangerHighlight } from "@tuckshop/common";
 import animatedIntro from "./animated-intro";
-import { dangerHighlight } from "./colors";
 
 /** Logger utilities for the CLI. */
 class Logger {

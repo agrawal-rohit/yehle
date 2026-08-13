@@ -1,7 +1,7 @@
 import readline from "node:readline";
+import { primaryText } from "@tuckshop/common";
 import chalk from "chalk";
 import { stripAnsi } from "consola/utils";
-import { primaryText } from "./colors";
 
 type Message = string | Promise<string>;
 

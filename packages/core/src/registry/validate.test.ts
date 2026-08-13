@@ -269,9 +269,7 @@ describe("registry/validate", () => {
 				parseRegistryItemTypes({
 					component: { description: "No label" },
 				}),
-			).toThrow(
-				'"Registry type "component" label" must be a non-empty string.',
-			);
+			).toThrow('Registry type "component" label must be a non-empty string.');
 		});
 
 		it("rejects an empty label", () => {
@@ -279,9 +277,7 @@ describe("registry/validate", () => {
 				parseRegistryItemTypes({
 					component: { label: "" },
 				}),
-			).toThrow(
-				'"Registry type "component" label" must be a non-empty string.',
-			);
+			).toThrow('Registry type "component" label must be a non-empty string.');
 		});
 	});
 

@@ -1,0 +1,23 @@
+{
+	"name": "@tuckshop/common",
+	"version": "0.2.1",
+	"description": "Shared utilities for tuckshop packages (terminal styling, and future cross-package helpers).",
+	"license": "MIT",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": "./dist/index.js",
+		"./ui/labels": "./dist/ui/labels.js"
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "vitest run --passWithNoTests"
+	},
+	"dependencies": {
+		"chalk": "^5.6.2"
+	}
+}

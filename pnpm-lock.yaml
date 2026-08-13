@@ -114,6 +114,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@tuckshop/common':
+        specifier: workspace:*
+        version: link:../common
       '@tuckshop/core':
         specifier: workspace:*
         version: link:../core
@@ -127,7 +130,17 @@ importers:
         specifier: ^3.2.3
         version: 3.4.2
 
-  packages/core: {}
+  packages/common:
+    dependencies:
+      chalk:
+        specifier: ^5.6.2
+        version: 5.6.2
+
+  packages/core:
+    dependencies:
+      '@tuckshop/common':
+        specifier: workspace:*
+        version: link:../common
 
   packages/registry:
     dependencies:

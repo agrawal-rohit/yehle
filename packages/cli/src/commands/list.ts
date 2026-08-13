@@ -1,10 +1,10 @@
+import { defaultText, primaryText } from "@tuckshop/common";
 import type {
 	Registry,
 	RegistryItem,
 	RegistryItemTypeDefinition,
 } from "@tuckshop/core";
 import chalk from "chalk";
-import { defaultText, primaryText } from "../cli/colors";
 import { parseMultiValueOption } from "../cli/options";
 
 /** Options accepted by the list command. */

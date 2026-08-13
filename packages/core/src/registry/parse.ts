@@ -1,3 +1,5 @@
+import { primaryText } from "@tuckshop/common";
+
 /**
  * Assert a value is a plain object.
  * @param value - Value to narrow.
@@ -10,7 +12,7 @@ export function asRecord(
 	label: string,
 ): Record<string, unknown> {
 	if (!value || typeof value !== "object" || Array.isArray(value))
-		throw new Error(`"${label}" must be an object.`);
+		throw new Error(`${primaryText(label)} must be an object.`);
 	return value as Record<string, unknown>;
 }
 
@@ -43,7 +45,7 @@ export function assertNonEmptyString(
 	label: string,
 ): asserts value is string {
 	if (typeof value !== "string" || value.length === 0)
-		throw new Error(`"${label}" must be a non-empty string.`);
+		throw new Error(`${primaryText(label)} must be a non-empty string.`);
 }
 
 /**
@@ -58,7 +60,8 @@ export function parseStringArray(
 	label: string,
 ): string[] | undefined {
 	if (raw === undefined || raw === null) return undefined;
-	if (!Array.isArray(raw)) throw new Error(`"${label}" must be an array.`);
+	if (!Array.isArray(raw))
+		throw new Error(`${primaryText(label)} must be an array.`);
 
 	const values: string[] = [];
 	for (const [index, entry] of raw.entries()) {

@@ -402,7 +402,7 @@ describe("registry/builder", () => {
 		);
 
 		await expect(buildRegistry(tempDir)).rejects.toThrow(
-			'"Registry item "git-hooks" variant "typescript" when" must be an object.',
+			'Registry item "git-hooks" variant "typescript" when must be an object.',
 		);
 	});
 
@@ -639,7 +639,7 @@ describe("registry/builder", () => {
 		);
 
 		await expect(buildRegistry(tempDir)).rejects.toThrow(
-			'"Registry condition "language" values[0].files[0]" must be a non-empty string.',
+			'Registry condition "language" values[0].files[0] must be a non-empty string.',
 		);
 	});
 
