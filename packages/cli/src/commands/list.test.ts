@@ -1,4 +1,4 @@
-import { type Registry, SCHEMA_VERSION } from "@tuckshop/core";
+import type { Registry } from "@tuckshop/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockParseMultiValueOption = vi.fn((value: string) =>
@@ -81,8 +81,6 @@ function makeRegistry(
 	types: Registry["types"] = DEFAULT_TYPES,
 ): Registry {
 	return {
-		version: "0.0.0",
-		schemaVersion: SCHEMA_VERSION,
 		contentBaseUrl: "https://example.com",
 		types,
 		items,

@@ -1,4 +1,3 @@
-import { SCHEMA_VERSION } from "@tuckshop/core";
 import type { CAC } from "cac";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -62,8 +61,6 @@ function createMockApp() {
 
 describe("commands/index", () => {
 	const registry = {
-		version: "1.0.0",
-		schemaVersion: SCHEMA_VERSION,
 		contentBaseUrl: "https://example.com",
 		types: {
 			component: { label: "Components" },

@@ -1,6 +1,4 @@
 {
-  "version": "0.2.1",
-  "schemaVersion": 1,
   "contentBaseUrl": "https://raw.githubusercontent.com/agrawal-rohit/tuckshop/tuckshop@0.2.1/packages/registry",
   "conditions": {
     "language": {

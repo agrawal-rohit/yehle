@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildRegistry } from "./builder";
-import { type Registry, SCHEMA_VERSION } from "./schema";
+import type { Registry } from "./schema";
 
 /**
  * Write a registry item fixture under a temp repo root.
@@ -94,7 +94,7 @@ describe("registry/builder", () => {
 		fs.rmSync(tempDir, { recursive: true, force: true });
 	});
 
-	it("builds registry.json with version, contentBaseUrl, sorted items, and repo-relative sources", async () => {
+	it("builds registry.json with contentBaseUrl, sorted items, and repo-relative sources", async () => {
 		writeItem(
 			tempDir,
 			"component/button",
@@ -153,8 +153,6 @@ describe("registry/builder", () => {
 		) as Registry;
 
 		expect(document).toEqual(written);
-		expect(written.version).toBe("1.2.3");
-		expect(written.schemaVersion).toBe(SCHEMA_VERSION);
 		expect(written.contentBaseUrl).toBe(
 			"https://raw.githubusercontent.com/agrawal-rohit/tuckshop/v1.2.3",
 		);
@@ -404,7 +402,7 @@ describe("registry/builder", () => {
 		);
 
 		await expect(buildRegistry(tempDir)).rejects.toThrow(
-			'Registry item "git-hooks" variant "typescript" when must be an object.',
+			'"Registry item "git-hooks" variant "typescript" when" must be an object.',
 		);
 	});
 
@@ -641,7 +639,7 @@ describe("registry/builder", () => {
 		);
 
 		await expect(buildRegistry(tempDir)).rejects.toThrow(
-			'Registry condition "language" values[0].files[0] must be a non-empty string.',
+			'"Registry condition "language" values[0].files[0]" must be a non-empty string.',
 		);
 	});
 

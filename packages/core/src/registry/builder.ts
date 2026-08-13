@@ -2,13 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { readJSONFileAsync, writeFileAsync } from "../core/fs";
 import { assertNonEmptyString, parseStringArray, parseWhen } from "./parse";
-import {
-	type Registry,
-	type RegistryCondition,
-	type RegistryFile,
-	type RegistryItem,
-	type RegistryVariant,
-	SCHEMA_VERSION,
+import type {
+	Registry,
+	RegistryCondition,
+	RegistryFile,
+	RegistryItem,
+	RegistryVariant,
 } from "./schema";
 import {
 	crossValidateItemTypes,
@@ -336,8 +335,6 @@ export async function buildRegistry(
 				).replace(/\/+$/, "");
 
 	const document: Registry = {
-		version: pkg.version,
-		schemaVersion: SCHEMA_VERSION,
 		contentBaseUrl,
 		...(conditions ? { conditions } : {}),
 		types,

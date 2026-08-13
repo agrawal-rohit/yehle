@@ -10,8 +10,26 @@ export function asRecord(
 	label: string,
 ): Record<string, unknown> {
 	if (!value || typeof value !== "object" || Array.isArray(value))
-		throw new Error(`${label} must be an object.`);
+		throw new Error(`"${label}" must be an object.`);
 	return value as Record<string, unknown>;
+}
+
+/**
+ * Assert an object declares no keys outside the allowed set.
+ * @param source - Object record to inspect.
+ * @param allowed - Allowed key names.
+ * @param label - Error context.
+ * @throws Error listing each unrecognized key (typo detection, Biome-style).
+ */
+export function assertNoUnknownKeys(
+	source: Record<string, unknown>,
+	allowed: readonly string[],
+	label: string,
+): void {
+	const allowedSet = new Set(allowed);
+	const unknown = Object.keys(source).filter((key) => !allowedSet.has(key));
+	if (unknown.length > 0)
+		throw new Error(`${label} has unknown key(s): ${unknown.join(", ")}.`);
 }
 
 /**
@@ -25,7 +43,7 @@ export function assertNonEmptyString(
 	label: string,
 ): asserts value is string {
 	if (typeof value !== "string" || value.length === 0)
-		throw new Error(`${label} must be a non-empty string.`);
+		throw new Error(`"${label}" must be a non-empty string.`);
 }
 
 /**
@@ -40,7 +58,7 @@ export function parseStringArray(
 	label: string,
 ): string[] | undefined {
 	if (raw === undefined || raw === null) return undefined;
-	if (!Array.isArray(raw)) throw new Error(`${label} must be an array.`);
+	if (!Array.isArray(raw)) throw new Error(`"${label}" must be an array.`);
 
 	const values: string[] = [];
 	for (const [index, entry] of raw.entries()) {

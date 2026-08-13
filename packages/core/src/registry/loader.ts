@@ -114,7 +114,7 @@ export async function resolveRegistrySource(
 /**
  * Load and validate a registry document from a local registry.json path.
  * @param registryPath - Absolute path to the registry.json file.
- * @returns Registry version, schema version, content base URL, and item metadata.
+ * @returns Registry content base URL and item metadata.
  * @throws Error when the registry file is missing or malformed.
  */
 export async function loadRegistry(registryPath: string): Promise<Registry> {

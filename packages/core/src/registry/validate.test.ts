@@ -1,49 +1,79 @@
 import { describe, expect, it } from "vitest";
-import { SCHEMA_VERSION } from "./schema";
 import {
 	parseRegistryDocument,
 	parseRegistryItemTypes,
 	validateRegistryItem,
 } from "./validate";
 
+/** Minimal valid registry document for parseRegistryDocument tests. */
+function validDocument(
+	overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+	return {
+		contentBaseUrl: "https://example.com/content/",
+		types: {
+			component: { label: "Components" },
+		},
+		items: {
+			button: {
+				id: "button",
+				title: "Button",
+				description: "A button",
+				type: "component",
+				variants: [
+					{
+						id: "react",
+						title: "React",
+						description: "React button",
+						files: [
+							{
+								source: "registry/component/button/react/button.tsx",
+								target: "src/components/ui/button.tsx",
+							},
+						],
+					},
+				],
+			},
+		},
+		...overrides,
+	};
+}
+
 describe("registry/validate", () => {
 	it("parses a valid registry document", () => {
-		const parsed = parseRegistryDocument({
-			version: "1.2.3",
-			schemaVersion: SCHEMA_VERSION,
-			contentBaseUrl: "https://example.com/content/",
-			conditions: {
-				language: {
-					label: "Language",
-					values: [{ value: "typescript", label: "TypeScript" }],
+		const parsed = parseRegistryDocument(
+			validDocument({
+				contentBaseUrl: "https://example.com/content/",
+				conditions: {
+					language: {
+						label: "Language",
+						values: [{ value: "typescript", label: "TypeScript" }],
+					},
 				},
-			},
-			types: {
-				component: { label: "Components" },
-			},
-			items: {
-				button: {
-					id: "button",
-					title: "Button",
-					description: "A button",
-					type: "component",
-					variants: [
-						{
-							id: "react",
-							title: "React",
-							description: "React button",
-							when: { language: "typescript" },
-							files: [
-								{
-									source: "registry/component/button/react/button.tsx",
-									target: "src/components/ui/button.tsx",
-								},
-							],
-						},
-					],
+				items: {
+					button: {
+						id: "button",
+						title: "Button",
+						description: "A button",
+						type: "component",
+						variants: [
+							{
+								id: "react",
+								title: "React",
+								description: "React button",
+								when: { language: "typescript" },
+								files: [
+									{
+										source: "registry/component/button/react/button.tsx",
+										target: "src/components/ui/button.tsx",
+									},
+								],
+							},
+						],
+					},
 				},
-			},
-		});
+			}),
+		);
 
 		expect(parsed.contentBaseUrl).toBe("https://example.com/content");
 		expect(parsed.items.button.type).toBe("component");
@@ -52,39 +82,21 @@ describe("registry/validate", () => {
 		});
 	});
 
-	it("rejects a future schema version", () => {
-		expect(() =>
-			parseRegistryDocument({
-				version: "1.2.3",
-				schemaVersion: SCHEMA_VERSION + 1,
-				contentBaseUrl: "https://example.com/content",
-				types: {
-					component: { label: "Components" },
-				},
-				items: {},
-			}),
-		).toThrow(`Registry schema version ${SCHEMA_VERSION + 1} is newer`);
-	});
-
 	it("rejects malformed registry items", () => {
 		expect(() =>
-			parseRegistryDocument({
-				version: "1.2.3",
-				schemaVersion: SCHEMA_VERSION,
-				contentBaseUrl: "https://example.com/content",
-				types: {
-					component: { label: "Components" },
-				},
-				items: {
-					button: {
-						id: "button",
-						title: "Button",
-						description: "A button",
-						type: "component",
-						variants: [],
+			parseRegistryDocument(
+				validDocument({
+					items: {
+						button: {
+							id: "button",
+							title: "Button",
+							description: "A button",
+							type: "component",
+							variants: [],
+						},
 					},
-				},
-			}),
+				}),
+			),
 		).toThrow(
 			'Registry items["button"].variants must declare at least one variant.',
 		);
@@ -109,6 +121,108 @@ describe("registry/validate", () => {
 		).toMatchObject({
 			id: "legacy-item",
 			type: "legacy",
+		});
+	});
+
+	describe("unknown keys", () => {
+		it("rejects an unknown top-level key", () => {
+			expect(() =>
+				parseRegistryDocument(validDocument({ version: "1.2.3" })),
+			).toThrow("Registry has unknown key(s): version.");
+		});
+
+		it("rejects an unknown item key", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						items: {
+							button: {
+								id: "button",
+								title: "Button",
+								description: "A button",
+								type: "component",
+								typo: true,
+								variants: [
+									{
+										id: "react",
+										title: "React",
+										description: "React button",
+										files: [
+											{
+												source: "a.tsx",
+												target: "a.tsx",
+											},
+										],
+									},
+								],
+							},
+						},
+					}),
+				),
+			).toThrow('Registry items["button"] has unknown key(s): typo.');
+		});
+
+		it("rejects an unknown variant key", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						items: {
+							button: {
+								id: "button",
+								title: "Button",
+								description: "A button",
+								type: "component",
+								variants: [
+									{
+										id: "react",
+										title: "React",
+										description: "React button",
+										extra: "nope",
+										files: [
+											{
+												source: "a.tsx",
+												target: "a.tsx",
+											},
+										],
+									},
+								],
+							},
+						},
+					}),
+				),
+			).toThrow(
+				'Registry items["button"].variants[0] has unknown key(s): extra.',
+			);
+		});
+
+		it("rejects an unknown condition key", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						conditions: {
+							language: {
+								label: "Language",
+								unknownField: true,
+								values: [{ value: "typescript", label: "TypeScript" }],
+							},
+						},
+					}),
+				),
+			).toThrow(
+				'Registry condition "language" has unknown key(s): unknownField.',
+			);
+		});
+
+		it("rejects an unknown type key", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						types: {
+							component: { label: "Components", bogus: 1 },
+						},
+					}),
+				),
+			).toThrow('Registry type "component" has unknown key(s): bogus.');
 		});
 	});
 
@@ -155,7 +269,9 @@ describe("registry/validate", () => {
 				parseRegistryItemTypes({
 					component: { description: "No label" },
 				}),
-			).toThrow('Registry type "component" label must be a non-empty string.');
+			).toThrow(
+				'"Registry type "component" label" must be a non-empty string.',
+			);
 		});
 
 		it("rejects an empty label", () => {
@@ -163,43 +279,24 @@ describe("registry/validate", () => {
 				parseRegistryItemTypes({
 					component: { label: "" },
 				}),
-			).toThrow('Registry type "component" label must be a non-empty string.');
+			).toThrow(
+				'"Registry type "component" label" must be a non-empty string.',
+			);
 		});
 	});
 
 	it("round-trips types through parseRegistryDocument", () => {
-		const parsed = parseRegistryDocument({
-			version: "1.2.3",
-			schemaVersion: SCHEMA_VERSION,
-			contentBaseUrl: "https://example.com/content",
-			types: {
-				component: {
-					label: "Components",
-					description: "Reusable UI primitives.",
+		const parsed = parseRegistryDocument(
+			validDocument({
+				contentBaseUrl: "https://example.com/content",
+				types: {
+					component: {
+						label: "Components",
+						description: "Reusable UI primitives.",
+					},
 				},
-			},
-			items: {
-				button: {
-					id: "button",
-					title: "Button",
-					description: "A button",
-					type: "component",
-					variants: [
-						{
-							id: "react",
-							title: "React",
-							description: "React button",
-							files: [
-								{
-									source: "registry/component/button/react/button.tsx",
-									target: "src/components/ui/button.tsx",
-								},
-							],
-						},
-					],
-				},
-			},
-		});
+			}),
+		);
 
 		expect(parsed.types).toEqual({
 			component: {
@@ -212,8 +309,6 @@ describe("registry/validate", () => {
 	it("rejects documents with items but no types", () => {
 		expect(() =>
 			parseRegistryDocument({
-				version: "1.2.3",
-				schemaVersion: SCHEMA_VERSION,
 				contentBaseUrl: "https://example.com/content",
 				items: {
 					button: {
@@ -242,35 +337,13 @@ describe("registry/validate", () => {
 
 	it("throws when an item declares an undeclared type", () => {
 		expect(() =>
-			parseRegistryDocument({
-				version: "1.2.3",
-				schemaVersion: SCHEMA_VERSION,
-				contentBaseUrl: "https://example.com/content",
-				types: {
-					theme: { label: "Themes" },
-				},
-				items: {
-					button: {
-						id: "button",
-						title: "Button",
-						description: "A button",
-						type: "component",
-						variants: [
-							{
-								id: "react",
-								title: "React",
-								description: "React button",
-								files: [
-									{
-										source: "registry/component/button/react/button.tsx",
-										target: "src/components/ui/button.tsx",
-									},
-								],
-							},
-						],
+			parseRegistryDocument(
+				validDocument({
+					types: {
+						theme: { label: "Themes" },
 					},
-				},
-			}),
+				}),
+			),
 		).toThrow('Registry item "button" has undeclared type "component".');
 	});
 });

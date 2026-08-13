@@ -3,7 +3,6 @@ import * as core from "./index";
 
 describe("package entry", () => {
 	it("re-exports the public core API", () => {
-		expect(core.SCHEMA_VERSION).toBe(1);
 		expect(core.RegistryConditionInference).toBeDefined();
 		expect(typeof core.isRegularFileAsync).toBe("function");
 		expect(typeof core.readJSONFileAsync).toBe("function");

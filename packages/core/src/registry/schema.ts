@@ -1,6 +1,3 @@
-/** Schema version supported by this build of `@tuckshop/core`. */
-export const SCHEMA_VERSION = 1;
-
 /** Supported condition inference modes. */
 export enum RegistryConditionInference {
 	FILES = "files",
@@ -47,10 +44,6 @@ export type RegistryVariant = {
 
 /** The built registry document written to registry.json. */
 export type Registry = {
-	/** Version of the registry content package that produced this document. */
-	version: string;
-	/** Schema version used to validate and interpret the document. */
-	schemaVersion: number;
 	/** Base URL for fetching file content (`${contentBaseUrl}/${source}`). */
 	contentBaseUrl: string;
 	/** Shared condition definitions keyed by condition key. */

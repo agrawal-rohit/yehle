@@ -5,7 +5,7 @@ import {
 	RegistrySourceKind,
 	resolveRegistrySource,
 } from "./loader";
-import { type Registry, SCHEMA_VERSION } from "./schema";
+import type { Registry } from "./schema";
 
 const mockIsRegularFileAsync = vi.fn<(candidate: string) => Promise<boolean>>();
 const mockReadJSONFileAsync = vi.fn<(candidate: string) => Promise<unknown>>();
@@ -16,8 +16,6 @@ vi.mock("../core/fs", () => ({
 }));
 
 const sampleRegistry: Registry = {
-	version: "1.0.0",
-	schemaVersion: SCHEMA_VERSION,
 	contentBaseUrl: "https://example.com/content",
 	types: {
 		theme: { label: "Themes" },

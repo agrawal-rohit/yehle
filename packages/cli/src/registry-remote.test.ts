@@ -1,11 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { IncomingMessage } from "node:http";
 import { Readable } from "node:stream";
-import {
-	type Registry,
-	RegistrySourceKind,
-	SCHEMA_VERSION,
-} from "@tuckshop/core";
+import { type Registry, RegistrySourceKind } from "@tuckshop/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockHttpsRequest = vi.fn();
@@ -38,16 +34,12 @@ vi.mock("@tuckshop/core", async () => {
 import { loadRuntimeRegistry } from "./registry-remote";
 
 const sampleRegistry: Registry = {
-	version: "1.0.0",
-	schemaVersion: SCHEMA_VERSION,
 	contentBaseUrl: "https://example.com/content",
 	types: {},
 	items: {},
 };
 
 const publicRegistryBody = JSON.stringify({
-	version: "1.0.0",
-	schemaVersion: SCHEMA_VERSION,
 	contentBaseUrl: "https://example.com/content",
 	types: {},
 	items: {},
@@ -275,7 +267,7 @@ describe("registry-remote", () => {
 	it("rejects remote registries whose content-length exceeds the size limit", async () => {
 		mockRemoteSource("https://example.com/large-header-registry.json");
 		mockHttpsOk({
-			headers: { "content-length": String(1_000_001) },
+			headers: { "content-length": String(5_000_001) },
 			body: publicRegistryBody,
 		});
 
@@ -288,7 +280,7 @@ describe("registry-remote", () => {
 		mockRemoteSource("https://example.com/large-body-registry.json");
 		mockHttpsOk({
 			headers: {},
-			body: "x".repeat(1_000_001),
+			body: "x".repeat(5_000_001),
 		});
 
 		await expect(loadRuntimeRegistry()).rejects.toThrow(

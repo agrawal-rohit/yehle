@@ -1,4 +1,3 @@
-import { SCHEMA_VERSION } from "@tuckshop/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock CLI dependencies used by the top-level entrypoint
@@ -19,8 +18,6 @@ vi.mock("./commands", () => ({
 
 vi.mock("./registry-remote", () => ({
 	loadRuntimeRegistry: vi.fn(async () => ({
-		version: "1.0.0",
-		schemaVersion: SCHEMA_VERSION,
 		contentBaseUrl: "https://example.com",
 		items: {},
 	})),
@@ -66,7 +63,7 @@ describe("index", () => {
 			expect(loadRuntimeRegistry).toHaveBeenCalledWith(undefined, undefined);
 			expect(registerCommandsCli).toHaveBeenCalledWith(
 				mockApp,
-				expect.objectContaining({ schemaVersion: SCHEMA_VERSION }),
+				expect.objectContaining({ contentBaseUrl: "https://example.com" }),
 				{ registryFlag: undefined },
 			);
 			expect(mockApp.help).toHaveBeenCalled();
@@ -156,7 +153,7 @@ describe("index", () => {
 			);
 			expect(registerCommandsCli).toHaveBeenCalledWith(
 				mockApp,
-				expect.objectContaining({ schemaVersion: SCHEMA_VERSION }),
+				expect.objectContaining({ contentBaseUrl: "https://example.com" }),
 				{ registryFlag: "https://example.com/registry.json" },
 			);
 		});
@@ -183,7 +180,7 @@ describe("index", () => {
 			);
 			expect(registerCommandsCli).toHaveBeenCalledWith(
 				mockApp,
-				expect.objectContaining({ schemaVersion: SCHEMA_VERSION }),
+				expect.objectContaining({ contentBaseUrl: "https://example.com" }),
 				{ registryFlag: "https://example.com/registry.json" },
 			);
 		});

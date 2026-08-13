@@ -82,7 +82,7 @@ import { buildRegistry, parseRegistryDocument } from "@tuckshop/core";
 
 `@tuckshop/core` exposes:
 
-- Schema types and `SCHEMA_VERSION` for your registry document
+- Schema types and validation for your registry document
 - Registry validation to ensure your document is well-formed
 - Registry building from a structured `registry/` directory
 - Condition inference and variant resolution for cross-platform items

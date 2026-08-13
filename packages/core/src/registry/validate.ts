@@ -1,6 +1,7 @@
 import {
 	asRecord,
 	assertNonEmptyString,
+	assertNoUnknownKeys,
 	parseStringArray,
 	parseWhen,
 } from "./parse";
@@ -13,7 +14,6 @@ import {
 	type RegistryItem,
 	type RegistryItemTypeDefinition,
 	type RegistryVariant,
-	SCHEMA_VERSION,
 } from "./schema";
 
 /**
@@ -29,6 +29,7 @@ function parseRegistryFiles(raw: unknown, label: string): RegistryFile[] {
 
 	return raw.map((entry, index) => {
 		const file = asRecord(entry, `${label}[${index}]`);
+		assertNoUnknownKeys(file, ["source", "target"], `${label}[${index}]`);
 		assertNonEmptyString(file.source, `${label}[${index}].source`);
 		assertNonEmptyString(file.target, `${label}[${index}].target`);
 		return {
@@ -61,6 +62,7 @@ function parseRegistryDependencyEntries(
 		}
 
 		const objectEntry = asRecord(entry, `${label}[${index}]`);
+		assertNoUnknownKeys(objectEntry, ["name"], `${label}[${index}]`);
 		assertNonEmptyString(objectEntry.name, `${label}[${index}].name`);
 		dependencies.push({ name: objectEntry.name });
 	}
@@ -77,6 +79,20 @@ function parseRegistryDependencyEntries(
  */
 function parseRegistryVariant(raw: unknown, label: string): RegistryVariant {
 	const variant = asRecord(raw, label);
+	assertNoUnknownKeys(
+		variant,
+		[
+			"id",
+			"title",
+			"description",
+			"files",
+			"when",
+			"dependencies",
+			"devDependencies",
+			"registryDependencies",
+		],
+		label,
+	);
 	assertNonEmptyString(variant.id, `${label}.id`);
 	assertNonEmptyString(variant.title, `${label}.title`);
 	assertNonEmptyString(variant.description, `${label}.description`);
@@ -120,6 +136,21 @@ export function validateRegistryItem(
 	label: string = "Registry item",
 ): RegistryItem {
 	const item = asRecord(raw, label);
+	assertNoUnknownKeys(
+		item,
+		[
+			"id",
+			"title",
+			"description",
+			"type",
+			"files",
+			"dependencies",
+			"devDependencies",
+			"variants",
+			"registryDependencies",
+		],
+		label,
+	);
 	assertNonEmptyString(item.id, `${label}.id`);
 	assertNonEmptyString(item.title, `${label}.title`);
 	assertNonEmptyString(item.description, `${label}.description`);
@@ -180,6 +211,11 @@ function parseConditionValueEntry(
 		rawValue,
 		`Registry condition "${key}" values[${index}]`,
 	);
+	assertNoUnknownKeys(
+		valueEntry,
+		["value", "label", "files"],
+		`Registry condition "${key}" values[${index}]`,
+	);
 	assertNonEmptyString(
 		valueEntry.value,
 		`Registry condition "${key}" values[${index}].value`,
@@ -220,6 +256,11 @@ export function parseRegistryConditions(
 
 	for (const [key, rawCondition] of Object.entries(source)) {
 		const entry = asRecord(rawCondition, `Registry condition "${key}"`);
+		assertNoUnknownKeys(
+			entry,
+			["label", "description", "inference", "values"],
+			`Registry condition "${key}"`,
+		);
 		assertNonEmptyString(entry.label, `Registry condition "${key}" label`);
 
 		let inference: RegistryConditionInference | undefined;
@@ -305,6 +346,11 @@ export function parseRegistryItemTypes(
 
 	for (const [key, rawType] of Object.entries(source)) {
 		const entry = asRecord(rawType, `Registry type "${key}"`);
+		assertNoUnknownKeys(
+			entry,
+			["label", "description"],
+			`Registry type "${key}"`,
+		);
 		assertNonEmptyString(entry.label, `Registry type "${key}" label`);
 
 		types[key] = {
@@ -343,22 +389,15 @@ export function crossValidateItemTypes(
  * Parse and validate a registry document.
  * @param raw - Raw JSON value loaded from registry.json.
  * @returns Normalized registry document.
- * @throws Error when the document shape or schema version is invalid.
+ * @throws Error when the document shape is invalid or contains unknown keys.
  */
 export function parseRegistryDocument(raw: unknown): Registry {
 	const source = asRecord(raw, "Registry");
-	assertNonEmptyString(source.version, "Registry version");
-
-	if (
-		typeof source.schemaVersion !== "number" ||
-		!Number.isInteger(source.schemaVersion)
-	)
-		throw new Error("Registry schemaVersion must be an integer.");
-	if (source.schemaVersion > SCHEMA_VERSION)
-		throw new Error(
-			`Registry schema version ${source.schemaVersion} is newer than this CLI supports (${SCHEMA_VERSION}). Upgrade tuckshop.`,
-		);
-
+	assertNoUnknownKeys(
+		source,
+		["contentBaseUrl", "conditions", "types", "items"],
+		"Registry",
+	);
 	assertNonEmptyString(source.contentBaseUrl, "Registry contentBaseUrl");
 	const itemsRecord = asRecord(source.items, "Registry items");
 	const items: Record<string, RegistryItem> = {};
@@ -375,8 +414,6 @@ export function parseRegistryDocument(raw: unknown): Registry {
 	crossValidateItemTypes(items, types);
 
 	return {
-		version: source.version,
-		schemaVersion: source.schemaVersion,
 		contentBaseUrl: source.contentBaseUrl.replace(/\/+$/, ""),
 		...(conditions ? { conditions } : {}),
 		types,
