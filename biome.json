@@ -7,7 +7,6 @@
 			"!packages/*/dist",
 			"!packages/*/coverage",
 			"!packages/registry/registry",
-			"!packages/registry/registry.json",
 			"!packages/cli/registry.json",
 			"!docs/.next",
 			"!docs/.source",

@@ -1,51 +1,48 @@
 {
-  "contentBaseUrl": "https://raw.githubusercontent.com/agrawal-rohit/tuckshop/tuckshop@0.2.1/packages/registry",
-  "conditions": {
-    "language": {
-      "label": "Language",
-      "description": "Which language is this project written in?",
-      "inference": "files",
-      "values": [
-        {
-          "value": "typescript",
-          "label": "TypeScript",
-          "files": [
-            "package.json",
-            "tsconfig.json"
-          ]
-        }
-      ]
-    }
-  },
-  "types": {
-    "component": {
-      "label": "Components",
-      "description": "Reusable UI primitives for building interfaces."
-    },
-    "convention": {
-      "label": "Conventions",
-      "description": "Project workflows and tooling configuration."
-    },
-    "agent-instruction": {
-      "label": "Agent Instructions",
-      "description": "Instruction files that guide coding agents."
-    },
-    "agent-skill": {
-      "label": "Agent Skills",
-      "description": "Reusable skills that extend coding agents."
-    },
-    "subagent": {
-      "label": "Subagents",
-      "description": "Specialised agents for focused tasks."
-    },
-    "template": {
-      "label": "Templates",
-      "description": "Starter scaffolds for new projects."
-    },
-    "theme": {
-      "label": "Themes",
-      "description": "Design tokens and styling presets."
-    }
-  },
-  "items": {}
+	"contentBaseUrl": "https://raw.githubusercontent.com/agrawal-rohit/tuckshop/tuckshop@0.2.1/packages/registry",
+	"conditions": {
+		"language": {
+			"label": "Language",
+			"values": [
+				{
+					"value": "typescript",
+					"label": "TypeScript",
+					"files": ["package.json", "tsconfig.json"]
+				}
+			],
+			"description": "Which language is this project written in?",
+			"inference": "files"
+		}
+	},
+	"types": {
+		"component": {
+			"label": "Components",
+			"description": "Reusable UI primitives for building interfaces."
+		},
+		"convention": {
+			"label": "Conventions",
+			"description": "Project workflows and tooling configuration."
+		},
+		"agent-instruction": {
+			"label": "Agent Instructions",
+			"description": "Instruction files that guide coding agents."
+		},
+		"agent-skill": {
+			"label": "Agent Skills",
+			"description": "Reusable skills that extend coding agents."
+		},
+		"subagent": {
+			"label": "Subagents",
+			"description": "Specialised agents for focused tasks."
+		},
+		"template": {
+			"label": "Templates",
+			"description": "Starter scaffolds for new projects."
+		},
+		"theme": {
+			"label": "Themes",
+			"description": "Design tokens and styling presets."
+		}
+	},
+	"items": {}
 }

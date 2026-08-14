@@ -343,7 +343,7 @@ export async function buildRegistry(
 
 	await fs.promises.writeFile(
 		outputPath,
-		`${JSON.stringify(document, null, 2)}\n`,
+		`${JSON.stringify(document, null, "\t")}\n`,
 	);
 	const itemCount = Object.keys(sortedItems).length;
 	console.log(
