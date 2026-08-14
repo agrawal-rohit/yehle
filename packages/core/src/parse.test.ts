@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { type ZodType, z } from "zod";
 import {
+	parseRegistryConditions,
 	parseRegistryDocument,
 	parseRegistryItemTypes,
 	parseWithSchema,
 } from "./parse";
-import { registryItemSchema } from "./schema";
+import { RegistryConditionInference, registryItemSchema } from "./schema";
 
 /** Minimal valid registry document for parseRegistryDocument tests. */
 function validDocument(
@@ -356,5 +358,272 @@ describe("registry/parse", () => {
 				}),
 			),
 		).toThrow('Registry item "button" has undeclared type "component".');
+	});
+
+	it("omits an empty conditions map from the parsed document", () => {
+		expect(
+			parseRegistryDocument(validDocument({ conditions: {} })),
+		).not.toHaveProperty("conditions");
+	});
+
+	it("rejects a document that is not an object", () => {
+		expect(() => parseRegistryDocument("nope")).toThrow(
+			"Registry must be an object.",
+		);
+	});
+
+	it("rejects variants that are not an array", () => {
+		expect(() =>
+			parseRegistryDocument(
+				validDocument({
+					items: {
+						button: {
+							id: "button",
+							title: "Button",
+							description: "A button",
+							type: "component",
+							variants: "react",
+						},
+					},
+				}),
+			),
+		).toThrow('Registry items["button"].variants must be an array.');
+	});
+
+	it("rejects an empty variant files list", () => {
+		expect(() =>
+			parseRegistryDocument(
+				validDocument({
+					items: {
+						button: {
+							id: "button",
+							title: "Button",
+							description: "A button",
+							type: "component",
+							variants: [
+								{
+									id: "react",
+									title: "React",
+									description: "React button",
+									files: [],
+								},
+							],
+						},
+					},
+				}),
+			),
+		).toThrow(
+			'Registry items["button"].variants[0].files must declare at least one file.',
+		);
+	});
+
+	it("rejects multiple unknown keys", () => {
+		expect(() =>
+			parseRegistryDocument(validDocument({ foo: 1, bar: 2 })),
+		).toThrow("Registry has unknown keys: foo, bar.");
+	});
+
+	describe("parseRegistryConditions", () => {
+		it("returns undefined when conditions are absent", () => {
+			expect(parseRegistryConditions(undefined)).toBeUndefined();
+			expect(parseRegistryConditions(null)).toBeUndefined();
+		});
+
+		it("returns undefined for an empty conditions object", () => {
+			expect(parseRegistryConditions({})).toBeUndefined();
+		});
+
+		it("parses a valid conditions map", () => {
+			expect(
+				parseRegistryConditions({
+					language: {
+						label: "Language",
+						description: "Pick a language.",
+						inference: RegistryConditionInference.FILES,
+						values: [{ value: "typescript", label: "TypeScript" }],
+					},
+				}),
+			).toEqual({
+				language: {
+					label: "Language",
+					description: "Pick a language.",
+					inference: RegistryConditionInference.FILES,
+					values: [{ value: "typescript", label: "TypeScript" }],
+				},
+			});
+		});
+
+		it("rejects a conditions value that is not an object", () => {
+			expect(() => parseRegistryConditions("nope")).toThrow(
+				"Registry conditions must be an object.",
+			);
+		});
+
+		it("rejects a condition entry that is not an object", () => {
+			expect(() => parseRegistryConditions({ language: "typescript" })).toThrow(
+				'Registry condition "language" must be an object.',
+			);
+		});
+
+		it("rejects an empty condition values list", () => {
+			expect(() =>
+				parseRegistryConditions({
+					language: { label: "Language", values: [] },
+				}),
+			).toThrow(
+				'Registry condition "language" must declare at least one value.',
+			);
+		});
+
+		it("rejects duplicate condition values", () => {
+			expect(() =>
+				parseRegistryConditions({
+					language: {
+						label: "Language",
+						values: [
+							{ value: "ts", label: "TS" },
+							{ value: "ts", label: "TypeScript" },
+						],
+					},
+				}),
+			).toThrow('Registry condition "language" has duplicate value "ts".');
+		});
+
+		it("rejects an unknown inference mode", () => {
+			expect(() =>
+				parseRegistryConditions({
+					language: {
+						label: "Language",
+						inference: "guess",
+						values: [{ value: "typescript", label: "TypeScript" }],
+					},
+				}),
+			).toThrow(
+				'Registry condition "language" has invalid inference "guess" (expected one of: files).',
+			);
+		});
+
+		it("rejects an empty nested condition value", () => {
+			expect(() =>
+				parseRegistryConditions({
+					language: {
+						label: "Language",
+						values: [{ value: "", label: "TypeScript" }],
+					},
+				}),
+			).toThrow(
+				'Registry condition "language" values[0].value must be a non-empty string.',
+			);
+		});
+	});
+
+	describe("when matching", () => {
+		it("rejects a when key that is not a declared condition", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						items: {
+							button: {
+								id: "button",
+								title: "Button",
+								description: "A button",
+								type: "component",
+								variants: [
+									{
+										id: "react",
+										title: "React",
+										description: "React button",
+										when: { language: "typescript" },
+										files: [{ source: "a.tsx", target: "a.tsx" }],
+									},
+								],
+							},
+						},
+					}),
+				),
+			).toThrow(
+				'Registry item "button" variant "react" references unknown when key "language".',
+			);
+		});
+
+		it("rejects a when value that is not declared for the condition", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						conditions: {
+							language: {
+								label: "Language",
+								values: [{ value: "typescript", label: "TypeScript" }],
+							},
+						},
+						items: {
+							button: {
+								id: "button",
+								title: "Button",
+								description: "A button",
+								type: "component",
+								variants: [
+									{
+										id: "react",
+										title: "React",
+										description: "React button",
+										when: { language: "javascript" },
+										files: [{ source: "a.tsx", target: "a.tsx" }],
+									},
+								],
+							},
+						},
+					}),
+				),
+			).toThrow(
+				'Registry item "button" variant "react" uses undeclared when value "javascript" for key "language".',
+			);
+		});
+	});
+
+	describe("parseWithSchema", () => {
+		it("rethrows non-Zod errors from the schema", () => {
+			const schema = {
+				parse(): never {
+					throw new Error("disk full");
+				},
+			} as unknown as ZodType<unknown>;
+
+			expect(() => parseWithSchema(schema, {}, "Registry")).toThrow(
+				"disk full",
+			);
+		});
+
+		it("rethrows a ZodError that has no issues", () => {
+			const schema = {
+				parse(): never {
+					throw new z.ZodError([]);
+				},
+			} as unknown as ZodType<unknown>;
+
+			expect(() => parseWithSchema(schema, {}, "Registry")).toThrow(z.ZodError);
+		});
+
+		it("surfaces unprefixed custom schema messages", () => {
+			expect(() =>
+				parseWithSchema(
+					z.string().refine(() => false, { message: "not allowed" }),
+					"x",
+					"Field",
+				),
+			).toThrow("not allowed");
+		});
+
+		it("falls back to a non-empty-string message for unmapped issue codes", () => {
+			expect(() =>
+				parseWithSchema(z.string().email(), "not-an-email", "Email"),
+			).toThrow("Email must be a non-empty string.");
+		});
+	});
+
+	it("rejects types that are not an object", () => {
+		expect(() => parseRegistryItemTypes("nope")).toThrow(
+			"Registry types must be an object.",
+		);
 	});
 });
