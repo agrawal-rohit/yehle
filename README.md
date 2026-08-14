@@ -21,7 +21,7 @@
 `tuckshop` eliminates repetitive project setup by providing opinionated templates with pre-configured tooling, best practices, and reusable registry items. Now as a monorepo, it ships with three complementary packages:
 
 - **`tuckshop`**: the CLI users run via `npx` to scaffold projects and add components
-- **`@tuckshop/core`**: the registry builder, validator, resolver, and authoring API for custom registries
+- **`@tuckshop/core`**: shared internals and registry-document validation
 - **`@tuckshop/registry`**: the private default registry content bundled into the CLI
 
 By default, `npx tuckshop` uses the bundled registry from this repository. To point the CLI at a custom registry, use `--registry`, set the `TUCKSHOP_REGISTRY` environment variable, or persist a default with `tuckshop config set`.
@@ -74,19 +74,18 @@ docs/           # documentation site
 
 ## Building a custom registry
 
-If you want to build your own registry, install `@tuckshop/core` and reuse the same primitives that power the default registry:
+`@tuckshop/core` validates and parses registry documents. Compiling a `registry/` directory into `registry.json` is handled by the private `@tuckshop/registry` package (`pnpm build:registry`).
 
 ```ts
-import { buildRegistry, parseRegistryDocument } from "@tuckshop/core";
+import { parseRegistryDocument } from "@tuckshop/core";
+
+const registry = parseRegistryDocument(JSON.parse(registryJson));
 ```
 
 `@tuckshop/core` exposes:
 
 - Schema types and validation for your registry document
-- Registry validation to ensure your document is well-formed
-- Registry building from a structured `registry/` directory
-- Condition inference and variant resolution for cross-platform items
-- Local registry source resolution helpers
+- `parseRegistryDocument()` and `parseWithSchema()` for runtime validation (unknown keys are rejected)
 
 ## Development
 

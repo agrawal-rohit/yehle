@@ -1,4 +1,4 @@
-export * from "./builder";
-export * from "./fs";
-export * from "./parse";
+export { isRegularFileAsync, readJSONFileAsync } from "./fs";
+export * from "./labels";
+export { parseRegistryDocument, parseWithSchema } from "./parse";
 export * from "./schema";

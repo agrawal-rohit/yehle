@@ -1,4 +1,4 @@
-import { dangerHighlight } from "@tuckshop/common";
+import { dangerHighlight } from "@tuckshop/core";
 import animatedIntro from "./animated-intro";
 
 /** Logger utilities for the CLI. */

@@ -10,6 +10,7 @@
 		"test": "vitest run --passWithNoTests"
 	},
 	"dependencies": {
-		"@tuckshop/core": "workspace:*"
+		"@tuckshop/core": "workspace:*",
+		"zod": "^4.4.3"
 	}
 }

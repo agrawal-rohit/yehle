@@ -6,11 +6,10 @@ describe("package entry", () => {
 		expect(core.RegistryConditionInference).toBeDefined();
 		expect(typeof core.isRegularFileAsync).toBe("function");
 		expect(typeof core.readJSONFileAsync).toBe("function");
-		expect(typeof core.writeFileAsync).toBe("function");
-		expect(typeof core.buildRegistry).toBe("function");
+		expect(typeof core.primaryText).toBe("function");
+		expect(typeof core.defaultText).toBe("function");
+		expect(typeof core.dangerHighlight).toBe("function");
 		expect(typeof core.parseRegistryDocument).toBe("function");
-		expect(typeof core.parseRegistryItem).toBe("function");
-		expect(typeof core.parseRegistryConditions).toBe("function");
-		expect(typeof core.parseRegistryItemTypes).toBe("function");
+		expect(typeof core.parseWithSchema).toBe("function");
 	});
 });

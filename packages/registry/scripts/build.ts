@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { buildRegistry } from "@tuckshop/core";
+import { buildRegistry } from "./builder";
 
 const packageRoot = path.resolve(__dirname, "..");
 

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { isRegularFileAsync, readJSONFileAsync, writeFileAsync } from "./fs";
+import { isRegularFileAsync, readJSONFileAsync } from "./fs";
 
 function makeTempDir(prefix = "fs-test-"): string {
 	const tmp = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -58,27 +58,6 @@ describe("core/fs", () => {
 			fs.writeFileSync(file, "{ not json", "utf8");
 
 			await expect(readJSONFileAsync(file)).rejects.toThrow();
-		});
-	});
-
-	describe("writeFileAsync", () => {
-		it("writes file and creates parent directories", async () => {
-			const root = makeTempDir();
-			const file = path.join(root, "nested", "out.txt");
-
-			await writeFileAsync(file, "hello world");
-
-			expect(fs.readFileSync(file, "utf8")).toBe("hello world");
-		});
-
-		it("overwrites existing file", async () => {
-			const root = makeTempDir();
-			const file = path.join(root, "out.txt");
-			fs.writeFileSync(file, "old", "utf8");
-
-			await writeFileAsync(file, "new");
-
-			expect(fs.readFileSync(file, "utf8")).toBe("new");
 		});
 	});
 });

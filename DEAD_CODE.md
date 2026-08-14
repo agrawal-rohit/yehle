@@ -2,7 +2,7 @@
 
 Removed because nothing in the production CLI path (`list` + registry load/build) called these symbols — they were only exercised by unit tests. Restore when adding install/init flows (prompts, task runners, git scaffold, condition inference, variant resolution).
 
-Last audited: 2026-07-27.
+Last audited: 2026-08-14.
 
 ---
 
@@ -94,7 +94,26 @@ Removed (safe no-ops when missing):
 - **`removeMatchingFilesRecursively(root, predicate(basename, full, dirent))`**: delete matching files/dirs; recurse non-matching dirs.
 - **`stripKeyFromJSONFile(filePath, key)`**: delete root JSON key and rewrite; ignore missing/invalid.
 
-Kept: `isRegularFileAsync`, `readJSONFileAsync`, `ensureDirAsync`, `writeFileAsync`.
+Removed after registry builder moved out of core (only the builder wrote files). Restore with `import path from "node:path"`:
+
+```ts
+async function ensureDirAsync(dirPath: string): Promise<void> {
+  await fs.promises.mkdir(dirPath, { recursive: true });
+}
+
+export async function writeFileAsync(
+  filePath: string,
+  data: string,
+): Promise<void> {
+  const dir = path.dirname(filePath);
+  await ensureDirAsync(dir);
+  await fs.promises.writeFile(filePath, data, "utf8");
+}
+```
+
+`writeFileAsync` tests: creates parent dirs when writing `nested/out.txt`; overwrites an existing file.
+
+Kept: `isRegularFileAsync`, `readJSONFileAsync`.
 
 ### `src/infer.ts` (+ `infer.test.ts`)
 

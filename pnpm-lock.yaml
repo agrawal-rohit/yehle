@@ -114,9 +114,6 @@ importers:
 
   packages/cli:
     dependencies:
-      '@tuckshop/common':
-        specifier: workspace:*
-        version: link:../common
       '@tuckshop/core':
         specifier: workspace:*
         version: link:../core
@@ -130,23 +127,23 @@ importers:
         specifier: ^3.2.3
         version: 3.4.2
 
-  packages/common:
+  packages/core:
     dependencies:
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
-
-  packages/core:
-    dependencies:
-      '@tuckshop/common':
-        specifier: workspace:*
-        version: link:../common
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   packages/registry:
     dependencies:
       '@tuckshop/core':
         specifier: workspace:*
         version: link:../core
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
 packages:
 
@@ -4948,9 +4945,6 @@ packages:
     resolution: {integrity: sha512-CzhO+pFNo8ajLM2d2IW/R93ipy99LWjtwblvC1RsoSUMZgyLbYFr221TnSNT7GjGdYui6P459mw9JH/g/zW2ug==}
     engines: {node: '>=18'}
 
-  zod@4.1.13:
-    resolution: {integrity: sha512-AvvthqfqrAhNH9dnfmrfKzX5upOdjUVJYFqNSlkmGf64gRaTzlPwz99IHYnVs28qYAybvAlBV+H7pn0saFY4Ig==}
-
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
@@ -9316,7 +9310,7 @@ snapshots:
 
   mutation-server-protocol@0.4.0:
     dependencies:
-      zod: 4.1.13
+      zod: 4.4.3
 
   mutation-testing-elements@3.7.2: {}
 
@@ -10285,8 +10279,6 @@ snapshots:
   yocto-queue@0.1.0: {}
 
   yoctocolors@2.1.2: {}
-
-  zod@4.1.13: {}
 
   zod@4.4.3: {}
 

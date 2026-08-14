@@ -1,9 +1,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { Registry } from "@tuckshop/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildRegistry } from "./builder";
-import type { Registry } from "./schema";
+
+/** Fixture content base URL passed to every test build. */
+const TEST_CONTENT_BASE_URL = "https://example.com/content";
 
 /**
  * Write a registry item fixture under a temp repo root.
@@ -70,13 +73,19 @@ describe("registry/builder", () => {
 	const previousEnv = process.env.TUCKSHOP_REGISTRY_BASE_URL;
 	let consoleLogSpy: ReturnType<typeof vi.spyOn>;
 
+	/**
+	 * Run buildRegistry against the current temp fixture root.
+	 * @returns The built registry document.
+	 */
+	function runBuild() {
+		return buildRegistry({
+			repoRoot: tempDir,
+			contentBaseUrl: TEST_CONTENT_BASE_URL,
+		});
+	}
+
 	beforeEach(() => {
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-test-"));
-		fs.writeFileSync(
-			path.join(tempDir, "package.json"),
-			`${JSON.stringify({ name: "fixture", version: "1.2.3" }, null, 2)}\n`,
-			"utf8",
-		);
 		delete process.env.TUCKSHOP_REGISTRY_BASE_URL;
 		writeTypes(tempDir, {
 			component: { label: "Components" },
@@ -147,15 +156,13 @@ describe("registry/builder", () => {
 			},
 		);
 
-		const document = await buildRegistry(tempDir);
+		const document = await runBuild();
 		const written = JSON.parse(
 			fs.readFileSync(path.join(tempDir, "registry.json"), "utf8"),
 		) as Registry;
 
 		expect(document).toEqual(written);
-		expect(written.contentBaseUrl).toBe(
-			"https://raw.githubusercontent.com/agrawal-rohit/tuckshop/v1.2.3",
-		);
+		expect(written.contentBaseUrl).toBe(TEST_CONTENT_BASE_URL);
 		expect(Object.keys(written.items)).toEqual(["build", "button"]);
 		expect(written.items.button.variants[0].files[0]).toEqual({
 			source: "registry/component/button/react/button.tsx",
@@ -189,14 +196,14 @@ describe("registry/builder", () => {
 			{ "button.tsx": "export {};\n" },
 		);
 
-		const document = await buildRegistry(tempDir);
+		const document = await runBuild();
 		expect(document.contentBaseUrl).toBe("https://example.com/mirror");
 	});
 
 	it("builds an empty items map when no registry items exist", async () => {
 		fs.mkdirSync(path.join(tempDir, "registry"), { recursive: true });
 
-		const document = await buildRegistry(tempDir);
+		const document = await runBuild();
 
 		expect(document.items).toEqual({});
 		expect(fs.existsSync(path.join(tempDir, "registry.json"))).toBe(true);
@@ -224,7 +231,7 @@ describe("registry/builder", () => {
 			"button.tsx": "export {};\n",
 		});
 
-		await expect(buildRegistry(tempDir)).rejects.toThrow(
+		await expect(runBuild()).rejects.toThrow(
 			'Duplicate registry item id: "button".',
 		);
 	});
@@ -245,7 +252,7 @@ describe("registry/builder", () => {
 			],
 		});
 
-		await expect(buildRegistry(tempDir)).rejects.toThrow(
+		await expect(runBuild()).rejects.toThrow(
 			'Registry item "button" references missing file:',
 		);
 	});
@@ -271,7 +278,7 @@ describe("registry/builder", () => {
 			{ "button.tsx": "export {};\n" },
 		);
 
-		const document = await buildRegistry(tempDir);
+		const document = await runBuild();
 		expect(document.items.button.type).toBe("legacy-widget");
 	});
 
@@ -291,7 +298,7 @@ describe("registry/builder", () => {
 			],
 		});
 
-		await expect(buildRegistry(tempDir)).rejects.toThrow(
+		await expect(runBuild()).rejects.toThrow(
 			'Registry item "button" variant "default" has no files.',
 		);
 	});
@@ -335,7 +342,7 @@ describe("registry/builder", () => {
 			},
 		);
 
-		const document = await buildRegistry(tempDir);
+		const document = await runBuild();
 
 		expect(document.conditions?.language).toEqual({
 			label: "Language",
@@ -374,7 +381,7 @@ describe("registry/builder", () => {
 			{ "hook.sh": "#!/bin/sh\n" },
 		);
 
-		await expect(buildRegistry(tempDir)).rejects.toThrow(
+		await expect(runBuild()).rejects.toThrow(
 			'Registry item "git-hooks" references missing file:',
 		);
 	});
@@ -401,7 +408,7 @@ describe("registry/builder", () => {
 			{ "a.txt": "a\n" },
 		);
 
-		await expect(buildRegistry(tempDir)).rejects.toThrow(
+		await expect(runBuild()).rejects.toThrow(
 			'Registry item "git-hooks" variant "typescript" when must be an object.',
 		);
 	});
@@ -436,7 +443,7 @@ describe("registry/builder", () => {
 			{ "a.txt": "a\n" },
 		);
 
-		await expect(buildRegistry(tempDir)).rejects.toThrow(
+		await expect(runBuild()).rejects.toThrow(
 			'Registry condition "language" has duplicate value "typescript".',
 		);
 	});
@@ -463,7 +470,7 @@ describe("registry/builder", () => {
 			{ "a.txt": "a\n" },
 		);
 
-		await expect(buildRegistry(tempDir)).rejects.toThrow(
+		await expect(runBuild()).rejects.toThrow(
 			'Registry item "git-hooks" variant "typescript" references unknown when key "language".',
 		);
 	});
@@ -496,7 +503,7 @@ describe("registry/builder", () => {
 			{ "a.txt": "a\n" },
 		);
 
-		await expect(buildRegistry(tempDir)).rejects.toThrow(
+		await expect(runBuild()).rejects.toThrow(
 			'Registry item "git-hooks" variant "python" uses undeclared when value "python" for key "language".',
 		);
 	});
@@ -544,7 +551,7 @@ describe("registry/builder", () => {
 			{ "a.txt": "a\n" },
 		);
 
-		const document = await buildRegistry(tempDir);
+		const document = await runBuild();
 
 		expect(document.items["git-hooks"].dependencies).toEqual([
 			"shared-runtime@^1",
@@ -599,7 +606,7 @@ describe("registry/builder", () => {
 			{ "a.txt": "a\n" },
 		);
 
-		await expect(buildRegistry(tempDir)).rejects.toThrow(
+		await expect(runBuild()).rejects.toThrow(
 			'Registry condition "language" has invalid inference "magic"',
 		);
 	});
@@ -638,7 +645,7 @@ describe("registry/builder", () => {
 			{ "a.txt": "a\n" },
 		);
 
-		await expect(buildRegistry(tempDir)).rejects.toThrow(
+		await expect(runBuild()).rejects.toThrow(
 			'Registry condition "language" values[0].files[0] must be a non-empty string.',
 		);
 	});
@@ -673,7 +680,7 @@ describe("registry/builder", () => {
 			{ "a.txt": "a\n" },
 		);
 
-		const document = await buildRegistry(tempDir);
+		const document = await runBuild();
 
 		expect(document.types).toEqual({
 			component: {
@@ -708,7 +715,7 @@ describe("registry/builder", () => {
 			{ "a.txt": "a\n" },
 		);
 
-		await expect(buildRegistry(tempDir)).rejects.toThrow(
+		await expect(runBuild()).rejects.toThrow(
 			"Registry types not found at registry/types.json.",
 		);
 	});
@@ -737,7 +744,7 @@ describe("registry/builder", () => {
 			{ "a.txt": "a\n" },
 		);
 
-		await expect(buildRegistry(tempDir)).rejects.toThrow(
+		await expect(runBuild()).rejects.toThrow(
 			'Registry item "button" has undeclared type "component".',
 		);
 	});

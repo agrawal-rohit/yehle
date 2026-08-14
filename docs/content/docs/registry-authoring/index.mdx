@@ -1,6 +1,6 @@
 ---
 title: Registry Authoring
-description: Building and validating registries with @tuckshop/core.
+description: Validating registry documents with @tuckshop/core.
 ---
 
 ## Installing the core package
@@ -12,18 +12,14 @@ pnpm add @tuckshop/core
 ## What `@tuckshop/core` provides
 
 - registry schema types
-- `buildRegistry()` for compiling a `registry/` directory into `registry.json`
-- `parseRegistryDocument()` and `parseRegistryItem()` for runtime validation (unknown keys are rejected)
+- `parseRegistryDocument()` and `parseWithSchema()` for runtime validation (unknown keys are rejected)
+
+Compiling a `registry/` directory into `registry.json` is an internal `@tuckshop/registry` concern (`pnpm build:registry`).
 
 ## Example
 
 ```ts
-import { buildRegistry, parseRegistryDocument } from "@tuckshop/core";
-
-await buildRegistry({
-  repoRoot: process.cwd(),
-  contentBaseUrl: "https://raw.githubusercontent.com/acme/registry/main"
-});
+import { parseRegistryDocument } from "@tuckshop/core";
 
 const registry = parseRegistryDocument(JSON.parse(registryJson));
 ```

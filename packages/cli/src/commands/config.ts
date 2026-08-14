@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { defaultText, primaryText } from "@tuckshop/common";
+import { defaultText, primaryText } from "@tuckshop/core";
 import {
 	type ConfigPathOptions,
 	configPath,

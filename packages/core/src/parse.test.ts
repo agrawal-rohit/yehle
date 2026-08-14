@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
 	parseRegistryDocument,
-	parseRegistryItem,
 	parseRegistryItemTypes,
+	parseWithSchema,
 } from "./parse";
+import { registryItemSchema } from "./schema";
 
 /** Minimal valid registry document for parseRegistryDocument tests. */
 function validDocument(
@@ -82,6 +83,16 @@ describe("registry/parse", () => {
 		});
 	});
 
+	it("strips all trailing slashes from contentBaseUrl", () => {
+		expect(
+			parseRegistryDocument(
+				validDocument({
+					contentBaseUrl: "https://example.com/content///",
+				}),
+			).contentBaseUrl,
+		).toBe("https://example.com/content");
+	});
+
 	it("rejects malformed registry items", () => {
 		expect(() =>
 			parseRegistryDocument(
@@ -104,20 +115,24 @@ describe("registry/parse", () => {
 
 	it("accepts unknown custom item types", () => {
 		expect(
-			parseRegistryItem({
-				id: "legacy-item",
-				title: "Legacy Item",
-				description: "Legacy",
-				type: "legacy",
-				variants: [
-					{
-						id: "default",
-						title: "Default",
-						description: "Default",
-						files: [{ source: "legacy.txt", target: "legacy.txt" }],
-					},
-				],
-			}),
+			parseWithSchema(
+				registryItemSchema,
+				{
+					id: "legacy-item",
+					title: "Legacy Item",
+					description: "Legacy",
+					type: "legacy",
+					variants: [
+						{
+							id: "default",
+							title: "Default",
+							description: "Default",
+							files: [{ source: "legacy.txt", target: "legacy.txt" }],
+						},
+					],
+				},
+				"Registry item",
+			),
 		).toMatchObject({
 			id: "legacy-item",
 			type: "legacy",
@@ -128,7 +143,7 @@ describe("registry/parse", () => {
 		it("rejects an unknown top-level key", () => {
 			expect(() =>
 				parseRegistryDocument(validDocument({ version: "1.2.3" })),
-			).toThrow("Registry has unknown key(s): version.");
+			).toThrow("Registry has an unknown key: version.");
 		});
 
 		it("rejects an unknown item key", () => {
@@ -159,7 +174,7 @@ describe("registry/parse", () => {
 						},
 					}),
 				),
-			).toThrow('Registry items["button"] has unknown key(s): typo.');
+			).toThrow('Registry items["button"] has an unknown key: typo.');
 		});
 
 		it("rejects an unknown variant key", () => {
@@ -191,7 +206,7 @@ describe("registry/parse", () => {
 					}),
 				),
 			).toThrow(
-				'Registry items["button"].variants[0] has unknown key(s): extra.',
+				'Registry items["button"].variants[0] has an unknown key: extra.',
 			);
 		});
 
@@ -209,7 +224,7 @@ describe("registry/parse", () => {
 					}),
 				),
 			).toThrow(
-				'Registry condition "language" has unknown key(s): unknownField.',
+				'Registry condition "language" has an unknown key: unknownField.',
 			);
 		});
 
@@ -222,7 +237,7 @@ describe("registry/parse", () => {
 						},
 					}),
 				),
-			).toThrow('Registry type "component" has unknown key(s): bogus.');
+			).toThrow('Registry type "component" has an unknown key: bogus.');
 		});
 	});
 

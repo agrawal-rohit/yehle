@@ -1,8 +1,9 @@
-import { defaultText, primaryText } from "@tuckshop/common";
-import type {
-	Registry,
-	RegistryItem,
-	RegistryItemTypeDefinition,
+import {
+	defaultText,
+	primaryText,
+	type Registry,
+	type RegistryItem,
+	type RegistryItemTypeDefinition,
 } from "@tuckshop/core";
 import chalk from "chalk";
 import { parseMultiValueOption } from "../cli/options";

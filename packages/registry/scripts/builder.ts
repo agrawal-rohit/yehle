@@ -1,31 +1,29 @@
 import fs from "node:fs";
 import path from "node:path";
-import { assertNonEmptyString } from "./assert";
-import { readJSONFileAsync, writeFileAsync } from "./fs";
 import {
-	crossValidateItemTypes,
-	crossValidateWhen,
-	parseRegistryConditions,
-	parseRegistryItem,
-	parseRegistryItemTypes,
-	parseStringArray,
-	parseWhen,
-} from "./parse";
-import type {
-	Registry,
-	RegistryCondition,
-	RegistryFile,
-	RegistryItem,
-	RegistryVariant,
-} from "./schema";
+	parseRegistryDocument,
+	parseWithSchema,
+	type Registry,
+	type RegistryFile,
+	type RegistryItem,
+	type RegistryVariant,
+	registryFileSchema,
+	registryItemSchema,
+} from "@tuckshop/core";
+import { z } from "zod";
 
-/**
- * Default content base for single-package registries that keep `registry/` at
- * the repository root and publish `v<version>` tags. Monorepo layouts should
- * pass an explicit `contentBaseUrl` instead.
- */
-const REGISTRY_REPO_RAW_BASE =
-	"https://raw.githubusercontent.com/agrawal-rohit/tuckshop";
+/** Optional string array used when compiling item/variant dependency lists. */
+const optionalStringArraySchema = z
+	.array(z.string().min(1))
+	.transform((value) => (value.length > 0 ? value : undefined));
+
+/** Optional `when` matcher object used when compiling variants. */
+const whenRecordSchema = z
+	.record(z.string(), z.string().min(1))
+	.transform((value) => {
+		if (Object.keys(value).length === 0) return undefined;
+		return value;
+	});
 
 export interface BuildRegistryOptions {
 	/**
@@ -34,22 +32,40 @@ export interface BuildRegistryOptions {
 	 */
 	repoRoot?: string;
 	/**
-	 * Base URL for file sources (`${contentBaseUrl}/${source}`). When omitted,
-	 * defaults to `${REGISTRY_REPO_RAW_BASE}/v${package.json version}`.
+	 * Base URL for file sources (`${contentBaseUrl}/${source}`). Overridden by
+	 * `TUCKSHOP_REGISTRY_BASE_URL` when that env var is set.
 	 */
-	contentBaseUrl?: string;
+	contentBaseUrl: string;
 }
 
 /**
- * Normalize the supported buildRegistry input shapes.
- * @param options - Repo root string or full options object.
- * @returns Normalized options object.
+ * Parse an optional string array.
+ * @param raw - Raw array value.
+ * @param label - Error context.
+ * @returns Normalized string array, or undefined when empty/absent.
+ * @throws Error when the array is malformed.
  */
-function normalizeBuildRegistryOptions(
-	options: BuildRegistryOptions | string | undefined,
-): BuildRegistryOptions {
-	if (typeof options === "string") return { repoRoot: options };
-	return options ?? {};
+function parseStringArray(raw: unknown, label: string): string[] | undefined {
+	if (raw === undefined || raw === null) return undefined;
+	if (!Array.isArray(raw)) throw new Error(`${label} must be an array.`);
+
+	return parseWithSchema(optionalStringArraySchema, raw, label);
+}
+
+/**
+ * Parse an optional `when` matcher object.
+ * @param raw - Raw matcher value.
+ * @param label - Error context.
+ * @returns Normalized matcher map, or undefined when absent/empty.
+ * @throws Error when the matcher is malformed.
+ */
+function parseWhen(
+	raw: unknown,
+	label: string,
+): Record<string, string> | undefined {
+	if (raw === undefined || raw === null) return undefined;
+
+	return parseWithSchema(whenRecordSchema, raw, `${label} when`);
 }
 
 /**
@@ -95,20 +111,10 @@ function buildRegistryFiles(
 	files: unknown[],
 ): RegistryFile[] {
 	return files.map((rawFile, index) => {
-		// Check if the file object is valid
-		if (!rawFile || typeof rawFile !== "object" || Array.isArray(rawFile))
-			throw new Error(
-				`Registry item "${itemId}" file at index ${index} must be an object.`,
-			);
-
-		const file = rawFile as Record<string, unknown>;
-		assertNonEmptyString(
-			file.source,
-			`Registry item "${itemId}" file[${index}].source`,
-		);
-		assertNonEmptyString(
-			file.target,
-			`Registry item "${itemId}" file[${index}].target`,
+		const file = parseWithSchema(
+			registryFileSchema,
+			rawFile,
+			`Registry item "${itemId}" file[${index}]`,
 		);
 
 		// Check if the file exists
@@ -146,19 +152,11 @@ function buildRegistryItem(itemDir: string, repoRoot: string): RegistryItem {
 		);
 
 	const manifest = raw as Record<string, unknown>;
-	assertNonEmptyString(manifest.id, "Registry item id");
-	assertNonEmptyString(manifest.title, `Registry item "${manifest.id}" title`);
-	assertNonEmptyString(
-		manifest.description,
-		`Registry item "${manifest.id}" description`,
-	);
-
-	assertNonEmptyString(manifest.type, `Registry item "${manifest.id}" type`);
 
 	// Check if the variants are valid
 	if (!Array.isArray(manifest.variants) || manifest.variants.length === 0)
 		throw new Error(
-			`Registry item "${manifest.id}" must declare at least one variant.`,
+			`Registry item "${String(manifest.id)}" must declare at least one variant.`,
 		);
 
 	const variants: RegistryVariant[] = [];
@@ -169,47 +167,35 @@ function buildRegistryItem(itemDir: string, repoRoot: string): RegistryItem {
 			Array.isArray(rawVariant)
 		)
 			throw new Error(
-				`Registry item "${manifest.id}" variant at index ${variantIndex} must be an object.`,
+				`Registry item "${String(manifest.id)}" variant at index ${variantIndex} must be an object.`,
 			);
 
 		const variantManifest = rawVariant as Record<string, unknown>;
-		assertNonEmptyString(
-			variantManifest.id,
-			`Registry item "${manifest.id}" variant[${variantIndex}].id`,
-		);
-		assertNonEmptyString(
-			variantManifest.title,
-			`Registry item "${manifest.id}" variant "${variantManifest.id}" title`,
-		);
-		assertNonEmptyString(
-			variantManifest.description,
-			`Registry item "${manifest.id}" variant "${variantManifest.id}" description`,
-		);
 
 		if (
 			!Array.isArray(variantManifest.files) ||
 			variantManifest.files.length === 0
 		)
 			throw new Error(
-				`Registry item "${manifest.id}" variant "${variantManifest.id}" has no files.`,
+				`Registry item "${String(manifest.id)}" variant "${String(variantManifest.id)}" has no files.`,
 			);
 
 		const files = buildRegistryFiles(
 			itemDir,
-			manifest.id,
+			String(manifest.id),
 			repoRoot,
 			variantManifest.files,
 		);
 
 		const when = parseWhen(
 			variantManifest.when,
-			`Registry item "${manifest.id}" variant "${variantManifest.id}"`,
+			`Registry item "${String(manifest.id)}" variant "${String(variantManifest.id)}"`,
 		);
 
 		const variant: RegistryVariant = {
-			id: variantManifest.id,
-			title: variantManifest.title,
-			description: variantManifest.description,
+			id: String(variantManifest.id),
+			title: String(variantManifest.title),
+			description: String(variantManifest.description),
 			...(when ? { when } : {}),
 			files,
 		};
@@ -218,7 +204,7 @@ function buildRegistryItem(itemDir: string, repoRoot: string): RegistryItem {
 		if (Array.isArray(variantManifest.dependencies)) {
 			const deps = parseStringArray(
 				variantManifest.dependencies,
-				`Registry item "${manifest.id}" variant "${variantManifest.id}" dependencies`,
+				`Registry item "${String(manifest.id)}" variant "${String(variantManifest.id)}" dependencies`,
 			);
 			if (deps) variant.dependencies = deps;
 		}
@@ -227,46 +213,80 @@ function buildRegistryItem(itemDir: string, repoRoot: string): RegistryItem {
 		if (Array.isArray(variantManifest.devDependencies)) {
 			const deps = parseStringArray(
 				variantManifest.devDependencies,
-				`Registry item "${manifest.id}" variant "${variantManifest.id}" devDependencies`,
+				`Registry item "${String(manifest.id)}" variant "${String(variantManifest.id)}" devDependencies`,
 			);
 			if (deps) variant.devDependencies = deps;
 		}
-		if (Array.isArray(variantManifest.registryDependencies))
-			variant.registryDependencies =
-				variantManifest.registryDependencies as RegistryVariant["registryDependencies"];
+
+		const registryDependencies = parseStringArray(
+			variantManifest.registryDependencies,
+			`Registry item "${String(manifest.id)}" variant "${String(variantManifest.id)}" registryDependencies`,
+		);
+		if (registryDependencies)
+			variant.registryDependencies = registryDependencies;
 
 		variants.push(variant);
 	}
 
 	const sharedFiles =
 		Array.isArray(manifest.files) && manifest.files.length > 0
-			? buildRegistryFiles(itemDir, manifest.id, repoRoot, manifest.files)
+			? buildRegistryFiles(
+					itemDir,
+					String(manifest.id),
+					repoRoot,
+					manifest.files,
+				)
 			: undefined;
 	const dependencies = parseStringArray(
 		manifest.dependencies,
-		`Registry item "${manifest.id}" dependencies`,
+		`Registry item "${String(manifest.id)}" dependencies`,
 	);
 	const devDependencies = parseStringArray(
 		manifest.devDependencies,
-		`Registry item "${manifest.id}" devDependencies`,
+		`Registry item "${String(manifest.id)}" devDependencies`,
+	);
+
+	const registryDependencies = parseStringArray(
+		manifest.registryDependencies,
+		`Registry item "${String(manifest.id)}" registryDependencies`,
 	);
 
 	const item: RegistryItem = {
-		id: manifest.id,
-		title: manifest.title,
-		description: manifest.description,
-		type: manifest.type,
+		id: String(manifest.id),
+		title: String(manifest.title),
+		description: String(manifest.description),
+		type: String(manifest.type),
 		...(sharedFiles ? { files: sharedFiles } : {}),
 		...(dependencies ? { dependencies } : {}),
 		...(devDependencies ? { devDependencies } : {}),
 		variants,
+		...(registryDependencies ? { registryDependencies } : {}),
 	};
 
-	if (Array.isArray(manifest.registryDependencies))
-		item.registryDependencies =
-			manifest.registryDependencies as RegistryItem["registryDependencies"];
+	return parseWithSchema(
+		registryItemSchema,
+		item,
+		`Registry item "${String(manifest.id)}"`,
+	);
+}
 
-	return parseRegistryItem(item, `Registry item "${manifest.id}"`);
+/**
+ * Resolve the content base URL from env override or required options.
+ * @param options - Build options that must include contentBaseUrl when env is unset.
+ * @returns Content base URL with trailing slashes stripped.
+ * @throws Error when neither the env override nor options provide a URL.
+ */
+function resolveContentBaseUrl(options: BuildRegistryOptions): string {
+	const override = process.env.TUCKSHOP_REGISTRY_BASE_URL;
+	let contentBaseUrl =
+		override && override.length > 0 ? override : options.contentBaseUrl;
+	if (!contentBaseUrl)
+		throw new Error(
+			"contentBaseUrl is required (or set TUCKSHOP_REGISTRY_BASE_URL).",
+		);
+	while (contentBaseUrl.endsWith("/"))
+		contentBaseUrl = contentBaseUrl.slice(0, -1);
+	return contentBaseUrl;
 }
 
 /**
@@ -276,18 +296,13 @@ function buildRegistryItem(itemDir: string, repoRoot: string): RegistryItem {
  * @throws Error when no items are found, an item is invalid, or a duplicate id exists.
  */
 export async function buildRegistry(
-	options: BuildRegistryOptions | string = {},
+	options: BuildRegistryOptions,
 ): Promise<Registry> {
-	const normalizedOptions = normalizeBuildRegistryOptions(options);
-	const repoRoot = normalizedOptions.repoRoot ?? process.cwd();
+	const repoRoot = options.repoRoot ?? process.cwd();
 	const registryDir = path.join(repoRoot, "registry");
 	const outputPath = path.join(repoRoot, "registry.json");
 
 	const itemFolderPaths = collectItemDirs(registryDir);
-
-	const pkg = await readJSONFileAsync<{ version: string }>(
-		path.join(repoRoot, "package.json"),
-	);
 
 	// Build the registry items
 	const items: Record<string, RegistryItem> = {};
@@ -305,13 +320,11 @@ export async function buildRegistry(
 
 	// Read the conditions file if it exists
 	const conditionsPath = path.join(registryDir, "conditions.json");
-	let conditions: Record<string, RegistryCondition> | undefined;
-	if (fs.existsSync(conditionsPath)) {
-		const rawConditions = JSON.parse(
+	let rawConditions: unknown;
+	if (fs.existsSync(conditionsPath))
+		rawConditions = JSON.parse(
 			fs.readFileSync(conditionsPath, "utf8"),
 		) as unknown;
-		conditions = parseRegistryConditions(rawConditions);
-	}
 
 	// Types are a required part of every registry
 	const typesPath = path.join(registryDir, "types.json");
@@ -320,30 +333,18 @@ export async function buildRegistry(
 			`Registry types not found at ${path.relative(repoRoot, typesPath)}.`,
 		);
 	const rawTypes = JSON.parse(fs.readFileSync(typesPath, "utf8")) as unknown;
-	const types = parseRegistryItemTypes(rawTypes);
 
-	// Validate the when keys and values against the conditions
-	crossValidateWhen(sortedItems, conditions);
-	crossValidateItemTypes(sortedItems, types);
-
-	// Use the environment variable for the content base URL if it is set
-	const override = process.env.TUCKSHOP_REGISTRY_BASE_URL;
-	const contentBaseUrl =
-		override && override.length > 0
-			? override.replace(/\/+$/, "")
-			: (
-					normalizedOptions.contentBaseUrl ??
-					`${REGISTRY_REPO_RAW_BASE}/v${pkg.version}`
-				).replace(/\/+$/, "");
-
-	const document: Registry = {
-		contentBaseUrl,
-		...(conditions ? { conditions } : {}),
-		types,
+	const document = parseRegistryDocument({
+		contentBaseUrl: resolveContentBaseUrl(options),
+		...(rawConditions !== undefined ? { conditions: rawConditions } : {}),
+		types: rawTypes,
 		items: sortedItems,
-	};
+	});
 
-	await writeFileAsync(outputPath, `${JSON.stringify(document, null, 2)}\n`);
+	await fs.promises.writeFile(
+		outputPath,
+		`${JSON.stringify(document, null, 2)}\n`,
+	);
 	const itemCount = Object.keys(sortedItems).length;
 	console.log(
 		itemCount === 0

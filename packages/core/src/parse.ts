@@ -1,289 +1,126 @@
-import {
-	assertNonEmptyString,
-	assertNoUnknownKeys,
-	assertRecord,
-} from "./assert";
+import { type ZodType, z } from "zod";
+import { primaryText } from "./labels";
 import {
 	type Registry,
 	type RegistryCondition,
 	RegistryConditionInference,
-	type RegistryConditionValue,
-	type RegistryFile,
 	type RegistryItem,
 	type RegistryItemTypeDefinition,
-	type RegistryVariant,
+	registryConditionSchema,
+	registryDocumentFieldsSchema,
+	registryItemSchema,
+	registryItemTypeSchema,
 } from "./schema";
 
 /**
- * Parse an optional string array.
- * @param raw - Raw array value.
- * @param label - Error context.
- * @returns Normalized string array, or undefined when empty/absent.
- * @throws Error when the array is malformed.
+ * Append a Zod issue path to a parse label.
+ * @param label - Base error context.
+ * @param path - Zod issue path segments.
+ * @returns Label with dotted/index segments appended.
  */
-export function parseStringArray(
+function formatIssuePath(label: string, path: PropertyKey[]): string {
+	if (path.length === 0) return label;
+
+	const isQuotedEntity =
+		label.startsWith('Registry type "') ||
+		label.startsWith('Registry condition "');
+
+	let formatted = label;
+	for (let index = 0; index < path.length; index++) {
+		const segment = path[index];
+		if (typeof segment === "number") formatted += `[${segment}]`;
+		else if (index === 0 && isQuotedEntity) formatted += ` ${String(segment)}`;
+		else formatted += `.${String(segment)}`;
+	}
+	return formatted;
+}
+
+/**
+ * Map the first Zod issue onto the registry parse error phrasing.
+ * @param error - Zod validation error.
+ * @param label - Base error context.
+ * @returns Error with a user-facing message.
+ */
+function mapZodError(error: z.ZodError, label: string): Error {
+	// Registry parsing stops at the first Zod issue, so we only phrase that one.
+	const issue = error.issues[0];
+	if (!issue) return error;
+
+	const fieldLabel = formatIssuePath(label, issue.path);
+	const lastSegment = String(issue.path.at(-1) ?? "");
+
+	// Custom schema checks encode their kind in the message prefix (see schema superRefine).
+	const prefix =
+		["duplicate:", "invalid_inference:"].find((candidate) =>
+			issue.message.startsWith(candidate),
+		) ?? "";
+	const customValue = issue.message.slice(prefix.length);
+
+	// Narrow issue fields up front so the lookup tables below stay flat.
+	const keys = issue.code === "unrecognized_keys" ? issue.keys : [];
+	const expected = issue.code === "invalid_type" ? issue.expected : "";
+	const origin = issue.code === "too_small" ? issue.origin : "";
+	const kind = keys.length > 1 ? "unknown keys" : "an unknown key";
+
+	const customMessages: Record<string, string> = {
+		"duplicate:": `${label} has duplicate value "${customValue}".`,
+		"invalid_inference:": `${label} has invalid inference "${customValue}" (expected one of: ${Object.values(RegistryConditionInference).join(", ")}).`,
+	};
+
+	// Object and record both surface as "must be an object"; primaryText highlights field names.
+	const invalidTypeMessages: Record<string, string> = {
+		object: `${primaryText(fieldLabel)} must be an object.`,
+		array: `${fieldLabel} must be an array.`,
+		record: `${primaryText(fieldLabel)} must be an object.`,
+	};
+
+	// too_small on arrays is path-specific; the message depends on which list was empty.
+	const arrayTooSmall: Record<string, string> = {
+		variants: `${fieldLabel} must declare at least one variant.`,
+		files: `${fieldLabel} must declare at least one file.`,
+	};
+
+	// Condition values use the condition label, not a dotted path, when the issue is on `.values`.
+	if (label.startsWith('Registry condition "') && issue.path.length === 1)
+		arrayTooSmall.values = `${label} must declare at least one value.`;
+	const tooSmallMessages: Record<string, string | undefined> = {
+		string: `${primaryText(fieldLabel)} must be a non-empty string.`,
+		array: arrayTooSmall[lastSegment],
+	};
+
+	// Dispatch by issue code; unmapped codes fall through to the generic non-empty-string default.
+	const messages: Record<string, string | undefined> = {
+		unrecognized_keys: `${fieldLabel} has ${kind}: ${keys.join(", ")}.`,
+		custom: customMessages[prefix] ?? issue.message,
+		invalid_type: invalidTypeMessages[expected],
+		too_small: tooSmallMessages[origin],
+	};
+
+	return new Error(
+		messages[issue.code] ??
+			`${primaryText(fieldLabel)} must be a non-empty string.`,
+	);
+}
+
+/**
+ * Parse raw input with a Zod schema and map failures to labeled errors.
+ * @param schema - Zod schema to validate against.
+ * @param raw - Raw input value.
+ * @param label - Error context prefix.
+ * @returns Parsed and normalized value.
+ * @throws Error when validation fails.
+ */
+export function parseWithSchema<T>(
+	schema: ZodType<T>,
 	raw: unknown,
 	label: string,
-): string[] | undefined {
-	if (raw === undefined || raw === null) return undefined;
-	if (!Array.isArray(raw)) throw new Error(`${label} must be an array.`);
-
-	const values: string[] = [];
-	for (const [index, entry] of raw.entries()) {
-		assertNonEmptyString(entry, `${label}[${index}]`);
-		values.push(entry);
+): T {
+	try {
+		return schema.parse(raw);
+	} catch (error) {
+		if (error instanceof z.ZodError) throw mapZodError(error, label);
+		throw error;
 	}
-
-	return values.length > 0 ? values : undefined;
-}
-
-/**
- * Parse an optional `when` matcher object.
- * @param raw - Raw matcher value.
- * @param label - Error context.
- * @returns Normalized matcher map, or undefined when absent/empty.
- * @throws Error when the matcher is malformed.
- */
-export function parseWhen(
-	raw: unknown,
-	label: string,
-): Record<string, string> | undefined {
-	if (raw === undefined || raw === null) return undefined;
-	const source = assertRecord(raw, `${label} when`);
-	const when: Record<string, string> = {};
-
-	for (const [key, value] of Object.entries(source)) {
-		assertNonEmptyString(key, `${label} when key`);
-		assertNonEmptyString(value, `${label} when["${key}"]`);
-		when[key] = value;
-	}
-
-	return Object.keys(when).length > 0 ? when : undefined;
-}
-
-/**
- * Parse file metadata entries from a built registry document.
- * @param raw - Raw file array.
- * @param label - Error context.
- * @returns Normalized file metadata.
- * @throws Error when an entry is malformed.
- */
-function parseRegistryFiles(raw: unknown, label: string): RegistryFile[] {
-	if (!Array.isArray(raw) || raw.length === 0)
-		throw new Error(`${label} must declare at least one file.`);
-
-	return raw.map((entry, index) => {
-		const file = assertRecord(entry, `${label}[${index}]`);
-		assertNoUnknownKeys(file, ["source", "target"], `${label}[${index}]`);
-		assertNonEmptyString(file.source, `${label}[${index}].source`);
-		assertNonEmptyString(file.target, `${label}[${index}].target`);
-		return {
-			source: file.source,
-			target: file.target,
-		};
-	});
-}
-
-/**
- * Parse dependency references declared in registry metadata.
- * @param raw - Raw dependency entries.
- * @param label - Error context.
- * @returns Normalized entries, or undefined when absent/empty.
- * @throws Error when an entry is malformed.
- */
-function parseRegistryDependencyEntries(
-	raw: unknown,
-	label: string,
-): Array<string | { name: string }> | undefined {
-	if (raw === undefined || raw === null) return undefined;
-	if (!Array.isArray(raw)) throw new Error(`${label} must be an array.`);
-
-	const dependencies: Array<string | { name: string }> = [];
-	for (const [index, entry] of raw.entries()) {
-		if (typeof entry === "string") {
-			assertNonEmptyString(entry, `${label}[${index}]`);
-			dependencies.push(entry);
-			continue;
-		}
-
-		const objectEntry = assertRecord(entry, `${label}[${index}]`);
-		assertNoUnknownKeys(objectEntry, ["name"], `${label}[${index}]`);
-		assertNonEmptyString(objectEntry.name, `${label}[${index}].name`);
-		dependencies.push({ name: objectEntry.name });
-	}
-
-	return dependencies.length > 0 ? dependencies : undefined;
-}
-
-/**
- * Parse a built registry variant object.
- * @param raw - Raw variant metadata.
- * @param label - Error context.
- * @returns Normalized registry variant.
- * @throws Error when the variant is malformed.
- */
-function parseRegistryVariant(raw: unknown, label: string): RegistryVariant {
-	const variant = assertRecord(raw, label);
-	assertNoUnknownKeys(
-		variant,
-		[
-			"id",
-			"title",
-			"description",
-			"files",
-			"when",
-			"dependencies",
-			"devDependencies",
-			"registryDependencies",
-		],
-		label,
-	);
-	assertNonEmptyString(variant.id, `${label}.id`);
-	assertNonEmptyString(variant.title, `${label}.title`);
-	assertNonEmptyString(variant.description, `${label}.description`);
-
-	const files = parseRegistryFiles(variant.files, `${label}.files`);
-	const when = parseWhen(variant.when, label);
-	const dependencies = parseStringArray(
-		variant.dependencies,
-		`${label}.dependencies`,
-	);
-	const devDependencies = parseStringArray(
-		variant.devDependencies,
-		`${label}.devDependencies`,
-	);
-	const registryDependencies = parseRegistryDependencyEntries(
-		variant.registryDependencies,
-		`${label}.registryDependencies`,
-	);
-
-	return {
-		id: variant.id,
-		title: variant.title,
-		description: variant.description,
-		files,
-		...(when ? { when } : {}),
-		...(dependencies ? { dependencies } : {}),
-		...(devDependencies ? { devDependencies } : {}),
-		...(registryDependencies ? { registryDependencies } : {}),
-	};
-}
-
-/**
- * Parse a built registry item object.
- * @param raw - Raw item metadata from a registry document.
- * @param label - Error context.
- * @returns Normalized registry item.
- * @throws Error when the item is malformed.
- */
-export function parseRegistryItem(
-	raw: unknown,
-	label: string = "Registry item",
-): RegistryItem {
-	const item = assertRecord(raw, label);
-	assertNoUnknownKeys(
-		item,
-		[
-			"id",
-			"title",
-			"description",
-			"type",
-			"files",
-			"dependencies",
-			"devDependencies",
-			"variants",
-			"registryDependencies",
-		],
-		label,
-	);
-	assertNonEmptyString(item.id, `${label}.id`);
-	assertNonEmptyString(item.title, `${label}.title`);
-	assertNonEmptyString(item.description, `${label}.description`);
-	assertNonEmptyString(item.type, `${label}.type`);
-
-	if (!Array.isArray(item.variants) || item.variants.length === 0)
-		throw new Error(`${label}.variants must declare at least one variant.`);
-
-	const variants = item.variants.map((entry, index) =>
-		parseRegistryVariant(entry, `${label}.variants[${index}]`),
-	);
-	const files =
-		item.files === undefined
-			? undefined
-			: parseRegistryFiles(item.files, `${label}.files`);
-	const dependencies = parseStringArray(
-		item.dependencies,
-		`${label}.dependencies`,
-	);
-	const devDependencies = parseStringArray(
-		item.devDependencies,
-		`${label}.devDependencies`,
-	);
-	const registryDependencies = parseRegistryDependencyEntries(
-		item.registryDependencies,
-		`${label}.registryDependencies`,
-	);
-
-	return {
-		id: item.id,
-		title: item.title,
-		description: item.description,
-		type: item.type,
-		...(files ? { files } : {}),
-		...(dependencies ? { dependencies } : {}),
-		...(devDependencies ? { devDependencies } : {}),
-		variants,
-		...(registryDependencies ? { registryDependencies } : {}),
-	};
-}
-
-/**
- * Parse a single shared condition value entry.
- * @param rawValue - Raw value object from conditions.json.
- * @param key - Condition key for error context.
- * @param index - Value index for error context.
- * @param seenValues - Values already declared for this condition.
- * @returns Normalized condition value.
- * @throws Error when the value entry is malformed or duplicated.
- */
-function parseConditionValueEntry(
-	rawValue: unknown,
-	key: string,
-	index: number,
-	seenValues: Set<string>,
-): RegistryConditionValue {
-	const valueEntry = assertRecord(
-		rawValue,
-		`Registry condition "${key}" values[${index}]`,
-	);
-	assertNoUnknownKeys(
-		valueEntry,
-		["value", "label", "files"],
-		`Registry condition "${key}" values[${index}]`,
-	);
-	assertNonEmptyString(
-		valueEntry.value,
-		`Registry condition "${key}" values[${index}].value`,
-	);
-	assertNonEmptyString(
-		valueEntry.label,
-		`Registry condition "${key}" values[${index}].label`,
-	);
-	if (seenValues.has(valueEntry.value))
-		throw new Error(
-			`Registry condition "${key}" has duplicate value "${valueEntry.value}".`,
-		);
-	seenValues.add(valueEntry.value);
-
-	const files = parseStringArray(
-		valueEntry.files,
-		`Registry condition "${key}" values[${index}].files`,
-	);
-	return {
-		value: valueEntry.value,
-		label: valueEntry.label,
-		...(files ? { files } : {}),
-	};
 }
 
 /**
@@ -296,50 +133,20 @@ export function parseRegistryConditions(
 	raw: unknown,
 ): Record<string, RegistryCondition> | undefined {
 	if (raw === undefined || raw === null) return undefined;
-	const source = assertRecord(raw, "Registry conditions");
+
+	const source = parseWithSchema(
+		z.record(z.string(), z.unknown()),
+		raw,
+		"Registry conditions",
+	);
 	const conditions: Record<string, RegistryCondition> = {};
 
 	for (const [key, rawCondition] of Object.entries(source)) {
-		const entry = assertRecord(rawCondition, `Registry condition "${key}"`);
-		assertNoUnknownKeys(
-			entry,
-			["label", "description", "inference", "values"],
+		conditions[key] = parseWithSchema(
+			registryConditionSchema,
+			rawCondition,
 			`Registry condition "${key}"`,
 		);
-		assertNonEmptyString(entry.label, `Registry condition "${key}" label`);
-
-		let inference: RegistryConditionInference | undefined;
-		if (entry.inference !== undefined) {
-			assertNonEmptyString(
-				entry.inference,
-				`Registry condition "${key}" inference`,
-			);
-			const modes = new Set<string>(Object.values(RegistryConditionInference));
-			if (!modes.has(entry.inference))
-				throw new Error(
-					`Registry condition "${key}" has invalid inference "${entry.inference}" (expected one of: ${Object.values(RegistryConditionInference).join(", ")}).`,
-				);
-			inference = entry.inference as RegistryConditionInference;
-		}
-
-		if (!Array.isArray(entry.values) || entry.values.length === 0)
-			throw new Error(
-				`Registry condition "${key}" must declare at least one value.`,
-			);
-
-		const seenValues = new Set<string>();
-		const values = entry.values.map((rawValue, index) =>
-			parseConditionValueEntry(rawValue, key, index, seenValues),
-		);
-
-		conditions[key] = {
-			label: entry.label,
-			...(typeof entry.description === "string" && entry.description.length > 0
-				? { description: entry.description }
-				: {}),
-			...(inference ? { inference } : {}),
-			values,
-		};
 	}
 
 	return Object.keys(conditions).length > 0 ? conditions : undefined;
@@ -357,9 +164,7 @@ export function crossValidateWhen(
 ): void {
 	for (const item of Object.values(items)) {
 		for (const variant of item.variants) {
-			if (!variant.when) continue;
-
-			for (const [key, value] of Object.entries(variant.when)) {
+			for (const [key, value] of Object.entries(variant.when ?? {})) {
 				const condition = conditions?.[key];
 				if (!condition)
 					throw new Error(
@@ -386,24 +191,19 @@ export function parseRegistryItemTypes(
 	if (raw === undefined || raw === null)
 		throw new Error("Registry types must be declared.");
 
-	const source = assertRecord(raw, "Registry types");
+	const source = parseWithSchema(
+		z.record(z.string(), z.unknown()),
+		raw,
+		"Registry types",
+	);
 	const types: Record<string, RegistryItemTypeDefinition> = {};
 
 	for (const [key, rawType] of Object.entries(source)) {
-		const entry = assertRecord(rawType, `Registry type "${key}"`);
-		assertNoUnknownKeys(
-			entry,
-			["label", "description"],
+		types[key] = parseWithSchema(
+			registryItemTypeSchema,
+			rawType,
 			`Registry type "${key}"`,
 		);
-		assertNonEmptyString(entry.label, `Registry type "${key}" label`);
-
-		types[key] = {
-			label: entry.label,
-			...(typeof entry.description === "string" && entry.description.length > 0
-				? { description: entry.description }
-				: {}),
-		};
 	}
 
 	if (Object.keys(types).length === 0)
@@ -437,19 +237,15 @@ export function crossValidateItemTypes(
  * @throws Error when the document shape is invalid or contains unknown keys.
  */
 export function parseRegistryDocument(raw: unknown): Registry {
-	const source = assertRecord(raw, "Registry");
-	assertNoUnknownKeys(
-		source,
-		["contentBaseUrl", "conditions", "types", "items"],
-		"Registry",
-	);
-	assertNonEmptyString(source.contentBaseUrl, "Registry contentBaseUrl");
-	const itemsRecord = assertRecord(source.items, "Registry items");
-	const items: Record<string, RegistryItem> = {};
+	const source = parseWithSchema(registryDocumentFieldsSchema, raw, "Registry");
 
-	for (const [key, item] of Object.entries(itemsRecord)) {
-		const parsed = parseRegistryItem(item, `Registry items["${key}"]`);
-		items[key] = parsed;
+	const items: Record<string, RegistryItem> = {};
+	for (const [key, item] of Object.entries(source.items)) {
+		items[key] = parseWithSchema(
+			registryItemSchema,
+			item,
+			`Registry items["${key}"]`,
+		);
 	}
 
 	const conditions = parseRegistryConditions(source.conditions);
@@ -459,7 +255,7 @@ export function parseRegistryDocument(raw: unknown): Registry {
 	crossValidateItemTypes(items, types);
 
 	return {
-		contentBaseUrl: source.contentBaseUrl.replace(/\/+$/, ""),
+		contentBaseUrl: source.contentBaseUrl,
 		...(conditions ? { conditions } : {}),
 		types,
 		items,

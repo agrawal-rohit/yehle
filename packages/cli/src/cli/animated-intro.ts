@@ -1,5 +1,5 @@
 import readline from "node:readline";
-import { primaryText } from "@tuckshop/common";
+import { primaryText } from "@tuckshop/core";
 import chalk from "chalk";
 import { stripAnsi } from "consola/utils";
 
