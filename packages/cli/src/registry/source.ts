@@ -1,7 +1,5 @@
 import path from "node:path";
-import { isRegularFileAsync, readJSONFileAsync } from "./fs";
-import type { Registry } from "./schema";
-import { parseRegistryDocument } from "./validate";
+import { isRegularFileAsync } from "@tuckshop/core";
 
 /** How a resolved registry source was located. */
 export enum RegistrySourceKind {
@@ -109,17 +107,4 @@ export async function resolveRegistrySource(
 				: RegistrySourceKind.PATH,
 		location: builtRegistryPath,
 	};
-}
-
-/**
- * Read and validate a registry document from a local registry.json path.
- * @param registryPath - Absolute path to the registry.json file.
- * @returns Registry content base URL and item metadata.
- * @throws Error when the registry file is missing or malformed.
- */
-export async function fetchFileRegistry(
-	registryPath: string,
-): Promise<Registry> {
-	const raw = await readJSONFileAsync<unknown>(registryPath);
-	return parseRegistryDocument(raw);
 }

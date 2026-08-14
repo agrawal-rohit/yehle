@@ -1,12 +1,13 @@
 import { EventEmitter } from "node:events";
 import type { IncomingMessage } from "node:http";
 import { Readable } from "node:stream";
-import { type Registry, RegistrySourceKind } from "@tuckshop/core";
+import type { Registry } from "@tuckshop/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RegistrySourceKind } from "./source";
 
 const mockHttpsRequest = vi.fn();
 const mockResolveRegistrySource = vi.fn();
-const mockFetchFileRegistry = vi.fn();
+const mockReadJSONFileAsync = vi.fn();
 const mockParseRegistryDocument = vi.fn();
 
 vi.mock("node:https", () => ({
@@ -19,19 +20,27 @@ vi.mock("node:https", () => ({
 	},
 }));
 
+vi.mock("./source", () => ({
+	RegistrySourceKind: {
+		BUNDLED: "bundled",
+		PATH: "path",
+		URL: "url",
+	},
+	resolveRegistrySource: (options: unknown) =>
+		mockResolveRegistrySource(options),
+}));
+
 vi.mock("@tuckshop/core", async () => {
 	const actual =
 		await vi.importActual<typeof import("@tuckshop/core")>("@tuckshop/core");
 	return {
 		...actual,
-		resolveRegistrySource: (options: unknown) =>
-			mockResolveRegistrySource(options),
-		fetchFileRegistry: (location: string) => mockFetchFileRegistry(location),
+		readJSONFileAsync: (location: string) => mockReadJSONFileAsync(location),
 		parseRegistryDocument: (raw: unknown) => mockParseRegistryDocument(raw),
 	};
 });
 
-import { loadRuntimeRegistry } from "./registry-remote";
+import { loadRuntimeRegistry } from "./load";
 
 const sampleRegistry: Registry = {
 	contentBaseUrl: "https://example.com/content",
@@ -120,7 +129,7 @@ function mockHttpsRequestError(error: Error): void {
 	);
 }
 
-describe("registry-remote", () => {
+describe("registry/load", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockParseRegistryDocument.mockReturnValue(sampleRegistry);
@@ -131,17 +140,18 @@ describe("registry-remote", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("loads local registry sources through @tuckshop/core", async () => {
+	it("loads local registry sources from disk", async () => {
 		mockResolveRegistrySource.mockResolvedValue({
 			kind: RegistrySourceKind.PATH,
 			location: "/workspace/registry.json",
 		});
-		mockFetchFileRegistry.mockResolvedValue(sampleRegistry);
+		mockReadJSONFileAsync.mockResolvedValue(sampleRegistry);
 
 		await expect(loadRuntimeRegistry()).resolves.toEqual(sampleRegistry);
-		expect(mockFetchFileRegistry).toHaveBeenCalledWith(
+		expect(mockReadJSONFileAsync).toHaveBeenCalledWith(
 			"/workspace/registry.json",
 		);
+		expect(mockParseRegistryDocument).toHaveBeenCalledWith(sampleRegistry);
 		expect(mockHttpsRequest).not.toHaveBeenCalled();
 	});
 
@@ -150,7 +160,7 @@ describe("registry-remote", () => {
 			kind: RegistrySourceKind.PATH,
 			location: "/workspace/registry.json",
 		});
-		mockFetchFileRegistry.mockResolvedValue(sampleRegistry);
+		mockReadJSONFileAsync.mockResolvedValue(sampleRegistry);
 
 		await loadRuntimeRegistry(
 			"https://example.com/flag-registry.json",

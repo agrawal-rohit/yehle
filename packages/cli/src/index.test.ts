@@ -18,7 +18,7 @@ vi.mock("./commands", () => ({
 	registerCommandsCli: vi.fn(async () => {}),
 }));
 
-vi.mock("./registry-remote", () => ({
+vi.mock("./registry/load", () => ({
 	loadRuntimeRegistry: vi.fn(async () => ({
 		contentBaseUrl: "https://example.com",
 		items: {},
@@ -33,7 +33,7 @@ import cac from "cac";
 import { readConfig } from "./cli/config";
 import { registerCommandsCli } from "./commands";
 import run from "./index";
-import { loadRuntimeRegistry } from "./registry-remote";
+import { loadRuntimeRegistry } from "./registry/load";
 
 /** Default shape returned by cac's `parse(..., { run: false })`. */
 function emptyParseResult() {

@@ -1,44 +1,20 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	fetchFileRegistry,
-	RegistrySourceKind,
-	resolveRegistrySource,
-} from "./loader";
-import type { Registry } from "./schema";
+import { RegistrySourceKind, resolveRegistrySource } from "./source";
 
 const mockIsRegularFileAsync = vi.fn<(candidate: string) => Promise<boolean>>();
-const mockReadJSONFileAsync = vi.fn<(candidate: string) => Promise<unknown>>();
 
-vi.mock("./fs", () => ({
-	isRegularFileAsync: (candidate: string) => mockIsRegularFileAsync(candidate),
-	readJSONFileAsync: (candidate: string) => mockReadJSONFileAsync(candidate),
-}));
+vi.mock("@tuckshop/core", async () => {
+	const actual =
+		await vi.importActual<typeof import("@tuckshop/core")>("@tuckshop/core");
+	return {
+		...actual,
+		isRegularFileAsync: (candidate: string) =>
+			mockIsRegularFileAsync(candidate),
+	};
+});
 
-const sampleRegistry: Registry = {
-	contentBaseUrl: "https://example.com/content",
-	types: {
-		theme: { label: "Themes" },
-	},
-	items: {
-		"sample-theme": {
-			id: "sample-theme",
-			title: "Sample Theme",
-			description: "A sample theme",
-			type: "theme",
-			variants: [
-				{
-					id: "default",
-					title: "Default",
-					description: "Default variant",
-					files: [{ source: "a.css", target: "a.css" }],
-				},
-			],
-		},
-	},
-};
-
-describe("registry/loader", () => {
+describe("registry/source", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.spyOn(process, "cwd").mockReturnValue("/workspace");
@@ -178,6 +154,22 @@ describe("registry/loader", () => {
 		});
 	});
 
+	it("defaults bundledRegistryPath relative to the module when omitted", async () => {
+		const defaultBundledPath = path.resolve(
+			__dirname,
+			"../../",
+			"registry.json",
+		);
+		mockIsRegularFileAsync.mockImplementation(async (candidate: string) => {
+			return candidate === defaultBundledPath;
+		});
+
+		await expect(resolveRegistrySource()).resolves.toEqual({
+			kind: RegistrySourceKind.BUNDLED,
+			location: defaultBundledPath,
+		});
+	});
+
 	it("throws a clear error when no registry source can be found", async () => {
 		mockIsRegularFileAsync.mockResolvedValue(false);
 
@@ -187,19 +179,6 @@ describe("registry/loader", () => {
 			}),
 		).rejects.toThrow(
 			"Registry not found (registry.json). Run `pnpm run build:registry` before using tuckshop.",
-		);
-		expect(mockReadJSONFileAsync).not.toHaveBeenCalled();
-	});
-
-	it("loads and validates a local registry document from disk", async () => {
-		mockReadJSONFileAsync.mockResolvedValue(sampleRegistry);
-
-		await expect(
-			fetchFileRegistry("/workspace/registry.json"),
-		).resolves.toEqual(sampleRegistry);
-
-		expect(mockReadJSONFileAsync).toHaveBeenCalledWith(
-			"/workspace/registry.json",
 		);
 	});
 });

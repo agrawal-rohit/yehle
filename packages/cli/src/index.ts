@@ -1,7 +1,7 @@
 import cac from "cac";
 import { readConfig } from "./cli/config";
 import { registerCommandsCli } from "./commands";
-import { loadRuntimeRegistry } from "./registry-remote";
+import { loadRuntimeRegistry } from "./registry/load";
 
 /**
  * Read a validated `--registry` override from parsed CAC options.

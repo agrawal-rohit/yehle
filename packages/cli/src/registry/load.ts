@@ -3,12 +3,11 @@ import https from "node:https";
 import { isIP } from "node:net";
 import path from "node:path";
 import {
-	fetchFileRegistry,
 	parseRegistryDocument,
 	type Registry,
-	RegistrySourceKind,
-	resolveRegistrySource,
+	readJSONFileAsync,
 } from "@tuckshop/core";
+import { RegistrySourceKind, resolveRegistrySource } from "./source";
 
 /**
  * Reject remote registry URLs that are not HTTPS hostnames.
@@ -147,7 +146,7 @@ export async function loadRuntimeRegistry(
 	registryOverride?: string,
 	savedRegistry?: string,
 ): Promise<Registry> {
-	const packageRoot = path.resolve(__dirname, "..");
+	const packageRoot = path.resolve(__dirname, "../..");
 	const source = await resolveRegistrySource({
 		registry: registryOverride,
 		savedRegistry,
@@ -157,7 +156,11 @@ export async function loadRuntimeRegistry(
 		],
 	});
 
+	// Fetch a registry from a remote URL
 	if (source.kind === RegistrySourceKind.URL)
 		return await fetchRemoteRegistry(source.location);
-	return await fetchFileRegistry(source.location);
+
+	// Load a registry from a local file path
+	const raw = await readJSONFileAsync<unknown>(source.location);
+	return parseRegistryDocument(raw);
 }
