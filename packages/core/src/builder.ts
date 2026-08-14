@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { readJSONFileAsync, writeFileAsync } from "../core/fs";
+import { readJSONFileAsync, writeFileAsync } from "./fs";
 import { assertNonEmptyString, parseStringArray, parseWhen } from "./parse";
 import type {
 	Registry,

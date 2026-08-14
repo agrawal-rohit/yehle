@@ -1,5 +1,5 @@
 import path from "node:path";
-import { isRegularFileAsync, readJSONFileAsync } from "../core/fs";
+import { isRegularFileAsync, readJSONFileAsync } from "./fs";
 import type { Registry } from "./schema";
 import { parseRegistryDocument } from "./validate";
 
@@ -112,12 +112,14 @@ export async function resolveRegistrySource(
 }
 
 /**
- * Load and validate a registry document from a local registry.json path.
+ * Read and validate a registry document from a local registry.json path.
  * @param registryPath - Absolute path to the registry.json file.
  * @returns Registry content base URL and item metadata.
  * @throws Error when the registry file is missing or malformed.
  */
-export async function loadRegistry(registryPath: string): Promise<Registry> {
+export async function fetchFileRegistry(
+	registryPath: string,
+): Promise<Registry> {
 	const raw = await readJSONFileAsync<unknown>(registryPath);
 	return parseRegistryDocument(raw);
 }

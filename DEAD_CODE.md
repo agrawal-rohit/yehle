@@ -62,9 +62,9 @@ export function getBooleanOption(options: CliOptions, key: string): boolean {
 
 ## Core — `packages/core`
 
-Barrel (`src/index.ts`) previously re-exported: `./core/git`, `./core/shell`, `./core/utils`, `./registry/infer`.
+Barrel (`src/index.ts`) previously re-exported: `./git`, `./shell`, `./utils`, `./infer`.
 
-### `src/core/shell.ts` (+ `shell.test.ts`)
+### `src/shell.ts` (+ `shell.test.ts`)
 
 `RunOptions`: `{ cwd?, stdio?: "inherit"|"pipe"|"ignore", env?, timeoutMs? }`.
 
@@ -72,7 +72,7 @@ Barrel (`src/index.ts`) previously re-exported: `./core/git`, `./core/shell`, `.
 - **`runAsync(cmd, opts?)`**: `spawn` without shell; `pipe` (default) returns trimmed stdout; `inherit`/`ignore` resolve `""` on exit 0; reject on non-zero.
 - **`commandExistsAsync(command)`**: `where` on win32, else `which`; catch → `false`.
 
-### `src/core/git.ts` (+ `git.test.ts`)
+### `src/git.ts` (+ `git.test.ts`)
 
 Depends on `runAsync`.
 
@@ -81,11 +81,11 @@ Depends on `runAsync`.
 - **`initGitRepo(cwd)`**: no-op if repo; else `git init -b main` (`stdio: "ignore"`).
 - **`makeInitialCommit(cwd)`**: ensure repo → `git add -A` → `git commit -m "chore: initial commit"`.
 
-### `src/core/utils.ts` (+ `utils.test.ts`)
+### `src/utils.ts` (+ `utils.test.ts`)
 
 **`toSlug(value)`**: trim/lower; last path segment; strip leading `@` and trailing `.git`; replace non `[a-z0-9._-]` with `-`; collapse/trim hyphens.
 
-### `src/core/fs.ts` (partial — keep live helpers)
+### `src/fs.ts` (partial — keep live helpers)
 
 Removed (safe no-ops when missing):
 
@@ -96,7 +96,7 @@ Removed (safe no-ops when missing):
 
 Kept: `isRegularFileAsync`, `readJSONFileAsync`, `ensureDirAsync`, `writeFileAsync`.
 
-### `src/registry/infer.ts` (+ `infer.test.ts`)
+### `src/infer.ts` (+ `infer.test.ts`)
 
 ```ts
 export type InferConditionOptions = {
@@ -112,7 +112,7 @@ export async function inferConditionValues(
 
 Only conditions with `inference` set. Mode `RegistryConditionInference.FILES`: pick value whose `files[]` has any existing path under `projectDir`; require **exactly one** match else skip. Unknown inference → throw.
 
-### `src/registry/schema.ts` (partial — install / variant planning)
+### `src/schema.ts` (partial — install / variant planning)
 
 Kept document types + `getRegistryItemTypes`. Removed:
 

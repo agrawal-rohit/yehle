@@ -3,7 +3,7 @@ import https from "node:https";
 import { isIP } from "node:net";
 import path from "node:path";
 import {
-	loadRegistry,
+	fetchFileRegistry,
 	parseRegistryDocument,
 	type Registry,
 	RegistrySourceKind,
@@ -159,5 +159,5 @@ export async function loadRuntimeRegistry(
 
 	if (source.kind === RegistrySourceKind.URL)
 		return await fetchRemoteRegistry(source.location);
-	return await loadRegistry(source.location);
+	return await fetchFileRegistry(source.location);
 }

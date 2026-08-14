@@ -292,6 +292,19 @@ describe("commands/index", () => {
 		);
 	});
 
+	it("rejects a non-string prompted source", async () => {
+		const { app, actions } = createMockApp();
+		mockConsolaPrompt.mockResolvedValue(undefined);
+		await registerCommandsCli(app, mockLoadRegistry);
+
+		await actions.get("config <action> [source]")?.("set");
+
+		expect(mockConfigSetCommand).not.toHaveBeenCalled();
+		expect(mockLoggerError).toHaveBeenCalledWith(
+			"Registry source must not be empty.",
+		);
+	});
+
 	it("runs config unset and notes restoring the default", async () => {
 		const { app, actions } = createMockApp();
 		mockReadConfig.mockResolvedValue({

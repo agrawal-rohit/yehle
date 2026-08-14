@@ -55,8 +55,29 @@ describe("commands/config", () => {
 			const options = { env: { XDG_CONFIG_HOME: root } };
 			vi.spyOn(console, "log").mockImplementation(() => {});
 
+			await expect(configSetCommand("", options)).rejects.toThrow(
+				"Registry source must not be empty.",
+			);
+			await expect(configSetCommand("   ", options)).rejects.toThrow(
+				"Registry source must not be empty.",
+			);
+
 			await expect(configSetCommand("./nope.json", options)).rejects.toThrow(
 				"does not exist",
+			);
+
+			await expect(configGetCommand({ ...options })).resolves.toBeUndefined();
+		});
+
+		it("rejects a local path that resolves to a directory", async () => {
+			const root = await makeTempRoot();
+			const options = { env: { XDG_CONFIG_HOME: root } };
+			const registryDir = path.join(root, "registry-dir");
+			await fs.promises.mkdir(registryDir);
+			vi.spyOn(console, "log").mockImplementation(() => {});
+
+			await expect(configSetCommand(registryDir, options)).rejects.toThrow(
+				/is not a file/,
 			);
 
 			await expect(configGetCommand({ ...options })).resolves.toBeUndefined();

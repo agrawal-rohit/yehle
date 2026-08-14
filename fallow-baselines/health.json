@@ -10,12 +10,7 @@
         "count": 1
       }
     },
-    "packages/core/src/core/shell.ts": {
-      "crap_moderate": {
-        "count": 1
-      }
-    },
-    "packages/core/src/registry/builder.ts": {
+    "packages/core/src/builder.ts": {
       "complexity_critical": {
         "count": 1
       },
@@ -23,7 +18,7 @@
         "count": 1
       }
     },
-    "packages/core/src/registry/validate.ts": {
+    "packages/core/src/validate.ts": {
       "complexity_moderate": {
         "count": 2
       }
@@ -31,6 +26,6 @@
   },
   "runtime_coverage_findings": [],
   "target_keys": [
-    "packages/core/src/registry/builder.ts:complexity"
+    "packages/core/src/builder.ts:complexity"
   ]
 }

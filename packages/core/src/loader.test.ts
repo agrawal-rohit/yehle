@@ -1,7 +1,7 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	loadRegistry,
+	fetchFileRegistry,
 	RegistrySourceKind,
 	resolveRegistrySource,
 } from "./loader";
@@ -10,7 +10,7 @@ import type { Registry } from "./schema";
 const mockIsRegularFileAsync = vi.fn<(candidate: string) => Promise<boolean>>();
 const mockReadJSONFileAsync = vi.fn<(candidate: string) => Promise<unknown>>();
 
-vi.mock("../core/fs", () => ({
+vi.mock("./fs", () => ({
 	isRegularFileAsync: (candidate: string) => mockIsRegularFileAsync(candidate),
 	readJSONFileAsync: (candidate: string) => mockReadJSONFileAsync(candidate),
 }));
@@ -194,9 +194,9 @@ describe("registry/loader", () => {
 	it("loads and validates a local registry document from disk", async () => {
 		mockReadJSONFileAsync.mockResolvedValue(sampleRegistry);
 
-		await expect(loadRegistry("/workspace/registry.json")).resolves.toEqual(
-			sampleRegistry,
-		);
+		await expect(
+			fetchFileRegistry("/workspace/registry.json"),
+		).resolves.toEqual(sampleRegistry);
 
 		expect(mockReadJSONFileAsync).toHaveBeenCalledWith(
 			"/workspace/registry.json",

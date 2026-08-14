@@ -9,7 +9,7 @@ describe("package entry", () => {
 		expect(typeof core.writeFileAsync).toBe("function");
 		expect(typeof core.buildRegistry).toBe("function");
 		expect(typeof core.resolveRegistrySource).toBe("function");
-		expect(typeof core.loadRegistry).toBe("function");
+		expect(typeof core.fetchFileRegistry).toBe("function");
 		expect(typeof core.parseRegistryDocument).toBe("function");
 		expect(typeof core.validateRegistryItem).toBe("function");
 		expect(typeof core.parseRegistryConditions).toBe("function");
