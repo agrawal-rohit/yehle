@@ -90,12 +90,12 @@ async function readRemoteRegistryBody(
 }
 
 /**
- * Fetch, size-limit, and validate a remote registry document.
+ * Fetch and read a remote registry document body.
  * @param registryUrl - Absolute remote registry URL.
- * @returns Validated registry document.
- * @throws Error when the request fails or the document is invalid.
+ * @returns Parsed JSON value from the registry document.
+ * @throws Error when the request fails or the response is invalid.
  */
-async function fetchRemoteRegistry(registryUrl: string): Promise<Registry> {
+async function fetchRemoteRegistry(registryUrl: string): Promise<unknown> {
 	const url = new URL(registryUrl);
 	assertSafeRegistryUrl(url);
 
@@ -131,8 +131,7 @@ async function fetchRemoteRegistry(registryUrl: string): Promise<Registry> {
 		});
 	}
 
-	const raw = await readRemoteRegistryBody(response);
-	return parseRegistryDocument(raw);
+	return readRemoteRegistryBody(response);
 }
 
 /**
@@ -156,11 +155,11 @@ export async function loadRuntimeRegistry(
 		],
 	});
 
-	// Fetch a registry from a remote URL
-	if (source.kind === RegistrySourceKind.URL)
-		return await fetchRemoteRegistry(source.location);
+	// Fetch a registry from a remote URL or load one from a local file path.
+	const fetchedRegistry =
+		source.kind === RegistrySourceKind.URL
+			? await fetchRemoteRegistry(source.location)
+			: await readJSONFileAsync<unknown>(source.location);
 
-	// Load a registry from a local file path
-	const raw = await readJSONFileAsync<unknown>(source.location);
-	return parseRegistryDocument(raw);
+	return parseRegistryDocument(fetchedRegistry);
 }

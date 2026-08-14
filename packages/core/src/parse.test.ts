@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
 	parseRegistryDocument,
+	parseRegistryItem,
 	parseRegistryItemTypes,
-	validateRegistryItem,
-} from "./validate";
+} from "./parse";
 
 /** Minimal valid registry document for parseRegistryDocument tests. */
 function validDocument(
@@ -39,7 +39,7 @@ function validDocument(
 	};
 }
 
-describe("registry/validate", () => {
+describe("registry/parse", () => {
 	it("parses a valid registry document", () => {
 		const parsed = parseRegistryDocument(
 			validDocument({
@@ -104,7 +104,7 @@ describe("registry/validate", () => {
 
 	it("accepts unknown custom item types", () => {
 		expect(
-			validateRegistryItem({
+			parseRegistryItem({
 				id: "legacy-item",
 				title: "Legacy Item",
 				description: "Legacy",

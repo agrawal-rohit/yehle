@@ -1,7 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
+import { assertNonEmptyString } from "./assert";
 import { readJSONFileAsync, writeFileAsync } from "./fs";
-import { assertNonEmptyString, parseStringArray, parseWhen } from "./parse";
+import {
+	crossValidateItemTypes,
+	crossValidateWhen,
+	parseRegistryConditions,
+	parseRegistryItem,
+	parseRegistryItemTypes,
+	parseStringArray,
+	parseWhen,
+} from "./parse";
 import type {
 	Registry,
 	RegistryCondition,
@@ -9,13 +18,6 @@ import type {
 	RegistryItem,
 	RegistryVariant,
 } from "./schema";
-import {
-	crossValidateItemTypes,
-	crossValidateWhen,
-	parseRegistryConditions,
-	parseRegistryItemTypes,
-	validateRegistryItem,
-} from "./validate";
 
 /**
  * Default content base for single-package registries that keep `registry/` at
@@ -264,7 +266,7 @@ function buildRegistryItem(itemDir: string, repoRoot: string): RegistryItem {
 		item.registryDependencies =
 			manifest.registryDependencies as RegistryItem["registryDependencies"];
 
-	return validateRegistryItem(item, `Registry item "${manifest.id}"`);
+	return parseRegistryItem(item, `Registry item "${manifest.id}"`);
 }
 
 /**
