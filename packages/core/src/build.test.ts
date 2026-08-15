@@ -78,7 +78,7 @@ describe("buildRegistry", () => {
 		fs.rmSync(tempDir, { recursive: true, force: true });
 	});
 
-	it("builds registry.json with relative sources and per-variant payloads", async () => {
+	it("builds registry.json with install targets and per-variant payloads", async () => {
 		writeItem(
 			tempDir,
 			"component/button",
@@ -139,12 +139,10 @@ describe("buildRegistry", () => {
 		expect(document).toEqual(written);
 		expect(Object.keys(written.items)).toEqual(["build", "button"]);
 		expect(written.items.button.variants[0].files[0]).toEqual({
-			source: "react/button.tsx",
+			source: "r/button/react.json",
 			target: "src/components/ui/button.tsx",
 		});
-		expect(written.items.button.variants[0].payload).toBe(
-			"r/button/react.json",
-		);
+		expect(written.items.button.variants[0]).not.toHaveProperty("payload");
 		expect(written.items.button.variants[0].dependencies).toEqual(["react"]);
 
 		const payload = JSON.parse(
@@ -155,7 +153,6 @@ describe("buildRegistry", () => {
 			variantId: "react",
 			files: [
 				{
-					source: "react/button.tsx",
 					target: "src/components/ui/button.tsx",
 					content: "export const Button = () => null;\n",
 				},
@@ -203,9 +200,17 @@ describe("buildRegistry", () => {
 		});
 
 		const document = await runBuild();
-		expect(document.items["git-hooks"].files?.[0].source).toBe(
-			"commitlint.config.js",
-		);
+		expect(document.items["git-hooks"].files).toBeUndefined();
+		expect(document.items["git-hooks"].variants[0].files).toEqual([
+			{
+				source: "r/git-hooks/typescript.json",
+				target: "commitlint.config.js",
+			},
+			{
+				source: "r/git-hooks/typescript.json",
+				target: "lint-staged.config.js",
+			},
+		]);
 
 		const payload = JSON.parse(
 			fs.readFileSync(
@@ -213,9 +218,9 @@ describe("buildRegistry", () => {
 				"utf8",
 			),
 		) as RegistryPayload;
-		expect(payload.files.map((file) => file.source)).toEqual([
+		expect(payload.files.map((file) => file.target)).toEqual([
 			"commitlint.config.js",
-			"typescript/lint-staged.config.js",
+			"lint-staged.config.js",
 		]);
 		expect(
 			payload.files.every((file) => typeof file.content === "string"),

@@ -7,8 +7,8 @@ import {
 	parseWithSchema,
 } from "./parse";
 import {
-	authoredRegistryItemSchema,
 	RegistryConditionInference,
+	registryItemSchema,
 	registryPayloadSchema,
 } from "./schema";
 
@@ -31,10 +31,9 @@ function validDocument(
 						id: "react",
 						title: "React",
 						description: "React button",
-						payload: "r/button/react.json",
 						files: [
 							{
-								source: "registry/component/button/react/button.tsx",
+								source: "r/button/react.json",
 								target: "src/components/ui/button.tsx",
 							},
 						],
@@ -67,11 +66,10 @@ describe("registry/parse", () => {
 								id: "react",
 								title: "React",
 								description: "React button",
-								payload: "r/button/react.json",
 								when: { language: "typescript" },
 								files: [
 									{
-										source: "registry/component/button/react/button.tsx",
+										source: "r/button/react.json",
 										target: "src/components/ui/button.tsx",
 									},
 								],
@@ -111,7 +109,7 @@ describe("registry/parse", () => {
 	it("accepts unknown custom item types", () => {
 		expect(
 			parseWithSchema(
-				authoredRegistryItemSchema,
+				registryItemSchema,
 				{
 					id: "legacy-item",
 					title: "Legacy Item",
@@ -157,10 +155,9 @@ describe("registry/parse", () => {
 										id: "react",
 										title: "React",
 										description: "React button",
-										payload: "r/button/react.json",
 										files: [
 											{
-												source: "a.tsx",
+												source: "r/button/react.json",
 												target: "a.tsx",
 											},
 										],
@@ -188,11 +185,10 @@ describe("registry/parse", () => {
 										id: "react",
 										title: "React",
 										description: "React button",
-										payload: "r/button/react.json",
 										extra: "nope",
 										files: [
 											{
-												source: "a.tsx",
+												source: "r/button/react.json",
 												target: "a.tsx",
 											},
 										],
@@ -327,10 +323,9 @@ describe("registry/parse", () => {
 								id: "react",
 								title: "React",
 								description: "React button",
-								payload: "r/button/react.json",
 								files: [
 									{
-										source: "registry/component/button/react/button.tsx",
+										source: "r/button/react.json",
 										target: "src/components/ui/button.tsx",
 									},
 								],
@@ -399,7 +394,6 @@ describe("registry/parse", () => {
 									id: "react",
 									title: "React",
 									description: "React button",
-									payload: "r/button/react.json",
 									files: [],
 								},
 							],
@@ -528,9 +522,13 @@ describe("registry/parse", () => {
 										id: "react",
 										title: "React",
 										description: "React button",
-										payload: "r/button/react.json",
 										when: { language: "typescript" },
-										files: [{ source: "a.tsx", target: "a.tsx" }],
+										files: [
+											{
+												source: "r/button/react.json",
+												target: "a.tsx",
+											},
+										],
 									},
 								],
 							},
@@ -563,9 +561,13 @@ describe("registry/parse", () => {
 										id: "react",
 										title: "React",
 										description: "React button",
-										payload: "r/button/react.json",
 										when: { language: "javascript" },
-										files: [{ source: "a.tsx", target: "a.tsx" }],
+										files: [
+											{
+												source: "r/button/react.json",
+												target: "a.tsx",
+											},
+										],
 									},
 								],
 							},
@@ -628,7 +630,6 @@ describe("registry/parse", () => {
 						variantId: "react",
 						files: [
 							{
-								source: "a.txt",
 								target: "a.txt",
 								content: "hello",
 							},
@@ -641,7 +642,6 @@ describe("registry/parse", () => {
 				variantId: "react",
 				files: [
 					{
-						source: "a.txt",
 						target: "a.txt",
 						content: "hello",
 					},
@@ -649,14 +649,14 @@ describe("registry/parse", () => {
 			});
 		});
 
-		it("rejects sources without content", () => {
+		it("rejects files without content", () => {
 			expect(() =>
 				parseWithSchema(
 					registryPayloadSchema,
 					{
 						id: "button",
 						variantId: "react",
-						files: [{ source: "a.txt", target: "a.txt" }],
+						files: [{ target: "a.txt" }],
 					},
 					"Registry payload",
 				),

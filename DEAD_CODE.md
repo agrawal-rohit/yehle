@@ -126,7 +126,7 @@ Kept document types. Removed:
 
 **`parseRegistryDependencyRef(ref)`** — `id` or `id@variant`; reject empty / leading/trailing `@`.
 
-**`resolveRegistryPlan(rootRef, index, context)`** — DFS deps (`item` + selected variant `registryDependencies`), cycle-detect, dedupe by item id (one variant per item). Do **not** merge catalog `files` into an install list of URLs. Each planned node is `{ itemId, variantId, payload }` where `payload` is the catalog URI reference.
+**`resolveRegistryPlan(rootRef, index, context)`** — DFS deps (`item` + selected variant `registryDependencies`), cycle-detect, dedupe by item id (one variant per item). Do **not** merge catalog `files` into an install list of URLs. Each planned node is `{ itemId, variantId }` plus unique catalog file `source` URIs from the selected variant.
 
 **`collectRequiredConditions(items, conditions, context)`** — for each used `when` key missing in context: intersect declared condition values with values present on plan variants; skip empty intersections; throw if key undefined in `conditions`.
 
@@ -141,10 +141,10 @@ Private helpers: `normalizeDependency`, `collectItemDependencies`.
 3. Wire into future `add`/`init` commands with this contract (no existing `add` command today):
    - Infer/prompt context locally from catalog `conditions` (prompts → conditions; `inferConditionValues` → context).
    - `selectRegistryVariant` / `resolveRegistryPlan` from the catalog only (no payload IO during planning).
-   - Load each unique `payload` via `resolveRegistryPayload(catalogLocation, payload)`, then fetch/read that location. Parse with `parseWithSchema(registryPayloadSchema, …)`. Cache by resolved location. Bound concurrency (~8). Do not assume `r/` or GitHub.
-   - For payload files with `content`, treat as templates (write as-is until mustache exists; render with context when it does). For files with only absolute `source`, fetch that URL.
+   - Load each unique catalog file `source` via `resolveRegistryPayload(catalogLocation, source)`, then fetch/read that location. Parse with `parseWithSchema(registryPayloadSchema, …)`. Cache by resolved location. Bound concurrency (~8). Do not assume `r/` or GitHub.
+   - For payload files with `content`, treat as templates (write as-is until mustache exists; render with context when it does).
    - Write with `writeFileAsync`; do not restore `copyFileSafeAsync` as the remote install path.
-   - Bundled vs remote is the same rule: resolve `payload` against whichever catalog location was loaded.
+   - Bundled vs remote is the same rule: resolve catalog file `source` against whichever catalog location was loaded.
 4. Restore co-located `*.test.ts` from git history if behaviour regressions matter (`git log --all -- path`).
 
 Mustache is not restored yet. Do not bake condition-specific output into payloads at build time.

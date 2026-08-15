@@ -9,12 +9,12 @@ import {
 } from "./fs";
 import { parseRegistryDocument, parseWithSchema } from "./parse";
 import {
-	type AuthoredRegistryItem,
-	authoredRegistryItemSchema,
 	type Registry,
 	type RegistryFile,
+	type RegistryItem,
 	type RegistryPayload,
 	type RegistryPayloadFile,
+	registryItemSchema,
 } from "./schema";
 
 export interface BuildRegistryOptions {
@@ -71,11 +71,7 @@ async function materializePayloadFiles(
 			const absolutePath = path.join(itemDir, file.source);
 			if (await isFileAsync(absolutePath)) {
 				const content = await readFileAsync(absolutePath);
-				return {
-					source: file.source,
-					target: file.target,
-					content,
-				};
+				return { target: file.target, content };
 			}
 
 			throw new Error(
@@ -102,7 +98,7 @@ export async function buildRegistry(
 	// Collect authored registry items
 	const authoredItems: Array<{
 		itemDir: string;
-		item: AuthoredRegistryItem;
+		item: RegistryItem;
 	}> = [];
 	const seenItemIds = new Set<string>();
 	for (const itemDir of await collectItemDirs(sourceDir)) {
@@ -110,11 +106,7 @@ export async function buildRegistry(
 		const raw = JSON.parse(await readFileAsync(manifestPath));
 
 		// Validate the registry item
-		const item = parseWithSchema(
-			authoredRegistryItemSchema,
-			raw,
-			"Registry item",
-		);
+		const item = parseWithSchema(registryItemSchema, raw, "Registry item");
 
 		// Check for duplicate item ids
 		if (seenItemIds.has(item.id))
@@ -127,8 +119,8 @@ export async function buildRegistry(
 	// Plan the output payloads for each variant of each item
 	const plannedPayloads: Array<{
 		itemDir: string;
-		item: AuthoredRegistryItem;
-		variant: AuthoredRegistryItem["variants"][number];
+		item: RegistryItem;
+		variant: RegistryItem["variants"][number];
 		relativeFile: string;
 		absoluteFile: string;
 	}> = [];
@@ -177,13 +169,19 @@ export async function buildRegistry(
 	}
 
 	for (const { item } of authoredItems) {
+		const { files: itemFiles, ...itemRest } = item;
 		catalogItems[item.id] = {
-			...item,
+			...itemRest,
 			variants: plannedPayloads
 				.filter((entry) => entry.item.id === item.id)
 				.map((entry) => ({
 					...entry.variant,
-					payload: entry.relativeFile,
+					files: [...(itemFiles ?? []), ...entry.variant.files].map(
+						({ target }) => ({
+							source: entry.relativeFile,
+							target,
+						}),
+					),
 				})),
 		};
 	}

@@ -198,7 +198,7 @@ The compiled artefacts are written next to the package root by `pnpm run build:r
 
 They are regenerated and staged automatically by the pre-commit hook whenever anything under `packages/registry/registry/` or the core compiler changes.
 
-`registry.json` only holds metadata for individual items, so the index stays lean as the registry grows. Authoring manifests keep item-relative `source` paths. The build inlines those files into per-variant payloads under `r/`. Each compiled variant stores a relative `payload` of `r/{itemId}/{variantId}.json`. Consumers resolve that against the catalog location (`resolveRegistryPayload`). Hosting can be GitHub raw, S3, or a CDN as long as `registry.json` and `r/` stay side by side.
+`registry.json` only holds metadata for individual items, so the index stays lean as the registry grows. Authoring manifests keep item-relative `source` paths. The build inlines those files into per-variant payloads under `r/` and rewrites each catalog file `source` to that payload URI (`r/{itemId}/{variantId}.json`). Payloads keep `target` plus inlined `content`. Consumers resolve catalog `source` against the catalog location (`resolveRegistryPayload`). Hosting can be GitHub raw, S3, or a CDN as long as `registry.json` and `r/` stay side by side.
 
 Payload `content` is the authored template text. Conditions, inference, and any future mustache rendering run on the client after the payload is loaded — not at compile time.
 

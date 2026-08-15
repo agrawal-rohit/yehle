@@ -69,10 +69,9 @@ function makeItem(
 				id: "default",
 				title: "Default",
 				description: "Default variant",
-				payload: `r/${overrides.id}/default.json`,
 				files: [
 					{
-						source: "file.txt",
+						source: `r/${overrides.id}/default.json`,
 						target: "file.txt",
 					},
 				],
@@ -186,15 +185,23 @@ describe("commands/list", () => {
 						id: "light",
 						title: "Light",
 						description: "Light",
-						payload: "r/theme-a/light.json",
-						files: [{ source: "light.css", target: "light.css" }],
+						files: [
+							{
+								source: "r/theme-a/light.json",
+								target: "light.css",
+							},
+						],
 					},
 					{
 						id: "dark",
 						title: "Dark",
 						description: "Dark",
-						payload: "r/theme-a/dark.json",
-						files: [{ source: "dark.css", target: "dark.css" }],
+						files: [
+							{
+								source: "r/theme-a/dark.json",
+								target: "dark.css",
+							},
+						],
 					},
 				],
 			}),

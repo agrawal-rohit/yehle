@@ -83,14 +83,14 @@ await buildRegistry({ sourceDir, outDir });
 const registry = parseRegistryDocument(JSON.parse(registryJson));
 ```
 
-That emits a lean `registry.json` catalog plus per-variant payloads at `r/{itemId}/{variantId}.json` under `outDir`. Each compiled variant stores a relative `payload` of that path; consumers resolve it against the catalog location (`resolveRegistryPayload`).
+That emits a lean `registry.json` catalog plus per-variant payloads at `r/{itemId}/{variantId}.json` under `outDir`. Each compiled catalog file `source` is a relative URI of that path; consumers resolve it against the catalog location (`resolveRegistryPayload`).
 
 `@tuckshop/core` exposes:
 
 - `buildRegistry()` for compiling an authoring tree into consumable artefacts
 - Schema types and validation for catalog and payload documents
 - `parseRegistryDocument()` and `parseWithSchema()` for runtime validation (unknown keys are rejected; use `registryPayloadSchema` for payload documents)
-- `resolveRegistryPayload()` for storage-agnostic payload URI resolution
+- `resolveRegistryPayload()` for storage-agnostic catalog file `source` resolution
 
 The private `@tuckshop/registry` package holds the default opinionated content and a thin CLI wrapper around `buildRegistry` (`pnpm build:registry`).
 

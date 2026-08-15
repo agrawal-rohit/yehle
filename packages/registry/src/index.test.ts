@@ -103,7 +103,7 @@ describe("registry startCli", () => {
 		expect(fs.existsSync(path.join(tempDir, "registry.json"))).toBe(true);
 	});
 
-	it("builds the registry without stamping absolute file sources", async () => {
+	it("builds catalog files with install targets only", async () => {
 		writeItem(
 			tempDir,
 			"component/button",
@@ -129,10 +129,11 @@ describe("registry startCli", () => {
 		const written = JSON.parse(
 			fs.readFileSync(path.join(tempDir, "registry.json"), "utf8"),
 		) as Registry;
-		expect(written.items.button.variants[0].files[0].source).toBe("a.txt");
-		expect(written.items.button.variants[0].payload).toBe(
-			"r/button/default.json",
-		);
+		expect(written.items.button.variants[0].files[0]).toEqual({
+			source: "r/button/default.json",
+			target: "a.txt",
+		});
+		expect(written.items.button.variants[0]).not.toHaveProperty("payload");
 		expect(
 			fs.existsSync(path.join(tempDir, "r", "button", "default.json")),
 		).toBe(true);

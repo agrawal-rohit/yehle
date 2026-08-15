@@ -75,13 +75,13 @@ describe("resolveRegistryPayload", () => {
 				"/tmp/my-registry/registry.json",
 				"../secret.json",
 			),
-		).toThrow('Registry payload "../secret.json" must be a relative path');
+		).toThrow('Registry file source "../secret.json" must be a relative path');
 	});
 
-	it("rejects an empty payload URI reference", () => {
+	it("rejects an empty file source", () => {
 		expect(() =>
 			resolveRegistryPayload("/tmp/my-registry/registry.json", "   "),
-		).toThrow("Registry payload URI reference must not be empty.");
+		).toThrow("Registry file source must not be empty.");
 	});
 
 	it("rejects an empty catalog location", () => {
@@ -90,15 +90,15 @@ describe("resolveRegistryPayload", () => {
 		);
 	});
 
-	it("rejects absolute local payload paths", () => {
+	it("rejects absolute local source paths", () => {
 		expect(() =>
 			resolveRegistryPayload("/tmp/my-registry/registry.json", "/etc/passwd"),
 		).toThrow(
-			'Registry payload "/etc/passwd" must be a relative path under the catalog directory.',
+			'Registry file source "/etc/passwd" must be a relative path under the catalog directory.',
 		);
 	});
 
-	it("rejects payloads that escape the catalog directory after resolution", () => {
+	it("rejects sources that escape the catalog directory after resolution", () => {
 		const relativeSpy = vi
 			.spyOn(path, "relative")
 			.mockReturnValueOnce("../escaped.json");
@@ -110,14 +110,14 @@ describe("resolveRegistryPayload", () => {
 					"r/button/react.json",
 				),
 			).toThrow(
-				'Registry payload "r/button/react.json" escapes the catalog directory.',
+				'Registry file source "r/button/react.json" escapes the catalog directory.',
 			);
 		} finally {
 			relativeSpy.mockRestore();
 		}
 	});
 
-	it("rejects payloads whose resolved relative path is absolute", () => {
+	it("rejects sources whose resolved relative path is absolute", () => {
 		const relativeSpy = vi
 			.spyOn(path, "relative")
 			.mockReturnValueOnce("/absolute/escape.json");
@@ -129,7 +129,7 @@ describe("resolveRegistryPayload", () => {
 					"r/button/react.json",
 				),
 			).toThrow(
-				'Registry payload "r/button/react.json" escapes the catalog directory.',
+				'Registry file source "r/button/react.json" escapes the catalog directory.',
 			);
 		} finally {
 			relativeSpy.mockRestore();

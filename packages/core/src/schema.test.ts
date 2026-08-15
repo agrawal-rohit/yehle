@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ZodType } from "zod";
 import {
-	authoredRegistryItemSchema,
-	authoredRegistryVariantSchema,
 	RegistryConditionInference,
 	registryConditionSchema,
 	registryConditionValueSchema,
@@ -114,25 +112,29 @@ describe("core/schema", () => {
 	});
 
 	describe("registryPayloadFileSchema", () => {
-		it("accepts inlined content", () => {
+		it("accepts inlined content without an authoring source", () => {
 			expect(
 				registryPayloadFileSchema.parse({
-					source: "a.txt",
 					target: "a.txt",
 					content: "hello",
 				}),
 			).toEqual({
-				source: "a.txt",
 				target: "a.txt",
 				content: "hello",
 			});
 		});
 
-		it("rejects sources without content", () => {
+		it("rejects files without content and leftover authoring source", () => {
+			expect(
+				registryPayloadFileSchema.safeParse({
+					target: "a.txt",
+				}).success,
+			).toBe(false);
 			expect(
 				registryPayloadFileSchema.safeParse({
 					source: "a.txt",
 					target: "a.txt",
+					content: "hello",
 				}).success,
 			).toBe(false);
 		});
@@ -146,7 +148,6 @@ describe("core/schema", () => {
 					variantId: "react",
 					files: [
 						{
-							source: "a.txt",
 							target: "a.txt",
 							content: "hello",
 						},
@@ -160,22 +161,9 @@ describe("core/schema", () => {
 				registryPayloadSchema.safeParse({
 					id: "a/b",
 					variantId: "react",
-					files: [{ source: "a.txt", target: "a.txt", content: "x" }],
+					files: [{ target: "a.txt", content: "x" }],
 				}).success,
 			).toBe(false);
-		});
-	});
-
-	describe("registryVariantSchema", () => {
-		it("requires a payload URI reference", () => {
-			expect(registryVariantSchema.safeParse(validVariant()).success).toBe(
-				false,
-			);
-			expect(
-				registryVariantSchema.parse(
-					validVariant({ payload: "r/button/react.json" }),
-				),
-			).toMatchObject({ payload: "r/button/react.json" });
 		});
 	});
 
@@ -335,9 +323,9 @@ describe("core/schema", () => {
 		});
 	});
 
-	describe("authoredRegistryVariantSchema", () => {
+	describe("registryVariantSchema", () => {
 		it("accepts required fields and omits absent optional lists", () => {
-			expect(authoredRegistryVariantSchema.parse(validVariant())).toEqual({
+			expect(registryVariantSchema.parse(validVariant())).toEqual({
 				id: "react",
 				title: "React",
 				description: "React variant",
@@ -347,7 +335,7 @@ describe("core/schema", () => {
 
 		it("keeps non-empty when, dependencies, and registryDependencies", () => {
 			expect(
-				authoredRegistryVariantSchema.parse(
+				registryVariantSchema.parse(
 					validVariant({
 						when: { language: "typescript" },
 						dependencies: ["react"],
@@ -369,7 +357,7 @@ describe("core/schema", () => {
 
 		it("omits empty when maps and empty dependency lists", () => {
 			expect(
-				authoredRegistryVariantSchema.parse(
+				registryVariantSchema.parse(
 					validVariant({
 						when: {},
 						dependencies: [],
@@ -387,51 +375,47 @@ describe("core/schema", () => {
 
 		it("rejects an empty files list", () => {
 			expect(
-				authoredRegistryVariantSchema.safeParse(validVariant({ files: [] }))
-					.success,
+				registryVariantSchema.safeParse(validVariant({ files: [] })).success,
 			).toBe(false);
 		});
 
 		it("rejects empty required strings, empty when values, and unknown keys", () => {
 			expect(
-				authoredRegistryVariantSchema.safeParse(validVariant({ id: "" }))
-					.success,
+				registryVariantSchema.safeParse(validVariant({ id: "" })).success,
 			).toBe(false);
 			expect(
-				authoredRegistryVariantSchema.safeParse(validVariant({ id: "a/b" }))
-					.success,
+				registryVariantSchema.safeParse(validVariant({ id: "a/b" })).success,
 			).toBe(false);
 			expect(
-				authoredRegistryVariantSchema.safeParse(validVariant({ id: ".." }))
-					.success,
+				registryVariantSchema.safeParse(validVariant({ id: ".." })).success,
 			).toBe(false);
 			expect(
-				authoredRegistryVariantSchema.safeParse(
+				registryVariantSchema.safeParse(
 					validVariant({ when: { language: "" } }),
 				).success,
 			).toBe(false);
 			expect(
-				authoredRegistryVariantSchema.safeParse(validVariant({ extra: "nope" }))
+				registryVariantSchema.safeParse(validVariant({ extra: "nope" }))
 					.success,
 			).toBe(false);
 		});
 	});
 
-	describe("authoredRegistryItemSchema", () => {
+	describe("registryItemSchema", () => {
 		it("accepts required fields and omits absent optional lists", () => {
-			expect(authoredRegistryItemSchema.parse(validItem())).toEqual({
+			expect(registryItemSchema.parse(validItem())).toEqual({
 				id: "button",
 				title: "Button",
 				description: "A button",
 				type: "component",
-				variants: [authoredRegistryVariantSchema.parse(validVariant())],
+				variants: [registryVariantSchema.parse(validVariant())],
 			});
 		});
 
 		it("rejects duplicate variant ids", () => {
 			expect(
 				rejectMessage(
-					authoredRegistryItemSchema,
+					registryItemSchema,
 					validItem({
 						variants: [
 							validVariant({ id: "default" }),
@@ -444,7 +428,7 @@ describe("core/schema", () => {
 
 		it("keeps item-level files and non-empty dependency lists", () => {
 			expect(
-				authoredRegistryItemSchema.parse(
+				registryItemSchema.parse(
 					validItem({
 						files: [validFile()],
 						dependencies: ["clsx"],
@@ -461,7 +445,7 @@ describe("core/schema", () => {
 		});
 
 		it("omits empty dependency lists", () => {
-			const parsed = authoredRegistryItemSchema.parse(
+			const parsed = registryItemSchema.parse(
 				validItem({
 					dependencies: [],
 					devDependencies: [],
@@ -477,40 +461,23 @@ describe("core/schema", () => {
 
 		it("rejects an empty variants list", () => {
 			expect(
-				authoredRegistryItemSchema.safeParse(validItem({ variants: [] }))
-					.success,
+				registryItemSchema.safeParse(validItem({ variants: [] })).success,
 			).toBe(false);
 		});
 
 		it("rejects an empty files list when files are declared", () => {
 			expect(
-				authoredRegistryItemSchema.safeParse(validItem({ files: [] })).success,
+				registryItemSchema.safeParse(validItem({ files: [] })).success,
 			).toBe(false);
 		});
 
 		it("rejects unknown keys and empty required strings", () => {
 			expect(
-				authoredRegistryItemSchema.safeParse(validItem({ type: "" })).success,
+				registryItemSchema.safeParse(validItem({ type: "" })).success,
 			).toBe(false);
 			expect(
-				authoredRegistryItemSchema.safeParse(validItem({ typo: true })).success,
+				registryItemSchema.safeParse(validItem({ typo: true })).success,
 			).toBe(false);
-		});
-	});
-
-	describe("registryItemSchema", () => {
-		it("requires a payload URI on each variant", () => {
-			expect(registryItemSchema.safeParse(validItem()).success).toBe(false);
-			expect(
-				registryItemSchema.parse(
-					validItem({
-						variants: [validVariant({ payload: "r/button/react.json" })],
-					}),
-				),
-			).toMatchObject({
-				id: "button",
-				variants: [{ payload: "r/button/react.json" }],
-			});
 		});
 	});
 
