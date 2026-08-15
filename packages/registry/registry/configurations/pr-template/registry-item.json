@@ -1,8 +1,8 @@
 {
-	"id": "pr-template-convention",
+	"id": "pr-template-configuration",
 	"title": "Pull Request Template",
 	"description": "Standard GitHub pull request template with summary, testing, impact, and checklist sections.",
-	"type": "convention",
+	"type": "configuration",
 	"files": [
 		{
 			"source": ".github/pull_request_template.md",

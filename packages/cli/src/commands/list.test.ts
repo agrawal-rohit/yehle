@@ -29,8 +29,8 @@ const DEFAULT_TYPES: NonNullable<Registry["types"]> = {
 		label: "Components",
 		description: "Reusable UI primitives for building interfaces.",
 	},
-	convention: {
-		label: "Conventions",
+	configuration: {
+		label: "Configurations",
 		description: "Project workflows and tooling configuration.",
 	},
 	"agent-instruction": {
@@ -338,10 +338,10 @@ describe("commands/list", () => {
 				title: "Component",
 				type: "component",
 			}),
-			convention: makeItem({
-				id: "convention",
-				title: "Convention",
-				type: "convention",
+			configuration: makeItem({
+				id: "configuration",
+				title: "Configuration",
+				type: "configuration",
 			}),
 			"agent-instruction": makeItem({
 				id: "agent-instruction",
@@ -374,7 +374,7 @@ describe("commands/list", () => {
 			registry,
 			[
 				"component",
-				"convention",
+				"configuration",
 				"agent-instruction",
 				"agent-skill",
 				"subagent",
@@ -386,7 +386,7 @@ describe("commands/list", () => {
 
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
 		expect(output).toContain("Components");
-		expect(output).toContain("Conventions");
+		expect(output).toContain("Configurations");
 		expect(output).toContain("Agent Instructions");
 		expect(output).toContain("Agent Skills");
 		expect(output).toContain("Subagents");

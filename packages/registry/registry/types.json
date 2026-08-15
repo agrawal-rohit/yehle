@@ -1,6 +1,6 @@
 {
-	"convention": {
-		"label": "Conventions",
+	"configuration": {
+		"label": "Configurations",
 		"description": "Project tooling configurations as per industry best practices."
 	},
 	"workflow": {

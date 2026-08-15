@@ -14,8 +14,8 @@
 		}
 	},
 	"types": {
-		"convention": {
-			"label": "Conventions",
+		"configuration": {
+			"label": "Configurations",
 			"description": "Project tooling configurations as per industry best practices."
 		},
 		"workflow": {
@@ -59,14 +59,14 @@
 				}
 			]
 		},
-		"code-of-conduct-convention": {
-			"id": "code-of-conduct-convention",
+		"code-of-conduct-configuration": {
+			"id": "code-of-conduct-configuration",
 			"title": "Code of Conduct",
 			"description": "Contributor Covenant v3.0 code of conduct guidance.",
-			"type": "convention",
+			"type": "configuration",
 			"files": [
 				{
-					"source": "r/code-of-conduct-convention.json",
+					"source": "r/code-of-conduct-configuration.json",
 					"target": "CODE_OF_CONDUCT.md"
 				}
 			]
@@ -119,11 +119,11 @@
 				}
 			]
 		},
-		"dependency-updates-convention": {
-			"id": "dependency-updates-convention",
+		"dependency-updates-configuration": {
+			"id": "dependency-updates-configuration",
 			"title": "Dependency Updates",
 			"description": "Dependabot configuration for automated dependency updates.",
-			"type": "convention",
+			"type": "configuration",
 			"variants": [
 				{
 					"id": "typescript",
@@ -131,7 +131,7 @@
 					"description": "Dependency updates for TypeScript projects.",
 					"files": [
 						{
-							"source": "r/dependency-updates-convention/typescript.json",
+							"source": "r/dependency-updates-configuration/typescript.json",
 							"target": ".github/dependabot.yml"
 						}
 					],
@@ -141,27 +141,27 @@
 				}
 			]
 		},
-		"issue-templates-convention": {
-			"id": "issue-templates-convention",
+		"issue-templates-configuration": {
+			"id": "issue-templates-configuration",
 			"title": "Issue Templates",
 			"description": "GitHub issue templates for bug reports and feature requests.",
-			"type": "convention",
+			"type": "configuration",
 			"files": [
 				{
-					"source": "r/issue-templates-convention.json",
+					"source": "r/issue-templates-configuration.json",
 					"target": ".github/ISSUE_TEMPLATE/bug_report.md"
 				},
 				{
-					"source": "r/issue-templates-convention.json",
+					"source": "r/issue-templates-configuration.json",
 					"target": ".github/ISSUE_TEMPLATE/feature_request.md"
 				}
 			]
 		},
-		"mutation-testing-convention": {
-			"id": "mutation-testing-convention",
+		"mutation-testing-configuration": {
+			"id": "mutation-testing-configuration",
 			"title": "Mutation Testing",
 			"description": "Mutation testing configuration for catching weak tests.",
-			"type": "convention",
+			"type": "configuration",
 			"variants": [
 				{
 					"id": "typescript",
@@ -169,7 +169,7 @@
 					"description": "Stryker mutation testing config for TypeScript projects.",
 					"files": [
 						{
-							"source": "r/mutation-testing-convention/typescript.json",
+							"source": "r/mutation-testing-configuration/typescript.json",
 							"target": "stryker.config.mjs"
 						}
 					],
@@ -184,23 +184,23 @@
 				}
 			]
 		},
-		"pr-template-convention": {
-			"id": "pr-template-convention",
+		"pr-template-configuration": {
+			"id": "pr-template-configuration",
 			"title": "Pull Request Template",
 			"description": "Standard GitHub pull request template with summary, testing, impact, and checklist sections.",
-			"type": "convention",
+			"type": "configuration",
 			"files": [
 				{
-					"source": "r/pr-template-convention.json",
+					"source": "r/pr-template-configuration.json",
 					"target": ".github/pull_request_template.md"
 				}
 			]
 		},
-		"pre-commit-hooks-convention": {
-			"id": "pre-commit-hooks-convention",
+		"pre-commit-hooks-configuration": {
+			"id": "pre-commit-hooks-configuration",
 			"title": "Pre-commit Hooks",
 			"description": "Local hooks that run lint, format, and commit checks before changes land.",
-			"type": "convention",
+			"type": "configuration",
 			"variants": [
 				{
 					"id": "typescript",
@@ -208,19 +208,19 @@
 					"description": "Husky, commitlint, and lint-staged hooks for TypeScript projects using Biome.",
 					"files": [
 						{
-							"source": "r/pre-commit-hooks-convention/typescript.json",
+							"source": "r/pre-commit-hooks-configuration/typescript.json",
 							"target": ".husky/commit-msg"
 						},
 						{
-							"source": "r/pre-commit-hooks-convention/typescript.json",
+							"source": "r/pre-commit-hooks-configuration/typescript.json",
 							"target": ".husky/pre-commit"
 						},
 						{
-							"source": "r/pre-commit-hooks-convention/typescript.json",
+							"source": "r/pre-commit-hooks-configuration/typescript.json",
 							"target": "commitlint.config.js"
 						},
 						{
-							"source": "r/pre-commit-hooks-convention/typescript.json",
+							"source": "r/pre-commit-hooks-configuration/typescript.json",
 							"target": "lint-staged.config.js"
 						}
 					],
@@ -335,11 +335,11 @@
 				}
 			]
 		},
-		"testing-convention": {
-			"id": "testing-convention",
+		"testing-configuration": {
+			"id": "testing-configuration",
 			"title": "Testing",
 			"description": "Testing configuration and GitHub Actions workflow for running tests with coverage.",
-			"type": "convention",
+			"type": "configuration",
 			"variants": [
 				{
 					"id": "typescript",
@@ -347,11 +347,11 @@
 					"description": "Vitest configuration and GitHub Actions workflow for running tests with coverage for TypeScript projects.",
 					"files": [
 						{
-							"source": "r/testing-convention/typescript.json",
+							"source": "r/testing-configuration/typescript.json",
 							"target": "vitest.config.ts"
 						},
 						{
-							"source": "r/testing-convention/typescript.json",
+							"source": "r/testing-configuration/typescript.json",
 							"target": ".github/workflows/test.yml"
 						}
 					],

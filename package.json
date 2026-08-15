@@ -20,7 +20,7 @@
 		"lint": "pnpm exec biome lint --write",
 		"format": "pnpm exec biome format --write",
 		"check": "pnpm run typecheck && pnpm exec biome check --write",
-		"cov": "vitest run --coverage --passWithNoTests",
+		"cov": "pnpm --filter @tuckshop/core run build && vitest run --coverage --passWithNoTests",
 		"quality": "fallow",
 		"quality:changes": "fallow audit --format compact",
 		"prepack": "pnpm --filter tuckshop run prepack",

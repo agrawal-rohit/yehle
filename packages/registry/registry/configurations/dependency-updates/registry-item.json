@@ -1,8 +1,8 @@
 {
-	"id": "dependency-updates-convention",
+	"id": "dependency-updates-configuration",
 	"title": "Dependency Updates",
 	"description": "Dependabot configuration for automated dependency updates.",
-	"type": "convention",
+	"type": "configuration",
 	"variants": [
 		{
 			"id": "typescript",

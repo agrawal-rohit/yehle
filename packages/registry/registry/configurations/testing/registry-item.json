@@ -1,8 +1,8 @@
 {
-	"id": "testing-convention",
+	"id": "testing-configuration",
 	"title": "Testing",
 	"description": "Testing configuration and GitHub Actions workflow for running tests with coverage.",
-	"type": "convention",
+	"type": "configuration",
 	"variants": [
 		{
 			"id": "typescript",

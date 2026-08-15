@@ -1,8 +1,8 @@
 {
-	"id": "pre-commit-hooks-convention",
+	"id": "pre-commit-hooks-configuration",
 	"title": "Pre-commit Hooks",
 	"description": "Local hooks that run lint, format, and commit checks before changes land.",
-	"type": "convention",
+	"type": "configuration",
 	"variants": [
 		{
 			"id": "typescript",

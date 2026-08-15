@@ -170,7 +170,7 @@ when you are ready to publish the next version.
 
 ## Code Registry
 
-`tuckshop` uses a JSON registry inspired by [shadcn](https://ui.shadcn.com/docs/registry) to distribute all registry items _(e.g. project templates, UI components, conventions, and agent instructions)_. Each unit is a self-contained folder holding its manifest and its source files. A unit can be wired to other items through the `registryDependencies` property to make composable units.
+`tuckshop` uses a JSON registry inspired by [shadcn](https://ui.shadcn.com/docs/registry) to distribute all registry items _(e.g. project templates, UI components, configurations, and agent instructions)_. Each unit is a self-contained folder holding its manifest and its source files. A unit can be wired to other items through the `registryDependencies` property to make composable units.
 
 The default registry content lives under `packages/registry/registry/`. Shared registry conditions are centralized in `packages/registry/registry/conditions.json`. Item type display metadata is centralized in `packages/registry/registry/types.json`. Compilation is provided by `@tuckshop/core` (`buildRegistry`); `@tuckshop/registry` is content plus a thin CLI wrapper.
 
@@ -182,9 +182,9 @@ Every item is a folder under `packages/registry/registry/` containing a `registr
 packages/registry/registry/
 ├── conditions.json
 ├── types.json
-├── convention/dependency-updater/     # id: dependency-updater
-├── convention/build/                  # id: build
-├── convention/changelog/              # id: changelog
+├── configuration/dependency-updater/  # id: dependency-updater
+├── configuration/build/               # id: build
+├── configuration/changelog/           # id: changelog
 ├── component/button/                  # id: button
 │   ├── registry-item.json
 │   └── react/button.tsx

@@ -1,8 +1,8 @@
 {
-	"id": "mutation-testing-convention",
+	"id": "mutation-testing-configuration",
 	"title": "Mutation Testing",
 	"description": "Mutation testing configuration for catching weak tests.",
-	"type": "convention",
+	"type": "configuration",
 	"variants": [
 		{
 			"id": "typescript",

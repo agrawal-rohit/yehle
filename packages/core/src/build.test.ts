@@ -71,7 +71,7 @@ describe("buildRegistry", () => {
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "core-build-"));
 		writeRegistryJson(tempDir, "types.json", {
 			component: { label: "Components" },
-			convention: { label: "Conventions" },
+			configuration: { label: "Configurations" },
 		});
 	});
 
@@ -107,12 +107,12 @@ describe("buildRegistry", () => {
 		);
 		writeItem(
 			tempDir,
-			"convention/build",
+			"configuration/build",
 			{
 				id: "build",
 				title: "Build",
 				description: "Build workflow",
-				type: "convention",
+				type: "configuration",
 				variants: [
 					{
 						id: "github-actions",
@@ -164,12 +164,12 @@ describe("buildRegistry", () => {
 	it("inlines item-level shared files into every variant payload", async () => {
 		writeItem(
 			tempDir,
-			"convention/git-hooks",
+			"configuration/git-hooks",
 			{
 				id: "git-hooks",
 				title: "Git Hooks",
 				description: "Hooks",
-				type: "convention",
+				type: "configuration",
 				files: [
 					{ source: "commitlint.config.js", target: "commitlint.config.js" },
 				],
@@ -236,7 +236,7 @@ describe("buildRegistry", () => {
 				id: "assign-owner",
 				title: "Assign Owner",
 				description: "Assigns the repository owner",
-				type: "convention",
+				type: "configuration",
 				files: [
 					{
 						source: ".github/workflows/assign-owner.yml",
@@ -254,7 +254,7 @@ describe("buildRegistry", () => {
 			id: "assign-owner",
 			title: "Assign Owner",
 			description: "Assigns the repository owner",
-			type: "convention",
+			type: "configuration",
 			files: [
 				{
 					source: "r/assign-owner.json",
@@ -405,12 +405,12 @@ describe("buildRegistry", () => {
 	it("throws when a when key is not declared in conditions", async () => {
 		writeItem(
 			tempDir,
-			"convention/git-hooks",
+			"configuration/git-hooks",
 			{
 				id: "git-hooks",
 				title: "Git Hooks",
 				description: "Hooks",
-				type: "convention",
+				type: "configuration",
 				variants: [
 					{
 						id: "typescript",
@@ -477,12 +477,12 @@ describe("buildRegistry", () => {
 	it("falls back to empty variant files when a variant omits files", async () => {
 		writeItem(
 			tempDir,
-			"convention/shared",
+			"configuration/shared",
 			{
 				id: "shared",
 				title: "Shared",
 				description: "Shared files",
-				type: "convention",
+				type: "configuration",
 				files: [{ source: "shared.txt", target: "shared.txt" }],
 				variants: [
 					{
@@ -505,7 +505,7 @@ describe("buildRegistry", () => {
 						id: "shared",
 						title: "Shared",
 						description: "Shared files",
-						type: "convention",
+						type: "configuration",
 						files: [{ source: "shared.txt", target: "shared.txt" }],
 						variants: [
 							{
@@ -532,12 +532,12 @@ describe("buildRegistry", () => {
 	it("falls back to an empty file list when a variant-less item omits files", async () => {
 		writeItem(
 			tempDir,
-			"convention/empty",
+			"configuration/empty",
 			{
 				id: "empty",
 				title: "Empty",
 				description: "Empty",
-				type: "convention",
+				type: "configuration",
 				files: [{ source: "a.txt", target: "a.txt" }],
 			},
 			{ "a.txt": "a\n" },
@@ -552,7 +552,7 @@ describe("buildRegistry", () => {
 						id: "empty",
 						title: "Empty",
 						description: "Empty",
-						type: "convention",
+						type: "configuration",
 					} as RegistryItem;
 				}
 				return originalParseWithSchema(schema, raw, label);
@@ -573,7 +573,7 @@ describe("buildRegistry", () => {
 				id: "assign-owner",
 				title: "Assign Owner",
 				description: "Assigns the repository owner",
-				type: "convention",
+				type: "configuration",
 				files: [
 					{
 						source: ".github/workflows/assign-owner.yml",
