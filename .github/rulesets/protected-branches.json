@@ -63,7 +63,7 @@
             "context": "Code Quality (SonarQube)"
           },
           {
-            "context": "Quality Gates (Fallow)"
+            "context": "Code Quality (Fallow)"
           },
           {
             "context": "Workflow Security (Zizmor)"

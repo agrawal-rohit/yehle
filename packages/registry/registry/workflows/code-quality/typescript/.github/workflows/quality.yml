@@ -66,7 +66,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   fallow:
-    name: Quality Gates (Fallow)
+    name: Code Quality (Fallow)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -80,7 +80,7 @@ jobs:
           persist-credentials: false
 
       - name: Fallow audit
-        uses: fallow-rs/fallow@630722b016a5b785d6fa05ee54db6b339eb3c4fa # v3.0.0
+        uses: fallow-rs/fallow@45fd28766199acb1f939f6862274a37aad12770b # v3.16.0
         with:
           command: audit
           gate: new-only
