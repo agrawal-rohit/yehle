@@ -36,20 +36,21 @@ jobs:
         shell: bash
         env:
           # PAT/App token with administration + rules:write. Default Actions token cannot manage rulesets.
-          GH_ADMIN_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
+          # gh requires GH_TOKEN in Actions; Authorization headers alone are not enough.
+          GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
         run: |
           set -euo pipefail
 
-          # Call GitHub's API with the admin token.
-          api() {
-            gh api -H "Authorization: Bearer ${GH_ADMIN_TOKEN}" "$@"
-          }
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "::error::GH_ADMIN_TOKEN secret is not set"
+            exit 1
+          fi
 
           # Look up an existing ruleset id by its declarative name, or empty if missing.
           find_ruleset_id() {
             local name="$1"
-            api --paginate "repos/${GITHUB_REPOSITORY}/rulesets" \
-              | jq -s -r --arg name "$name" 'add | .[] | select(.name == $name) | .id' \
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/rulesets" \
+              | jq -s -r --arg name "$name" 'add | .[]? | select(.name == $name) | .id' \
               | head -n1
           }
 
@@ -105,20 +106,21 @@ jobs:
         shell: bash
         env:
           # PAT/App token with administration + rules:write. Default Actions token cannot manage rulesets.
-          GH_ADMIN_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
+          # gh requires GH_TOKEN in Actions; Authorization headers alone are not enough.
+          GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
         run: |
           set -euo pipefail
 
-          # Call GitHub's API with the admin token.
-          api() {
-            gh api -H "Authorization: Bearer ${GH_ADMIN_TOKEN}" "$@"
-          }
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "::error::GH_ADMIN_TOKEN secret is not set"
+            exit 1
+          fi
 
           # Look up an existing ruleset id by its declarative name, or empty if missing.
           find_ruleset_id() {
             local name="$1"
-            api --paginate "repos/${GITHUB_REPOSITORY}/rulesets" \
-              | jq -s -r --arg name "$name" 'add | .[] | select(.name == $name) | .id' \
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/rulesets" \
+              | jq -s -r --arg name "$name" 'add | .[]? | select(.name == $name) | .id' \
               | head -n1
           }
 
@@ -129,11 +131,11 @@ jobs:
 
             if [[ -n "$id" ]]; then
               echo "Updating ruleset '${name}' (id=${id}) from ${file}"
-              api -X PUT "repos/${GITHUB_REPOSITORY}/rulesets/${id}" \
+              gh api -X PUT "repos/${GITHUB_REPOSITORY}/rulesets/${id}" \
                 --input "$file" --jq '.name'
             else
               echo "Creating ruleset '${name}' from ${file}"
-              api -X POST "repos/${GITHUB_REPOSITORY}/rulesets" \
+              gh api -X POST "repos/${GITHUB_REPOSITORY}/rulesets" \
                 --input "$file" --jq '.name'
             fi
           done
@@ -142,17 +144,18 @@ jobs:
         shell: bash
         env:
           # PAT/App token with administration + rules:write. Default Actions token cannot manage rulesets.
-          GH_ADMIN_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
+          # gh requires GH_TOKEN in Actions; Authorization headers alone are not enough.
+          GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
         run: |
           set -euo pipefail
 
-          # Call GitHub's API with the admin token.
-          api() {
-            gh api -H "Authorization: Bearer ${GH_ADMIN_TOKEN}" "$@"
-          }
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "::error::GH_ADMIN_TOKEN secret is not set"
+            exit 1
+          fi
 
           echo "Applying repo merge + security settings"
-          api -X PATCH "repos/${GITHUB_REPOSITORY}" --input - --jq '.full_name' <<'JSON'
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}" --input - --jq '.full_name' <<'JSON'
           {
             "allow_squash_merge": true,
             "allow_merge_commit": false,
@@ -170,6 +173,6 @@ jobs:
             }
           }
           JSON
-  
+
           # GitHub's repos PATCH cannot set default setup; this is the endpoint that disables it.
-          api -X PATCH "repos/${GITHUB_REPOSITORY}/code-scanning/default-setup" -f state=not-configured
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/code-scanning/default-setup" -f state=not-configured
