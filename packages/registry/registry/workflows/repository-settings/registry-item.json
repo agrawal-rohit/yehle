@@ -1,5 +1,5 @@
 {
-	"id": "repository-settings",
+	"id": "repository-settings-workflow",
 	"title": "Repository Settings",
 	"description": "GitOps workflow that configures branch/tag rulesets and applies repository merge/security settings.",
 	"type": "workflow",

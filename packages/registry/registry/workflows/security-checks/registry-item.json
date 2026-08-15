@@ -1,6 +1,6 @@
 {
-	"id": "security",
-	"title": "Security Checks Workflow",
+	"id": "security-checks-workflow",
+	"title": "Security Checks",
 	"description": "GitHub Actions security pipeline with dependency review, workflow linting, CodeQL, and Semgrep.",
 	"type": "workflow",
 	"files": [

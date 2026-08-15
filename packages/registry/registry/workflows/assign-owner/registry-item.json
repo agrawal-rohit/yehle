@@ -1,5 +1,5 @@
 {
-	"id": "assign-owner",
+	"id": "assign-owner-workflow",
 	"title": "Assign To Repository Owner",
 	"description": "GitHub Actions workflow that assigns the repository owner to unassigned issues and pull requests. Useful for repositories with a single owner.",
 	"type": "workflow",

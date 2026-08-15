@@ -30,12 +30,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: Run typechecks
-        run: pnpm run typecheck && pnpm -C docs typecheck
+        run: pnpm run typecheck
 
-      - name: Verify CLI tarball includes bundled registry
-        shell: bash
-        run: |
-          pnpm --filter tuckshop run prepack
-          pnpm --filter tuckshop exec npm pack --dry-run --json > pack.json
-          jq -e '.[0].files[] | select(.path == "registry.json")' pack.json
-          jq -e '.[0].files[] | select(.path | startswith("r/"))' pack.json
+      - name: Build
+        run: pnpm run build

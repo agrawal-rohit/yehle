@@ -1,5 +1,5 @@
 {
-	"id": "mutation-testing",
+	"id": "mutation-testing-convention",
 	"title": "Mutation Testing",
 	"description": "Mutation testing configuration for catching weak tests.",
 	"type": "convention",

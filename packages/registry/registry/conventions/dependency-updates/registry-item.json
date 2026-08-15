@@ -1,5 +1,5 @@
 {
-	"id": "dependency-updates",
+	"id": "dependency-updates-convention",
 	"title": "Dependency Updates",
 	"description": "Dependabot configuration for automated dependency updates.",
 	"type": "convention",

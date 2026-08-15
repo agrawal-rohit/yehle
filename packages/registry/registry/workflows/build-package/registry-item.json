@@ -1,6 +1,6 @@
 {
-	"id": "build-package",
-	"title": "Build Package Workflow",
+	"id": "build-package-workflow",
+	"title": "Build Package",
 	"description": "GitHub Actions workflow for building a package.",
 	"type": "workflow",
 	"variants": [
@@ -11,6 +11,7 @@
 			"when": {
 				"language": "typescript"
 			},
+			"registryDependencies": ["setup-workspace-workflow"],
 			"files": [
 				{
 					"source": "typescript/.github/workflows/build.yml",

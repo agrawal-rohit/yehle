@@ -111,7 +111,7 @@ pnpm run build
 Common development commands:
 
 ```bash
-pnpm run check:ci       # typecheck and lint
+pnpm run check          # typecheck and lint (writes fixes)
 pnpm run build          # build all packages
 pnpm run build:registry # rebuild compiled registry metadata
 pnpm cov                # run tests with coverage

@@ -1,5 +1,5 @@
 {
-	"id": "pr-template",
+	"id": "pr-template-convention",
 	"title": "Pull Request Template",
 	"description": "Standard GitHub pull request template with summary, testing, impact, and checklist sections.",
 	"type": "convention",

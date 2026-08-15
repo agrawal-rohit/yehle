@@ -1,5 +1,5 @@
 {
-	"id": "testing",
+	"id": "testing-convention",
 	"title": "Testing",
 	"description": "Testing configuration and GitHub Actions workflow for running tests with coverage.",
 	"type": "convention",
@@ -11,6 +11,7 @@
 			"when": {
 				"language": "typescript"
 			},
+			"registryDependencies": ["setup-workspace-workflow"],
 			"devDependencies": [
 				"vitest@^3",
 				"@vitest/coverage-v8@^3"

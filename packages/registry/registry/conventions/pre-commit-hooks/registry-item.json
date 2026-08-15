@@ -1,5 +1,5 @@
 {
-	"id": "pre-commit-hooks",
+	"id": "pre-commit-hooks-convention",
 	"title": "Pre-commit Hooks",
 	"description": "Local hooks that run lint, format, and commit checks before changes land.",
 	"type": "convention",

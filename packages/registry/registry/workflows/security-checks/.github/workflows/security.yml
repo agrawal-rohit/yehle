@@ -67,7 +67,6 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
-          # Autodetect repository languages; always include Actions YAML.
           languages: actions
           config-file: .github/codeql/config.yml
           build-mode: none

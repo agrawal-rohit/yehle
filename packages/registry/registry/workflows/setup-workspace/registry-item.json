@@ -1,0 +1,22 @@
+{
+	"id": "setup-workspace-workflow",
+	"title": "Setup Workspace",
+	"description": "Composite GitHub Action for setting up a workspace.",
+	"type": "workflow",
+	"variants": [
+		{
+			"id": "typescript",
+			"title": "TypeScript",
+			"description": "Workspace setup action for TypeScript projects.",
+			"when": {
+				"language": "typescript"
+			},
+			"files": [
+				{
+					"source": "typescript/.github/actions/setup/action.yml",
+					"target": ".github/actions/setup/action.yml"
+				}
+			]
+		}
+	]
+}
