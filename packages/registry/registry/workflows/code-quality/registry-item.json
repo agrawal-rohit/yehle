@@ -1,0 +1,51 @@
+{
+	"id": "code-quality",
+	"title": "Code Quality Workflow",
+	"description": "Code quality gates with linting and static analysis.",
+	"type": "workflow",
+	"files": [
+		{
+			"source": "sonar-project.properties",
+			"target": "sonar-project.properties"
+		}
+	],
+	"variants": [
+		{
+			"id": "typescript",
+			"title": "TypeScript",
+			"description": "Biome, SonarQube, and Fallow quality gates for TypeScript projects.",
+			"when": {
+				"language": "typescript"
+			},
+			"devDependencies": [
+				"@biomejs/biome@^2"
+			],
+			"files": [
+				{
+					"source": "typescript/.github/workflows/quality.yml",
+					"target": ".github/workflows/quality.yml"
+				},
+				{
+					"source": "typescript/biome.json",
+					"target": "biome.json"
+				},
+				{
+					"source": "typescript/.fallowrc.json",
+					"target": ".fallowrc.json"
+				},
+				{
+					"source": "typescript/fallow-baselines/dead-code.json",
+					"target": "fallow-baselines/dead-code.json"
+				},
+				{
+					"source": "typescript/fallow-baselines/health.json",
+					"target": "fallow-baselines/health.json"
+				},
+				{
+					"source": "typescript/fallow-baselines/dupes.json",
+					"target": "fallow-baselines/dupes.json"
+				}
+			]
+		}
+	]
+}

@@ -86,7 +86,9 @@ function printItemsByType(
 		const indexWidth = String(sorted.length).length;
 
 		for (const [index, item] of sorted.entries()) {
-			const variantLabels = item.variants.map((variant) => variant.title);
+			const variantLabels = (item.variants ?? []).map(
+				(variant) => variant.title,
+			);
 			const variants =
 				variantLabels.length > 0
 					? chalk.cyan(` [${variantLabels.join(", ")}]`)

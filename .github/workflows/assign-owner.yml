@@ -1,4 +1,4 @@
-name: Assign PRs
+name: Assign repository owner to unassigned issues and PRs
 
 on:
   issues:

@@ -67,7 +67,7 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
-          languages: actions, javascript-typescript
+          languages: actions
           config-file: .github/codeql/config.yml
           build-mode: none
 
@@ -100,7 +100,6 @@ jobs:
         run: |
           semgrep scan \
             --config p/default \
-            --config p/typescript \
             --config p/secrets \
             --sarif \
             --output semgrep.sarif

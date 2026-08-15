@@ -1,0 +1,30 @@
+{
+	"id": "testing",
+	"title": "Testing",
+	"description": "Testing configuration and GitHub Actions workflow for running tests with coverage.",
+	"type": "convention",
+	"variants": [
+		{
+			"id": "typescript",
+			"title": "TypeScript",
+			"description": "Vitest configuration and GitHub Actions workflow for running tests with coverage for TypeScript projects.",
+			"when": {
+				"language": "typescript"
+			},
+			"devDependencies": [
+				"vitest@^3",
+				"@vitest/coverage-v8@^3"
+			],
+			"files": [
+				{
+					"source": "typescript/vitest.config.ts",
+					"target": "vitest.config.ts"
+				},
+				{
+					"source": "typescript/.github/workflows/test.yml",
+					"target": ".github/workflows/test.yml"
+				}
+			]
+		}
+	]
+}

@@ -14,13 +14,14 @@ import {
 	type RegistryItem,
 	type RegistryPayload,
 	type RegistryPayloadFile,
+	type RegistryVariant,
 	registryItemSchema,
 } from "./schema";
 
 export interface BuildRegistryOptions {
 	/** Absolute path to the authoring tree: item folders, `types.json`, and optional `conditions.json`. */
 	sourceDir: string;
-	/** Absolute path where compiled artefacts are written: `registry.json` and `r/{itemId}/{variantId}.json`. */
+	/** Absolute path where compiled artefacts are written: `registry.json` and `r/{itemId}.json` or `r/{itemId}/{variantId}.json`. */
 	outDir: string;
 }
 
@@ -82,7 +83,7 @@ async function materializePayloadFiles(
 }
 
 /**
- * Compile a registry authoring tree into `registry.json` and per-variant payloads under `r/`.
+ * Compile a registry authoring tree into `registry.json` and install payloads under `r/`.
  * @param options - Absolute `sourceDir` (authoring) and `outDir` (compiled artefacts).
  * @returns The compiled registry document that was written to disk.
  * @throws Error when an item is invalid, a source is missing, or types are absent.
@@ -116,25 +117,36 @@ export async function buildRegistry(
 		authoredItems.push({ itemDir, item });
 	}
 
-	// Plan the output payloads for each variant of each item
+	// Plan the output payloads: one per variant, or a single item-level payload.
 	const plannedPayloads: Array<{
 		itemDir: string;
 		item: RegistryItem;
-		variant: RegistryItem["variants"][number];
+		variant?: RegistryVariant;
 		relativeFile: string;
 		absoluteFile: string;
 	}> = [];
 	for (const { itemDir, item } of authoredItems) {
-		for (const variant of item.variants) {
-			const relativeFile = `r/${item.id}/${variant.id}.json`;
-			plannedPayloads.push({
-				itemDir,
-				item,
-				variant,
-				relativeFile,
-				absoluteFile: path.join(outDir, relativeFile),
-			});
+		if (item.variants?.length) {
+			for (const variant of item.variants) {
+				const relativeFile = `r/${item.id}/${variant.id}.json`;
+				plannedPayloads.push({
+					itemDir,
+					item,
+					variant,
+					relativeFile,
+					absoluteFile: path.join(outDir, relativeFile),
+				});
+			}
+			continue;
 		}
+
+		const relativeFile = `r/${item.id}.json`;
+		plannedPayloads.push({
+			itemDir,
+			item,
+			relativeFile,
+			absoluteFile: path.join(outDir, relativeFile),
+		});
 	}
 
 	// Remove the existing payloads directory
@@ -145,7 +157,7 @@ export async function buildRegistry(
 	for (const { itemDir, item, variant, absoluteFile } of plannedPayloads) {
 		const payload: RegistryPayload = {
 			id: item.id,
-			variantId: variant.id,
+			variantId: variant?.id,
 			files: [
 				...(await materializePayloadFiles(
 					itemDir,
@@ -157,7 +169,7 @@ export async function buildRegistry(
 					itemDir,
 					item.id,
 					sourceDir,
-					variant.files,
+					variant?.files,
 				)),
 			],
 		};
@@ -169,20 +181,34 @@ export async function buildRegistry(
 	}
 
 	for (const { item } of authoredItems) {
-		const { files: itemFiles, ...itemRest } = item;
+		if (item.variants?.length) {
+			const { files: itemFiles, ...itemRest } = item;
+			catalogItems[item.id] = {
+				...itemRest,
+				variants: plannedPayloads
+					.filter((entry) => entry.item.id === item.id)
+					.map((entry) => ({
+						...entry.variant,
+						files: [...(itemFiles ?? []), ...(entry.variant?.files ?? [])].map(
+							({ target }) => ({
+								source: entry.relativeFile,
+								target,
+							}),
+						),
+					})),
+			};
+			continue;
+		}
+
+		const itemPayload = plannedPayloads.find(
+			(entry) => entry.item.id === item.id,
+		);
 		catalogItems[item.id] = {
-			...itemRest,
-			variants: plannedPayloads
-				.filter((entry) => entry.item.id === item.id)
-				.map((entry) => ({
-					...entry.variant,
-					files: [...(itemFiles ?? []), ...entry.variant.files].map(
-						({ target }) => ({
-							source: entry.relativeFile,
-							target,
-						}),
-					),
-				})),
+			...item,
+			files: (item.files ?? []).map(({ target }) => ({
+				source: itemPayload?.relativeFile ?? `r/${item.id}.json`,
+				target,
+			})),
 		};
 	}
 
@@ -199,13 +225,11 @@ export async function buildRegistry(
 
 	// Read the types file
 	const typesPath = path.join(sourceDir, "types.json");
-	let rawTypes: unknown;
-	if (await isFileAsync(typesPath))
-		rawTypes = JSON.parse(await readFileAsync(typesPath));
-	else
+	if (!(await isFileAsync(typesPath)))
 		throw new Error(
 			`Registry types not found at ${path.relative(sourceDir, typesPath) || "types.json"}.`,
 		);
+	const rawTypes: unknown = JSON.parse(await readFileAsync(typesPath));
 
 	// Validate the compiled registry document
 	const document = parseRegistryDocument({

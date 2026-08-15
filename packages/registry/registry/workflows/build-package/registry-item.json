@@ -1,0 +1,22 @@
+{
+	"id": "build-package",
+	"title": "Build Package Workflow",
+	"description": "GitHub Actions workflow for building a package.",
+	"type": "workflow",
+	"variants": [
+		{
+			"id": "typescript",
+			"title": "TypeScript",
+			"description": "Build workflow for a TypeScript package.",
+			"when": {
+				"language": "typescript"
+			},
+			"files": [
+				{
+					"source": "typescript/.github/workflows/build.yml",
+					"target": ".github/workflows/build.yml"
+				}
+			]
+		}
+	]
+}

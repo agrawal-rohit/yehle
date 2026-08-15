@@ -1,0 +1,12 @@
+{
+	"id": "code-of-conduct",
+	"title": "Code of Conduct",
+	"description": "Contributor Covenant v3.0 code of conduct guidance.",
+	"type": "convention",
+	"files": [
+		{
+			"source": "CODE_OF_CONDUCT.md",
+			"target": "CODE_OF_CONDUCT.md"
+		}
+	]
+}

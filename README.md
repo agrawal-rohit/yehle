@@ -83,7 +83,7 @@ await buildRegistry({ sourceDir, outDir });
 const registry = parseRegistryDocument(JSON.parse(registryJson));
 ```
 
-That emits a lean `registry.json` catalog plus per-variant payloads at `r/{itemId}/{variantId}.json` under `outDir`. Each compiled catalog file `source` is a relative URI of that path; consumers resolve it against the catalog location (`resolveRegistryPayload`).
+That emits a lean `registry.json` catalog plus install payloads at `r/{itemId}.json` (variant-less items) or `r/{itemId}/{variantId}.json` under `outDir`. Each compiled catalog file `source` is a relative URI of that path; consumers resolve it against the catalog location (`resolveRegistryPayload`).
 
 `@tuckshop/core` exposes:
 
@@ -119,7 +119,7 @@ pnpm run quality:changes # quality gate on changed files (pre-PR)
 pnpm run quality         # full codebase quality scan
 ```
 
-The default registry content lives under `packages/registry/registry/`, and the compiled artefacts are written to `packages/registry/registry.json` plus `packages/registry/r/` (when items exist).
+The default registry content lives under `packages/registry/registry/`. Compilation writes `packages/registry/registry.json` (committed) and `packages/registry/r/` (gitignored build output, bundled into the CLI package at `prepack`).
 
 ## Releases
 

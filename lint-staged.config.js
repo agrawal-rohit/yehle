@@ -3,12 +3,12 @@
  * @type {import('lint-staged').Configuration}
  */
 
-/** Rebuild compiled artefacts and stage `registry.json` plus `r/`. */
+/** Rebuild compiled artefacts and stage `registry.json`. */
 function rebuildRegistryCommands() {
 	return [
 		"pnpm run build:registry",
 		"pnpm exec biome check --write packages/registry/registry.json",
-		"git add packages/registry/registry.json packages/registry/r",
+		"git add packages/registry/registry.json",
 	];
 }
 

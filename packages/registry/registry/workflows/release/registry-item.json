@@ -1,0 +1,30 @@
+{
+	"id": "release",
+	"title": "Release Workflow",
+	"description": "Release Please automation that opens a Release PR on pushes to main and handles package publication.",
+	"type": "workflow",
+	"variants": [
+		{
+			"id": "typescript",
+			"title": "TypeScript",
+			"description": "Release Please configuration and GitHub Actions workflow for handling package publication for TypeScript projects.",
+			"when": {
+				"language": "typescript"
+			},
+			"files": [
+				{
+					"source": "typescript/.github/workflows/release.yml",
+					"target": ".github/workflows/release.yml"
+				},
+				{
+					"source": "typescript/release-please-config.json",
+					"target": "release-please-config.json"
+				},
+				{
+					"source": "typescript/.release-please-manifest.json",
+					"target": ".release-please-manifest.json"
+				}
+			]
+		}
+	]
+}

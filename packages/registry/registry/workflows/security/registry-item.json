@@ -1,0 +1,28 @@
+{
+	"id": "security",
+	"title": "Security Checks Workflow",
+	"description": "GitHub Actions security pipeline with dependency review, workflow linting, CodeQL, and Semgrep.",
+	"type": "workflow",
+	"files": [
+		{
+			"source": ".github/workflows/security.yml",
+			"target": ".github/workflows/security.yml"
+		}
+	],
+	"variants": [
+		{
+			"id": "typescript",
+			"title": "TypeScript",
+			"description": "CodeQL configuration and GitHub Actions workflow for running security checks for TypeScript projects.",
+			"when": {
+				"language": "typescript"
+			},
+			"files": [
+				{
+					"source": "typescript/.github/codeql/config.yml",
+					"target": ".github/codeql/config.yml"
+				}
+			]
+		}
+	]
+}

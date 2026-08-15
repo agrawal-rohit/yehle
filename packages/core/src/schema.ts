@@ -13,14 +13,28 @@ const safePathSegment = nonEmptyString.superRefine((id, context) => {
 });
 
 /**
+ * Make keys whose value may be `undefined` optional, matching {@link omitUndefined}.
+ */
+type OmitUndefinedKeys<T> = {
+	[K in keyof T as undefined extends T[K] ? never : K]: T[K];
+} & {
+	[K in keyof T as undefined extends T[K] ? K : never]?: Exclude<
+		T[K],
+		undefined
+	>;
+};
+
+/**
  * Drop keys whose values are `undefined` so optional fields stay omitted.
  * @param value - Object that may contain undefined optional fields.
  * @returns Shallow copy without undefined values.
  */
-function omitUndefined<T extends Record<string, unknown>>(value: T): T {
+function omitUndefined<T extends Record<string, unknown>>(
+	value: T,
+): OmitUndefinedKeys<T> {
 	return Object.fromEntries(
 		Object.entries(value).filter(([, field]) => field !== undefined),
-	) as T;
+	) as OmitUndefinedKeys<T>;
 }
 
 /**
@@ -68,16 +82,27 @@ export const registryPayloadFileSchema = z.strictObject({
 });
 export type RegistryPayloadFile = z.infer<typeof registryPayloadFileSchema>;
 
-/** Install payload for one item variant (templates, not rendered output). */
-export const registryPayloadSchema = z.strictObject({
-	/** Registry item id. */
-	id: safePathSegment,
-	/** Variant id within the item. */
-	variantId: safePathSegment,
-	/** Files to install for this variant (item-level files first). */
-	files: z.array(registryPayloadFileSchema).min(1),
-});
+/** Install payload for one item or variant (templates, not rendered output). */
+export const registryPayloadSchema = z
+	.strictObject({
+		/** Registry item id. */
+		id: safePathSegment,
+		/** Variant id within the item; omitted for variant-less items. */
+		variantId: safePathSegment.optional(),
+		/** Files to install (item-level files first when folded into a variant). */
+		files: z.array(registryPayloadFileSchema).min(1),
+	})
+	.transform(omitUndefined);
 export type RegistryPayload = z.infer<typeof registryPayloadSchema>;
+
+/** Condition matcher shared by items and variants. */
+const registryWhenSchema = z
+	.record(z.string(), nonEmptyString)
+	.optional()
+	.transform((value) => {
+		if (!value || Object.keys(value).length === 0) return undefined;
+		return value;
+	});
 
 /** Supported condition inference modes. */
 export enum RegistryConditionInference {
@@ -173,13 +198,7 @@ export const registryVariantSchema = z
 		/** Files copied when this variant is selected. */
 		files: z.array(registryFileSchema).min(1),
 		/** Condition matcher that selects this variant. */
-		when: z
-			.record(z.string(), nonEmptyString)
-			.optional()
-			.transform((value) => {
-				if (!value || Object.keys(value).length === 0) return undefined;
-				return value;
-			}),
+		when: registryWhenSchema,
 		/** npm dependencies added with this variant. */
 		dependencies: optionalNonEmptyStringArray(),
 		/** npm devDependencies added with this variant. */
@@ -201,20 +220,35 @@ export const registryItemSchema = z
 		description: nonEmptyString,
 		/** Item type key declared in `types`. */
 		type: nonEmptyString,
-		/** Files shared by every variant (authoring only; folded into variants at compile). */
+		/** Install files for a variant-less item, or files shared by every variant */
 		files: z.array(registryFileSchema).min(1).optional(),
+		/** Condition matcher for a variant-less item. */
+		when: registryWhenSchema,
 		/** npm dependencies added with this item. */
 		dependencies: optionalNonEmptyStringArray(),
 		/** npm devDependencies added with this item. */
 		devDependencies: optionalNonEmptyStringArray(),
 		/** Other registry items this item depends on. */
 		registryDependencies: optionalNonEmptyStringArray(),
-		/** Installable slices of this item. */
-		variants: z.array(registryVariantSchema).min(1),
+		/** Installable slices of this item; omit for a single top-level configuration. */
+		variants: z
+			.array(registryVariantSchema)
+			.optional()
+			.transform((value) => (value && value.length > 0 ? value : undefined)),
 	})
 	.superRefine((item, context) => {
+		const hasVariants = (item.variants?.length ?? 0) > 0;
+		const hasFiles = (item.files?.length ?? 0) > 0;
+		if (!hasVariants && !hasFiles) {
+			context.addIssue({
+				code: "custom",
+				message: "missing_files_or_variants",
+			});
+			return;
+		}
+
 		const seenVariantIds = new Set<string>();
-		for (const variant of item.variants) {
+		for (const variant of item.variants ?? []) {
 			if (seenVariantIds.has(variant.id)) {
 				context.addIssue({
 					code: "custom",

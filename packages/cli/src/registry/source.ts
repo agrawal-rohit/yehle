@@ -46,10 +46,10 @@ async function resolveBuiltRegistryPath(
 	const candidates = [
 		// Prefer an explicit registry.json in the caller's working directory.
 		path.resolve(cwd, registryFilename),
+		// Workspace / local development (e.g. packages/registry)
+		...fallbackRegistryPaths,
 		// Packaged default (present after CLI prepack / install).
 		bundledRegistryPath,
-		// Workspace / local development fallbacks (e.g. packages/registry).
-		...fallbackRegistryPaths,
 	];
 
 	for (const candidate of candidates)

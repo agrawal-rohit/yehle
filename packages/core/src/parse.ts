@@ -56,8 +56,12 @@ function mapZodError(error: z.ZodError, label: string): Error {
 			"duplicate:",
 			"invalid_inference:",
 			"invalid_id:",
+			"missing_files_or_variants",
 		].find((candidate) => issue.message.startsWith(candidate)) ?? "";
-	const customValue = issue.message.slice(prefix.length);
+	const customValue =
+		prefix === "missing_files_or_variants"
+			? ""
+			: issue.message.slice(prefix.length);
 
 	// Narrow issue fields up front so the lookup tables below stay flat.
 	const keys = issue.code === "unrecognized_keys" ? issue.keys : [];
@@ -70,6 +74,7 @@ function mapZodError(error: z.ZodError, label: string): Error {
 		"duplicate_variant:": `${label} has duplicate variant id "${customValue}".`,
 		"invalid_inference:": `${label} has invalid inference "${customValue}" (expected one of: ${Object.values(RegistryConditionInference).join(", ")}).`,
 		"invalid_id:": String.raw`${primaryText(fieldLabel)} must be a single path segment (no "/", "\", or "..").`,
+		missing_files_or_variants: `${label} must declare files or at least one variant.`,
 	};
 
 	// Object and record both surface as "must be an object"; primaryText highlights field names.
@@ -81,7 +86,6 @@ function mapZodError(error: z.ZodError, label: string): Error {
 
 	// too_small on arrays is path-specific; the message depends on which list was empty.
 	const arrayTooSmall: Record<string, string> = {
-		variants: `${fieldLabel} must declare at least one variant.`,
 		files: `${fieldLabel} must declare at least one file.`,
 	};
 
@@ -159,7 +163,37 @@ export function parseRegistryConditions(
 }
 
 /**
- * Ensure every variant `when` key/value is declared in the conditions map.
+ * Validate a single `when` map against declared conditions.
+ * @param itemId - Registry item id for error messages.
+ * @param when - Condition matcher to validate.
+ * @param conditions - Shared condition definitions.
+ * @param variantId - Variant id when validating a variant; omit for item-level `when`.
+ * @throws Error when a condition key or value is undeclared.
+ */
+function validateWhenEntries(
+	itemId: string,
+	when: Record<string, string> | undefined,
+	conditions: Record<string, RegistryCondition> | undefined,
+	variantId?: string,
+): void {
+	const subject =
+		variantId === undefined
+			? `Registry item "${itemId}"`
+			: `Registry item "${itemId}" variant "${variantId}"`;
+
+	for (const [key, value] of Object.entries(when ?? {})) {
+		const condition = conditions?.[key];
+		if (!condition)
+			throw new Error(`${subject} references unknown when key "${key}".`);
+		if (!condition.values.some((entry) => entry.value === value))
+			throw new Error(
+				`${subject} uses undeclared when value "${value}" for key "${key}".`,
+			);
+	}
+}
+
+/**
+ * Ensure every item and variant `when` key/value is declared in the conditions map.
  * @param items - Registry items to validate.
  * @param conditions - Shared condition definitions.
  * @throws Error when a condition key or value is undeclared.
@@ -169,18 +203,9 @@ export function crossValidateWhen(
 	conditions: Record<string, RegistryCondition> | undefined,
 ): void {
 	for (const item of Object.values(items)) {
-		for (const variant of item.variants) {
-			for (const [key, value] of Object.entries(variant.when ?? {})) {
-				const condition = conditions?.[key];
-				if (!condition)
-					throw new Error(
-						`Registry item "${item.id}" variant "${variant.id}" references unknown when key "${key}".`,
-					);
-				if (!condition.values.some((entry) => entry.value === value))
-					throw new Error(
-						`Registry item "${item.id}" variant "${variant.id}" uses undeclared when value "${value}" for key "${key}".`,
-					);
-			}
+		validateWhenEntries(item.id, item.when, conditions);
+		for (const variant of item.variants ?? []) {
+			validateWhenEntries(item.id, variant.when, conditions, variant.id);
 		}
 	}
 }

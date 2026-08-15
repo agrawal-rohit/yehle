@@ -86,7 +86,7 @@ describe("registry/parse", () => {
 		});
 	});
 
-	it("rejects malformed registry items", () => {
+	it("rejects items with neither files nor variants", () => {
 		expect(() =>
 			parseRegistryDocument(
 				validDocument({
@@ -102,8 +102,42 @@ describe("registry/parse", () => {
 				}),
 			),
 		).toThrow(
-			'Registry items["button"].variants must declare at least one variant.',
+			'Registry items["button"] must declare files or at least one variant.',
 		);
+	});
+
+	it("accepts a variant-less item with top-level files", () => {
+		expect(
+			parseRegistryDocument(
+				validDocument({
+					items: {
+						"assign-owner": {
+							id: "assign-owner",
+							title: "Assign Owner",
+							description: "Assigns the owner",
+							type: "component",
+							files: [
+								{
+									source: "r/assign-owner.json",
+									target: ".github/workflows/assign-owner.yml",
+								},
+							],
+						},
+					},
+				}),
+			).items["assign-owner"],
+		).toEqual({
+			id: "assign-owner",
+			title: "Assign Owner",
+			description: "Assigns the owner",
+			type: "component",
+			files: [
+				{
+					source: "r/assign-owner.json",
+					target: ".github/workflows/assign-owner.yml",
+				},
+			],
+		});
 	});
 
 	it("accepts unknown custom item types", () => {
@@ -576,6 +610,64 @@ describe("registry/parse", () => {
 				),
 			).toThrow(
 				'Registry item "button" variant "react" uses undeclared when value "javascript" for key "language".',
+			);
+		});
+
+		it("rejects an item-level when key that is not a declared condition", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						items: {
+							"assign-owner": {
+								id: "assign-owner",
+								title: "Assign Owner",
+								description: "Assigns the owner",
+								type: "component",
+								when: { language: "typescript" },
+								files: [
+									{
+										source: "r/assign-owner.json",
+										target: "a.yml",
+									},
+								],
+							},
+						},
+					}),
+				),
+			).toThrow(
+				'Registry item "assign-owner" references unknown when key "language".',
+			);
+		});
+
+		it("rejects an item-level when value that is not declared for the condition", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						conditions: {
+							language: {
+								label: "Language",
+								values: [{ value: "typescript", label: "TypeScript" }],
+							},
+						},
+						items: {
+							"assign-owner": {
+								id: "assign-owner",
+								title: "Assign Owner",
+								description: "Assigns the owner",
+								type: "component",
+								when: { language: "javascript" },
+								files: [
+									{
+										source: "r/assign-owner.json",
+										target: "a.yml",
+									},
+								],
+							},
+						},
+					}),
+				),
+			).toThrow(
+				'Registry item "assign-owner" uses undeclared when value "javascript" for key "language".',
 			);
 		});
 	});

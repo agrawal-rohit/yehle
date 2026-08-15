@@ -1,0 +1,22 @@
+{
+	"id": "dependency-updates",
+	"title": "Dependency Updates",
+	"description": "Dependabot configuration for automated dependency updates.",
+	"type": "convention",
+	"variants": [
+		{
+			"id": "typescript",
+			"title": "TypeScript",
+			"description": "Dependency updates for TypeScript projects.",
+			"when": {
+				"language": "typescript"
+			},
+			"files": [
+				{
+					"source": "typescript/.github/dependabot.yml",
+					"target": ".github/dependabot.yml"
+				}
+			]
+		}
+	]
+}

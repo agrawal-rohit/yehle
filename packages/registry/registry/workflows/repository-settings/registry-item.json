@@ -1,0 +1,20 @@
+{
+	"id": "repository-settings",
+	"title": "Repository Settings",
+	"description": "GitOps workflow that configures branch/tag rulesets and applies repository merge/security settings.",
+	"type": "workflow",
+	"files": [
+		{
+			"source": ".github/workflows/settings.yml",
+			"target": ".github/workflows/settings.yml"
+		},
+		{
+			"source": ".github/rulesets/protected-branches.json",
+			"target": ".github/rulesets/protected-branches.json"
+		},
+		{
+			"source": ".github/rulesets/release-tags.json",
+			"target": ".github/rulesets/release-tags.json"
+		}
+	]
+}

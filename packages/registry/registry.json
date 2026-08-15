@@ -14,32 +14,147 @@
 		}
 	},
 	"types": {
-		"component": {
-			"label": "Components",
-			"description": "Reusable UI primitives for building interfaces."
-		},
 		"convention": {
 			"label": "Conventions",
-			"description": "Project workflows and tooling configuration."
+			"description": "Project tooling configurations as per industry best practices."
 		},
-		"agent-instruction": {
-			"label": "Agent Instructions",
-			"description": "Instruction files that guide coding agents."
-		},
-		"agent-skill": {
-			"label": "Agent Skills",
-			"description": "Reusable skills that extend coding agents."
-		},
-		"subagent": {
-			"label": "Subagents",
-			"description": "Specialised agents for focused tasks."
-		},
-		"template": {
-			"label": "Templates",
-			"description": "Starter scaffolds for new projects."
+		"workflow": {
+			"label": "Workflows",
+			"description": "GitHub Actions workflows for better productivity."
 		}
 	},
 	"items": {
+		"assign-owner": {
+			"id": "assign-owner",
+			"title": "Assign To Repository Owner",
+			"description": "GitHub Actions workflow that assigns the repository owner to unassigned issues and pull requests. Useful for repositories with a single owner.",
+			"type": "workflow",
+			"files": [
+				{
+					"source": "r/assign-owner.json",
+					"target": ".github/workflows/assign-owner.yml"
+				}
+			]
+		},
+		"build-package": {
+			"id": "build-package",
+			"title": "Build Package Workflow",
+			"description": "GitHub Actions workflow for building a package.",
+			"type": "workflow",
+			"variants": [
+				{
+					"id": "typescript",
+					"title": "TypeScript",
+					"description": "Build workflow for a TypeScript package.",
+					"files": [
+						{
+							"source": "r/build-package/typescript.json",
+							"target": ".github/workflows/build.yml"
+						}
+					],
+					"when": {
+						"language": "typescript"
+					}
+				}
+			]
+		},
+		"code-of-conduct": {
+			"id": "code-of-conduct",
+			"title": "Code of Conduct",
+			"description": "Contributor Covenant v3.0 code of conduct guidance.",
+			"type": "convention",
+			"files": [
+				{
+					"source": "r/code-of-conduct.json",
+					"target": "CODE_OF_CONDUCT.md"
+				}
+			]
+		},
+		"code-quality": {
+			"id": "code-quality",
+			"title": "Code Quality Workflow",
+			"description": "Code quality gates with linting and static analysis.",
+			"type": "workflow",
+			"variants": [
+				{
+					"id": "typescript",
+					"title": "TypeScript",
+					"description": "Biome, SonarQube, and Fallow quality gates for TypeScript projects.",
+					"files": [
+						{
+							"source": "r/code-quality/typescript.json",
+							"target": "sonar-project.properties"
+						},
+						{
+							"source": "r/code-quality/typescript.json",
+							"target": ".github/workflows/quality.yml"
+						},
+						{
+							"source": "r/code-quality/typescript.json",
+							"target": "biome.json"
+						},
+						{
+							"source": "r/code-quality/typescript.json",
+							"target": ".fallowrc.json"
+						},
+						{
+							"source": "r/code-quality/typescript.json",
+							"target": "fallow-baselines/dead-code.json"
+						},
+						{
+							"source": "r/code-quality/typescript.json",
+							"target": "fallow-baselines/health.json"
+						},
+						{
+							"source": "r/code-quality/typescript.json",
+							"target": "fallow-baselines/dupes.json"
+						}
+					],
+					"when": {
+						"language": "typescript"
+					},
+					"devDependencies": ["@biomejs/biome@^2"]
+				}
+			]
+		},
+		"dependency-updates": {
+			"id": "dependency-updates",
+			"title": "Dependency Updates",
+			"description": "Dependabot configuration for automated dependency updates.",
+			"type": "convention",
+			"variants": [
+				{
+					"id": "typescript",
+					"title": "TypeScript",
+					"description": "Dependency updates for TypeScript projects.",
+					"files": [
+						{
+							"source": "r/dependency-updates/typescript.json",
+							"target": ".github/dependabot.yml"
+						}
+					],
+					"when": {
+						"language": "typescript"
+					}
+				}
+			]
+		},
+		"issue-templates": {
+			"id": "issue-templates",
+			"title": "Issue Templates",
+			"description": "GitHub issue templates for bug reports and feature requests.",
+			"type": "convention",
+			"files": [
+				{
+					"source": "r/issue-templates.json",
+					"target": ".github/ISSUE_TEMPLATE/bug_report.md"
+				},
+				{
+					"source": "r/issue-templates.json",
+					"target": ".github/ISSUE_TEMPLATE/feature_request.md"
+				}
+			]
+		},
 		"mutation-testing": {
 			"id": "mutation-testing",
 			"title": "Mutation Testing",
@@ -64,6 +179,161 @@
 						"@stryker-mutator/vitest-runner@^9",
 						"@stryker-mutator/typescript-checker@^9"
 					]
+				}
+			]
+		},
+		"pr-template": {
+			"id": "pr-template",
+			"title": "Pull Request Template",
+			"description": "Standard GitHub pull request template with summary, testing, impact, and checklist sections.",
+			"type": "convention",
+			"files": [
+				{
+					"source": "r/pr-template.json",
+					"target": ".github/pull_request_template.md"
+				}
+			]
+		},
+		"pre-commit-hooks": {
+			"id": "pre-commit-hooks",
+			"title": "Pre-commit Hooks",
+			"description": "Local hooks that run lint, format, and commit checks before changes land.",
+			"type": "convention",
+			"variants": [
+				{
+					"id": "typescript",
+					"title": "TypeScript",
+					"description": "Husky, commitlint, and lint-staged hooks for TypeScript projects using Biome.",
+					"files": [
+						{
+							"source": "r/pre-commit-hooks/typescript.json",
+							"target": ".husky/commit-msg"
+						},
+						{
+							"source": "r/pre-commit-hooks/typescript.json",
+							"target": ".husky/pre-commit"
+						},
+						{
+							"source": "r/pre-commit-hooks/typescript.json",
+							"target": "commitlint.config.js"
+						},
+						{
+							"source": "r/pre-commit-hooks/typescript.json",
+							"target": "lint-staged.config.js"
+						}
+					],
+					"when": {
+						"language": "typescript"
+					},
+					"devDependencies": [
+						"husky@^9",
+						"lint-staged@^16",
+						"@commitlint/cli@^20",
+						"@commitlint/config-conventional@^20"
+					]
+				}
+			]
+		},
+		"release": {
+			"id": "release",
+			"title": "Release Workflow",
+			"description": "Release Please automation that opens a Release PR on pushes to main and handles package publication.",
+			"type": "workflow",
+			"variants": [
+				{
+					"id": "typescript",
+					"title": "TypeScript",
+					"description": "Release Please configuration and GitHub Actions workflow for handling package publication for TypeScript projects.",
+					"files": [
+						{
+							"source": "r/release/typescript.json",
+							"target": ".github/workflows/release.yml"
+						},
+						{
+							"source": "r/release/typescript.json",
+							"target": "release-please-config.json"
+						},
+						{
+							"source": "r/release/typescript.json",
+							"target": ".release-please-manifest.json"
+						}
+					],
+					"when": {
+						"language": "typescript"
+					}
+				}
+			]
+		},
+		"repository-settings": {
+			"id": "repository-settings",
+			"title": "Repository Settings",
+			"description": "GitOps workflow that configures branch/tag rulesets and applies repository merge/security settings.",
+			"type": "workflow",
+			"files": [
+				{
+					"source": "r/repository-settings.json",
+					"target": ".github/workflows/settings.yml"
+				},
+				{
+					"source": "r/repository-settings.json",
+					"target": ".github/rulesets/protected-branches.json"
+				},
+				{
+					"source": "r/repository-settings.json",
+					"target": ".github/rulesets/release-tags.json"
+				}
+			]
+		},
+		"security": {
+			"id": "security",
+			"title": "Security Checks Workflow",
+			"description": "GitHub Actions security pipeline with dependency review, workflow linting, CodeQL, and Semgrep.",
+			"type": "workflow",
+			"variants": [
+				{
+					"id": "typescript",
+					"title": "TypeScript",
+					"description": "CodeQL configuration and GitHub Actions workflow for running security checks for TypeScript projects.",
+					"files": [
+						{
+							"source": "r/security/typescript.json",
+							"target": ".github/workflows/security.yml"
+						},
+						{
+							"source": "r/security/typescript.json",
+							"target": ".github/codeql/config.yml"
+						}
+					],
+					"when": {
+						"language": "typescript"
+					}
+				}
+			]
+		},
+		"testing": {
+			"id": "testing",
+			"title": "Testing",
+			"description": "Testing configuration and GitHub Actions workflow for running tests with coverage.",
+			"type": "convention",
+			"variants": [
+				{
+					"id": "typescript",
+					"title": "TypeScript",
+					"description": "Vitest configuration and GitHub Actions workflow for running tests with coverage for TypeScript projects.",
+					"files": [
+						{
+							"source": "r/testing/typescript.json",
+							"target": "vitest.config.ts"
+						},
+						{
+							"source": "r/testing/typescript.json",
+							"target": ".github/workflows/test.yml"
+						}
+					],
+					"when": {
+						"language": "typescript"
+					},
+					"devDependencies": ["vitest@^3", "@vitest/coverage-v8@^3"]
 				}
 			]
 		}

@@ -156,6 +156,18 @@ describe("core/schema", () => {
 			).toMatchObject({ id: "button", variantId: "react" });
 		});
 
+		it("omits absent variantId for variant-less payloads", () => {
+			expect(
+				registryPayloadSchema.parse({
+					id: "assign-owner",
+					files: [{ target: "a.yml", content: "name: a\n" }],
+				}),
+			).toEqual({
+				id: "assign-owner",
+				files: [{ target: "a.yml", content: "name: a\n" }],
+			});
+		});
+
 		it("rejects unsafe ids", () => {
 			expect(
 				registryPayloadSchema.safeParse({
@@ -459,10 +471,37 @@ describe("core/schema", () => {
 			expect(parsed).not.toHaveProperty("registryDependencies");
 		});
 
-		it("rejects an empty variants list", () => {
+		it("accepts a variant-less item with top-level files", () => {
+			const { variants: _variants, ...withoutVariants } = validItem();
 			expect(
-				registryItemSchema.safeParse(validItem({ variants: [] })).success,
-			).toBe(false);
+				registryItemSchema.parse({
+					...withoutVariants,
+					files: [validFile()],
+					when: { language: "typescript" },
+				}),
+			).toEqual({
+				id: "button",
+				title: "Button",
+				description: "A button",
+				type: "component",
+				files: [validFile()],
+				when: { language: "typescript" },
+			});
+		});
+
+		it("omits an empty variants list when files are present", () => {
+			const parsed = registryItemSchema.parse(
+				validItem({ variants: [], files: [validFile()] }),
+			);
+
+			expect(parsed).not.toHaveProperty("variants");
+			expect(parsed.files).toEqual([validFile()]);
+		});
+
+		it("rejects an item with neither files nor variants", () => {
+			expect(
+				rejectMessage(registryItemSchema, validItem({ variants: [] })),
+			).toBe("missing_files_or_variants");
 		});
 
 		it("rejects an empty files list when files are declared", () => {

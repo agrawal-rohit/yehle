@@ -82,7 +82,25 @@ describe("registry/source", () => {
 		});
 	});
 
-	it("uses fallback registry probe paths before failing", async () => {
+	it("uses fallback registry probe paths before the bundled copy", async () => {
+		const packagedRegistry = "/bundle/registry.json";
+		const fallbackRegistry = "/workspace/packages/registry/registry.json";
+		mockIsFileAsync.mockImplementation(async (candidate: string) => {
+			return candidate === packagedRegistry || candidate === fallbackRegistry;
+		});
+
+		await expect(
+			resolveRegistrySource({
+				bundledRegistryPath: packagedRegistry,
+				fallbackRegistryPaths: [fallbackRegistry],
+			}),
+		).resolves.toEqual({
+			kind: RegistrySourceKind.PATH,
+			location: fallbackRegistry,
+		});
+	});
+
+	it("uses fallback registry probe paths when the bundled copy is absent", async () => {
 		const fallbackRegistry = "/workspace/packages/registry/registry.json";
 		mockIsFileAsync.mockImplementation(async (candidate: string) => {
 			return candidate === fallbackRegistry;

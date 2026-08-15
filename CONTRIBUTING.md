@@ -193,12 +193,12 @@ packages/registry/registry/
 
 The compiled artefacts are written next to the package root by `pnpm run build:registry` (`buildRegistry` from `@tuckshop/core`):
 
-- `packages/registry/registry.json` — lean catalog metadata
-- `packages/registry/r/{itemId}/{variantId}.json` — per-variant install payloads
+- `packages/registry/registry.json` — lean catalog metadata (committed; regenerated and staged by the pre-commit hook)
+- `packages/registry/r/{itemId}.json` or `packages/registry/r/{itemId}/{variantId}.json` — install payloads (gitignored; generated locally and copied into the CLI npm tarball at `prepack`)
 
-They are regenerated and staged automatically by the pre-commit hook whenever anything under `packages/registry/registry/` or the core compiler changes.
+`registry.json` is regenerated and staged automatically by the pre-commit hook whenever anything under `packages/registry/registry/` or the core compiler changes. Payload files under `r/` are build output only — not committed — and ship with the published `tuckshop` package.
 
-`registry.json` only holds metadata for individual items, so the index stays lean as the registry grows. Authoring manifests keep item-relative `source` paths. The build inlines those files into per-variant payloads under `r/` and rewrites each catalog file `source` to that payload URI (`r/{itemId}/{variantId}.json`). Payloads keep `target` plus inlined `content`. Consumers resolve catalog `source` against the catalog location (`resolveRegistryPayload`). Hosting can be GitHub raw, S3, or a CDN as long as `registry.json` and `r/` stay side by side.
+`registry.json` only holds metadata for individual items, so the index stays lean as the registry grows. Authoring manifests keep item-relative `source` paths. The build inlines those files into payloads under `r/` and rewrites each catalog file `source` to that payload URI (`r/{itemId}.json` for variant-less items, or `r/{itemId}/{variantId}.json`). Payloads keep `target` plus inlined `content`. Consumers resolve catalog `source` against the catalog location (`resolveRegistryPayload`). Third-party registries that host remotely should keep `registry.json` and `r/` side by side (GitHub raw, S3, or a CDN). The default registry ships payloads inside the CLI package instead.
 
 Payload `content` is the authored template text. Conditions, inference, and any future mustache rendering run on the client after the payload is loaded — not at compile time.
 
@@ -223,7 +223,7 @@ await buildRegistry({
 
 When proposing a new registry item:
 
-1. Add a new folder under `packages/registry/registry/` with a `registry-item.json` (`id`, `title`, `description`, `type`, `variants`) and its files
+1. Add a new folder under `packages/registry/registry/` with a `registry-item.json` (`id`, `title`, `description`, `type`, plus either top-level `files` or `variants`) and its files
 2. Declare the item `type` in `packages/registry/registry/types.json` with a `label` and optional `description` _(required for every registry)_
 3. Include everything needed for a complete working setup; depend on existing concern items instead of copying files
 4. Run `pnpm run build:registry`, `pnpm cov`, and `pnpm --filter tuckshop pack`

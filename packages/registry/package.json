@@ -1,7 +1,7 @@
 {
 	"name": "@tuckshop/registry",
 	"version": "0.2.1",
-	"description": "An opinionated tuckshop registry with built-in UI components, conventions, templates, and coding agent rules/skills.",
+	"description": "An opinionated tuckshop registry with project tooling configurations and GitHub Actions workflows.",
 	"license": "MIT",
 	"private": true,
 	"scripts": {

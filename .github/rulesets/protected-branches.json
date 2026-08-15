@@ -57,6 +57,12 @@
             "context": "Test (Coverage)"
           },
           {
+            "context": "Code Quality (Biome)"
+          },
+          {
+            "context": "Code Quality (SonarQube)"
+          },
+          {
             "context": "Quality Gates (Fallow)"
           },
           {
