@@ -198,7 +198,7 @@ function validateWhenEntries(
  * @param conditions - Shared condition definitions.
  * @throws Error when a condition key or value is undeclared.
  */
-export function crossValidateWhen(
+function crossValidateWhen(
 	items: Record<string, RegistryItem>,
 	conditions: Record<string, RegistryCondition> | undefined,
 ): void {
@@ -249,7 +249,7 @@ export function parseRegistryItemTypes(
  * @param types - Shared type definitions.
  * @throws Error when an item type is undeclared.
  */
-export function crossValidateItemTypes(
+function crossValidateItemTypes(
 	items: Record<string, RegistryItem>,
 	types: Record<string, RegistryItemTypeDefinition>,
 ): void {

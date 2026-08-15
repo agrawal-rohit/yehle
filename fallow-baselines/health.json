@@ -5,27 +5,45 @@
         "count": 1
       }
     },
+    "packages/cli/src/commands/index.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "packages/cli/src/commands/list.ts": {
       "crap_moderate": {
         "count": 1
       }
     },
-    "packages/core/src/builder.ts": {
-      "complexity_critical": {
+    "packages/cli/src/registry/load.ts": {
+      "complexity_high": {
         "count": 1
       },
-      "crap_critical": {
+      "crap_high": {
         "count": 1
       }
     },
-    "packages/core/src/validate.ts": {
+    "packages/core/src/build.ts": {
       "complexity_moderate": {
-        "count": 2
+        "count": 1
+      }
+    },
+    "packages/core/src/parse.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "packages/core/src/schema.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/registry/src/github-workflows.test.ts": {
+      "complexity_moderate": {
+        "count": 1
       }
     }
   },
   "runtime_coverage_findings": [],
-  "target_keys": [
-    "packages/core/src/builder.ts:complexity"
-  ]
+  "target_keys": []
 }

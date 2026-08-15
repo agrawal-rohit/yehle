@@ -24,6 +24,19 @@ async function defaultRegistryUrl(): Promise<string> {
 }
 
 /**
+ * Print the active registry source and config file path to stdout.
+ * @param registry - Registry URL or local path currently in effect.
+ * @param filePath - Absolute path of the config file.
+ */
+function printConfiguration(registry: string, filePath: string): void {
+	console.log();
+	console.log(primaryText("Configuration"));
+	console.log(defaultText(`  registry:    ${registry}`));
+	console.log(defaultText(`  config file: ${filePath}`));
+	console.log();
+}
+
+/**
  * Persist a default registry source to the global config.
  * Accepts absolute HTTP(S) URLs, or local paths that resolve to an existing file.
  * @param source - Registry URL or local path.
@@ -60,12 +73,7 @@ export async function configSetCommand(
 	const existing = await readConfig(options);
 	await writeConfig({ ...existing, registry: trimmed }, options);
 	const filePath = configPath(options);
-
-	console.log();
-	console.log(primaryText("Configuration"));
-	console.log(defaultText(`  registry:    ${trimmed}`));
-	console.log(defaultText(`  config file: ${filePath}`));
-	console.log();
+	printConfiguration(trimmed, filePath);
 
 	return filePath;
 }
@@ -80,12 +88,7 @@ export async function configGetCommand(
 	const config = await readConfig(options);
 	const filePath = configPath(options);
 	const registry = config.registry ?? (await defaultRegistryUrl());
-
-	console.log();
-	console.log(primaryText("Configuration"));
-	console.log(defaultText(`  registry:    ${registry}`));
-	console.log(defaultText(`  config file: ${filePath}`));
-	console.log();
+	printConfiguration(registry, filePath);
 }
 
 /**
@@ -99,12 +102,7 @@ export async function configUnsetCommand(
 	const cleared = await unsetRegistryConfig(options);
 	const filePath = configPath(options);
 	const registry = await defaultRegistryUrl();
-
-	console.log();
-	console.log(primaryText("Configuration"));
-	console.log(defaultText(`  registry:    ${registry}`));
-	console.log(defaultText(`  config file: ${filePath}`));
-	console.log();
+	printConfiguration(registry, filePath);
 
 	return cleared;
 }

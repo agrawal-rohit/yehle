@@ -84,7 +84,8 @@ jobs:
               "advanced_security": {"status": "enabled"},
               "secret_scanning": {"status": "enabled"},
               "secret_scanning_push_protection": {"status": "enabled"},
-              "dependabot_security_updates": {"status": "enabled"}
+              "dependabot_security_updates": {"status": "enabled"},
+              "code_scanning_default_setup": {"state": "not-configured"}
             }
           }
           JSON
@@ -169,3 +170,6 @@ jobs:
             }
           }
           JSON
+
+          # GitHub's repos PATCH cannot set default setup; this is the endpoint that disables it.
+          api -X PATCH "repos/${GITHUB_REPOSITORY}/code-scanning/default-setup" -f state=not-configured
