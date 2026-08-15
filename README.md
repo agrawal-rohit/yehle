@@ -74,18 +74,25 @@ docs/           # documentation site
 
 ## Building a custom registry
 
-`@tuckshop/core` validates and parses registry documents. Compiling a `registry/` directory into `registry.json` is handled by the private `@tuckshop/registry` package (`pnpm build:registry`).
+`@tuckshop/core` compiles, validates, and parses registry documents. Call `buildRegistry` with an authoring `sourceDir` (items, `types.json`, optional `conditions.json`) and an `outDir` for compiled artefacts:
 
 ```ts
-import { parseRegistryDocument } from "@tuckshop/core";
+import { buildRegistry, parseRegistryDocument } from "@tuckshop/core";
 
+await buildRegistry({ sourceDir, outDir });
 const registry = parseRegistryDocument(JSON.parse(registryJson));
 ```
 
+That emits a lean `registry.json` catalog plus per-variant payloads at `r/{itemId}/{variantId}.json` under `outDir`. Each compiled variant stores a relative `payload` of that path; consumers resolve it against the catalog location (`resolveRegistryPayload`).
+
 `@tuckshop/core` exposes:
 
-- Schema types and validation for your registry document
-- `parseRegistryDocument()` and `parseWithSchema()` for runtime validation (unknown keys are rejected)
+- `buildRegistry()` for compiling an authoring tree into consumable artefacts
+- Schema types and validation for catalog and payload documents
+- `parseRegistryDocument()` and `parseWithSchema()` for runtime validation (unknown keys are rejected; use `registryPayloadSchema` for payload documents)
+- `resolveRegistryPayload()` for storage-agnostic payload URI resolution
+
+The private `@tuckshop/registry` package holds the default opinionated content and a thin CLI wrapper around `buildRegistry` (`pnpm build:registry`).
 
 ## Development
 
@@ -112,7 +119,7 @@ pnpm run quality:changes # quality gate on changed files (pre-PR)
 pnpm run quality         # full codebase quality scan
 ```
 
-The default registry content lives under `packages/registry/registry/`, and the compiled metadata is written to `packages/registry/registry.json`.
+The default registry content lives under `packages/registry/registry/`, and the compiled artefacts are written to `packages/registry/registry.json` plus `packages/registry/r/` (when items exist).
 
 ## Releases
 

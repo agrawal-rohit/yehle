@@ -5,7 +5,7 @@ import path from "node:path";
 import {
 	parseRegistryDocument,
 	type Registry,
-	readJSONFileAsync,
+	readFileAsync,
 } from "@tuckshop/core";
 import { RegistrySourceKind, resolveRegistrySource } from "./source";
 
@@ -159,7 +159,7 @@ export async function loadRuntimeRegistry(
 	const fetchedRegistry =
 		source.kind === RegistrySourceKind.URL
 			? await fetchRemoteRegistry(source.location)
-			: await readJSONFileAsync<unknown>(source.location);
+			: (JSON.parse(await readFileAsync(source.location)) as unknown);
 
 	return parseRegistryDocument(fetchedRegistry);
 }

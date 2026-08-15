@@ -1,7 +1,7 @@
 {
 	"name": "tuckshop",
 	"version": "0.2.1",
-	"description": "An opinionated scaffolding CLI for modern developers.",
+	"description": "A CLI for building and consuming tuckshop code registries.",
 	"license": "MIT",
 	"bin": {
 		"tuckshop": "./bin/cli.mjs"
@@ -11,13 +11,14 @@
 	"files": [
 		"dist",
 		"bin",
-		"registry.json"
+		"registry.json",
+		"r"
 	],
 	"scripts": {
 		"build": "pnpm --filter @tuckshop/core run build && tsc -p tsconfig.json",
 		"typecheck": "pnpm --filter @tuckshop/core run build && tsc -p tsconfig.json --noEmit",
 		"test": "vitest run",
-		"prepack": "pnpm run build && pnpm --filter @tuckshop/registry run build && cp ../registry/registry.json ./registry.json"
+		"prepack": "pnpm run build && pnpm --filter @tuckshop/registry run build && cp ../registry/registry.json ./registry.json && rm -rf ./r && if [ -d ../registry/r ]; then cp -R ../registry/r ./r; fi"
 	},
 	"dependencies": {
 		"@tuckshop/core": "workspace:*",

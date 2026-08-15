@@ -20,7 +20,6 @@ vi.mock("./commands", () => ({
 
 vi.mock("./registry/load", () => ({
 	loadRuntimeRegistry: vi.fn(async () => ({
-		contentBaseUrl: "https://example.com",
 		items: {},
 	})),
 }));

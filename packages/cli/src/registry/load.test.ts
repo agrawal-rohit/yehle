@@ -7,7 +7,7 @@ import { RegistrySourceKind } from "./source";
 
 const mockHttpsRequest = vi.fn();
 const mockResolveRegistrySource = vi.fn();
-const mockReadJSONFileAsync = vi.fn();
+const mockReadFileAsync = vi.fn();
 const mockParseRegistryDocument = vi.fn();
 
 vi.mock("node:https", () => ({
@@ -35,7 +35,7 @@ vi.mock("@tuckshop/core", async () => {
 		await vi.importActual<typeof import("@tuckshop/core")>("@tuckshop/core");
 	return {
 		...actual,
-		readJSONFileAsync: (location: string) => mockReadJSONFileAsync(location),
+		readFileAsync: (location: string) => mockReadFileAsync(location),
 		parseRegistryDocument: (raw: unknown) => mockParseRegistryDocument(raw),
 	};
 });
@@ -43,13 +43,11 @@ vi.mock("@tuckshop/core", async () => {
 import { loadRuntimeRegistry } from "./load";
 
 const sampleRegistry: Registry = {
-	contentBaseUrl: "https://example.com/content",
 	types: {},
 	items: {},
 };
 
 const publicRegistryBody = JSON.stringify({
-	contentBaseUrl: "https://example.com/content",
 	types: {},
 	items: {},
 });
@@ -145,12 +143,10 @@ describe("registry/load", () => {
 			kind: RegistrySourceKind.PATH,
 			location: "/workspace/registry.json",
 		});
-		mockReadJSONFileAsync.mockResolvedValue(sampleRegistry);
+		mockReadFileAsync.mockResolvedValue(JSON.stringify(sampleRegistry));
 
 		await expect(loadRuntimeRegistry()).resolves.toEqual(sampleRegistry);
-		expect(mockReadJSONFileAsync).toHaveBeenCalledWith(
-			"/workspace/registry.json",
-		);
+		expect(mockReadFileAsync).toHaveBeenCalledWith("/workspace/registry.json");
 		expect(mockParseRegistryDocument).toHaveBeenCalledWith(sampleRegistry);
 		expect(mockHttpsRequest).not.toHaveBeenCalled();
 	});
@@ -160,7 +156,7 @@ describe("registry/load", () => {
 			kind: RegistrySourceKind.PATH,
 			location: "/workspace/registry.json",
 		});
-		mockReadJSONFileAsync.mockResolvedValue(sampleRegistry);
+		mockReadFileAsync.mockResolvedValue(JSON.stringify(sampleRegistry));
 
 		await loadRuntimeRegistry(
 			"https://example.com/flag-registry.json",

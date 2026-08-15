@@ -4,12 +4,21 @@ import * as core from "./index";
 describe("package entry", () => {
 	it("re-exports the public core API", () => {
 		expect(core.RegistryConditionInference).toBeDefined();
-		expect(typeof core.isRegularFileAsync).toBe("function");
-		expect(typeof core.readJSONFileAsync).toBe("function");
+		expect(typeof core.isFileAsync).toBe("function");
+		expect(typeof core.readDirectoryAsync).toBe("function");
+		expect(typeof core.readFileAsync).toBe("function");
+		expect(typeof core.removeAsync).toBe("function");
+		expect(typeof core.writeFileAsync).toBe("function");
+		expect(typeof core.isAbsoluteHttpUrl).toBe("function");
+		expect(typeof core.normalizeOrigin).toBe("function");
+		expect(typeof core.publishedRegistryUrl).toBe("function");
 		expect(typeof core.primaryText).toBe("function");
 		expect(typeof core.defaultText).toBe("function");
 		expect(typeof core.dangerHighlight).toBe("function");
 		expect(typeof core.parseRegistryDocument).toBe("function");
 		expect(typeof core.parseWithSchema).toBe("function");
+		expect(typeof core.buildRegistry).toBe("function");
+		expect(typeof core.resolveRegistryPayload).toBe("function");
+		expect(core.registryPayloadSchema).toBeDefined();
 	});
 });

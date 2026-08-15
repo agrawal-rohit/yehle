@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { defaultText, primaryText } from "@tuckshop/core";
+import { defaultText, primaryText, publishedRegistryUrl } from "@tuckshop/core";
 import {
 	type ConfigPathOptions,
 	configPath,
@@ -11,7 +11,6 @@ import {
 
 /**
  * Resolve the published default registry URL for the current CLI version.
- * Matches the release-tag raw URL used by `@tuckshop/registry`’s build script.
  * @returns Absolute HTTPS URL to `packages/registry/registry.json`.
  */
 async function defaultRegistryUrl(): Promise<string> {
@@ -21,7 +20,7 @@ async function defaultRegistryUrl(): Promise<string> {
 			"utf8",
 		),
 	) as { version: string };
-	return `https://raw.githubusercontent.com/agrawal-rohit/tuckshop/tuckshop@${pkg.version}/packages/registry/registry.json`;
+	return publishedRegistryUrl(pkg.version);
 }
 
 /**

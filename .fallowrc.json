@@ -4,7 +4,7 @@
 		"packages/cli/bin/cli.mjs",
 		"packages/cli/src/index.ts",
 		"packages/core/src/index.ts",
-		"packages/registry/scripts/build.ts",
+		"packages/registry/src/index.ts",
 		"docs/app/**/*.{ts,tsx}",
 		"docs/next.config.mjs",
 		"docs/source.config.ts",

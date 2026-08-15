@@ -172,7 +172,7 @@ when you are ready to publish the next version.
 
 `tuckshop` uses a JSON registry inspired by [shadcn](https://ui.shadcn.com/docs/registry) to distribute all registry items _(e.g. project templates, UI components, conventions, and agent instructions)_. Each unit is a self-contained folder holding its manifest and its source files. A unit can be wired to other items through the `registryDependencies` property to make composable units.
 
-The default registry content lives under `packages/registry/registry/`. Shared registry conditions are centralized in `packages/registry/registry/conditions.json`. Item type display metadata is centralized in `packages/registry/registry/types.json`.
+The default registry content lives under `packages/registry/registry/`. Shared registry conditions are centralized in `packages/registry/registry/conditions.json`. Item type display metadata is centralized in `packages/registry/registry/types.json`. Compilation is provided by `@tuckshop/core` (`buildRegistry`); `@tuckshop/registry` is content plus a thin CLI wrapper.
 
 ### Registry Layout
 
@@ -191,9 +191,27 @@ packages/registry/registry/
 └── …
 ```
 
-The compiled registry is written to `packages/registry/registry.json` by `pnpm run build:registry`, and is regenerated and staged automatically by the pre-commit hook whenever anything under `packages/registry/registry/` changes.
+The compiled artefacts are written next to the package root by `pnpm run build:registry` (`buildRegistry` from `@tuckshop/core`):
 
-`registry.json` only holds metadata for individual items, so the index stays lean as the registry grows. Each file records a package-relative `source`, and the CLI fetches the content at install time from `${contentBaseUrl}/${source}` _(pinned to the release version)_.
+- `packages/registry/registry.json` — lean catalog metadata
+- `packages/registry/r/{itemId}/{variantId}.json` — per-variant install payloads
+
+They are regenerated and staged automatically by the pre-commit hook whenever anything under `packages/registry/registry/` or the core compiler changes.
+
+`registry.json` only holds metadata for individual items, so the index stays lean as the registry grows. Authoring manifests keep item-relative `source` paths. The build inlines those files into per-variant payloads under `r/`. Each compiled variant stores a relative `payload` of `r/{itemId}/{variantId}.json`. Consumers resolve that against the catalog location (`resolveRegistryPayload`). Hosting can be GitHub raw, S3, or a CDN as long as `registry.json` and `r/` stay side by side.
+
+Payload `content` is the authored template text. Conditions, inference, and any future mustache rendering run on the client after the payload is loaded — not at compile time.
+
+Third-party registries compile the same way — pass the authoring tree and output directory explicitly:
+
+```ts
+import { buildRegistry } from "@tuckshop/core";
+
+await buildRegistry({
+	sourceDir: path.join(packageRoot, "registry"),
+	outDir: packageRoot,
+});
+```
 
 ### Authoring Guidelines
 

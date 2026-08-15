@@ -51,9 +51,12 @@ function mapZodError(error: z.ZodError, label: string): Error {
 
 	// Custom schema checks encode their kind in the message prefix (see schema superRefine).
 	const prefix =
-		["duplicate:", "invalid_inference:"].find((candidate) =>
-			issue.message.startsWith(candidate),
-		) ?? "";
+		[
+			"duplicate_variant:",
+			"duplicate:",
+			"invalid_inference:",
+			"invalid_id:",
+		].find((candidate) => issue.message.startsWith(candidate)) ?? "";
 	const customValue = issue.message.slice(prefix.length);
 
 	// Narrow issue fields up front so the lookup tables below stay flat.
@@ -64,7 +67,9 @@ function mapZodError(error: z.ZodError, label: string): Error {
 
 	const customMessages: Record<string, string> = {
 		"duplicate:": `${label} has duplicate value "${customValue}".`,
+		"duplicate_variant:": `${label} has duplicate variant id "${customValue}".`,
 		"invalid_inference:": `${label} has invalid inference "${customValue}" (expected one of: ${Object.values(RegistryConditionInference).join(", ")}).`,
+		"invalid_id:": String.raw`${primaryText(fieldLabel)} must be a single path segment (no "/", "\", or "..").`,
 	};
 
 	// Object and record both surface as "must be an object"; primaryText highlights field names.
@@ -91,7 +96,8 @@ function mapZodError(error: z.ZodError, label: string): Error {
 	// Dispatch by issue code; unmapped codes fall through to the generic non-empty-string default.
 	const messages: Record<string, string | undefined> = {
 		unrecognized_keys: `${fieldLabel} has ${kind}: ${keys.join(", ")}.`,
-		custom: customMessages[prefix] ?? issue.message,
+		custom:
+			customMessages[prefix] ?? customMessages[issue.message] ?? issue.message,
 		invalid_type: invalidTypeMessages[expected],
 		too_small: tooSmallMessages[origin],
 	};
@@ -255,7 +261,6 @@ export function parseRegistryDocument(raw: unknown): Registry {
 	crossValidateItemTypes(items, types);
 
 	return {
-		contentBaseUrl: source.contentBaseUrl,
 		...(conditions ? { conditions } : {}),
 		types,
 		items,

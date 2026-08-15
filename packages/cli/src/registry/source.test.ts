@@ -2,15 +2,14 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RegistrySourceKind, resolveRegistrySource } from "./source";
 
-const mockIsRegularFileAsync = vi.fn<(candidate: string) => Promise<boolean>>();
+const mockIsFileAsync = vi.fn<(candidate: string) => Promise<boolean>>();
 
 vi.mock("@tuckshop/core", async () => {
 	const actual =
 		await vi.importActual<typeof import("@tuckshop/core")>("@tuckshop/core");
 	return {
 		...actual,
-		isRegularFileAsync: (candidate: string) =>
-			mockIsRegularFileAsync(candidate),
+		isFileAsync: (candidate: string) => mockIsFileAsync(candidate),
 	};
 });
 
@@ -36,7 +35,7 @@ describe("registry/source", () => {
 			kind: RegistrySourceKind.URL,
 			location: "https://example.com/registry.json",
 		});
-		expect(mockIsRegularFileAsync).not.toHaveBeenCalled();
+		expect(mockIsFileAsync).not.toHaveBeenCalled();
 	});
 
 	it("resolves an explicit file override relative to cwd", async () => {
@@ -53,7 +52,7 @@ describe("registry/source", () => {
 
 	it("loads the current working directory registry before bundled fallbacks", async () => {
 		const cwdRegistry = path.resolve("/workspace", "registry.json");
-		mockIsRegularFileAsync.mockImplementation(async (candidate: string) => {
+		mockIsFileAsync.mockImplementation(async (candidate: string) => {
 			return candidate === cwdRegistry;
 		});
 
@@ -69,7 +68,7 @@ describe("registry/source", () => {
 
 	it("falls back to the bundled registry.json when cwd has none", async () => {
 		const packagedRegistry = "/bundle/registry.json";
-		mockIsRegularFileAsync.mockImplementation(async (candidate: string) => {
+		mockIsFileAsync.mockImplementation(async (candidate: string) => {
 			return candidate === packagedRegistry;
 		});
 
@@ -85,7 +84,7 @@ describe("registry/source", () => {
 
 	it("uses fallback registry probe paths before failing", async () => {
 		const fallbackRegistry = "/workspace/packages/registry/registry.json";
-		mockIsRegularFileAsync.mockImplementation(async (candidate: string) => {
+		mockIsFileAsync.mockImplementation(async (candidate: string) => {
 			return candidate === fallbackRegistry;
 		});
 
@@ -160,7 +159,7 @@ describe("registry/source", () => {
 			"../../",
 			"registry.json",
 		);
-		mockIsRegularFileAsync.mockImplementation(async (candidate: string) => {
+		mockIsFileAsync.mockImplementation(async (candidate: string) => {
 			return candidate === defaultBundledPath;
 		});
 
@@ -171,7 +170,7 @@ describe("registry/source", () => {
 	});
 
 	it("throws a clear error when no registry source can be found", async () => {
-		mockIsRegularFileAsync.mockResolvedValue(false);
+		mockIsFileAsync.mockResolvedValue(false);
 
 		await expect(
 			resolveRegistrySource({

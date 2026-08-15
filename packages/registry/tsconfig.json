@@ -4,7 +4,7 @@
 		"rootDir": ".",
 		"outDir": "./dist"
 	},
-	"include": ["scripts/**/*.ts"],
+	"include": ["src/**/*.ts"],
 	"exclude": [
 		"node_modules",
 		"**/*.test.ts",

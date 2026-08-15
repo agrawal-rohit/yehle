@@ -22,10 +22,6 @@
 	"template": {
 		"label": "Templates",
 		"description": "Starter scaffolds for new projects."
-	},
-	"theme": {
-		"label": "Themes",
-		"description": "Design tokens and styling presets."
 	}
 }
 

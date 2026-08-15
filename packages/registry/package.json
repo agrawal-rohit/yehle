@@ -1,16 +1,15 @@
 {
 	"name": "@tuckshop/registry",
 	"version": "0.2.1",
-	"description": "Default tuckshop registry content.",
+	"description": "An opinionated tuckshop registry with built-in UI components, conventions, templates, and coding agent rules/skills.",
 	"license": "MIT",
 	"private": true,
 	"scripts": {
-		"build": "pnpm --filter @tuckshop/core run build && tsx ./scripts/build.ts",
+		"build": "pnpm --filter @tuckshop/core run build && tsx ./src/index.ts .",
 		"typecheck": "pnpm --filter @tuckshop/core run build && tsc -p tsconfig.json --noEmit",
 		"test": "vitest run --passWithNoTests"
 	},
 	"dependencies": {
-		"@tuckshop/core": "workspace:*",
-		"zod": "^4.4.3"
+		"@tuckshop/core": "workspace:*"
 	}
 }

@@ -69,7 +69,13 @@ function makeItem(
 				id: "default",
 				title: "Default",
 				description: "Default variant",
-				files: [],
+				payload: `r/${overrides.id}/default.json`,
+				files: [
+					{
+						source: "file.txt",
+						target: "file.txt",
+					},
+				],
 			},
 		],
 		...overrides,
@@ -81,7 +87,6 @@ function makeRegistry(
 	types: Registry["types"] = DEFAULT_TYPES,
 ): Registry {
 	return {
-		contentBaseUrl: "https://example.com",
 		types,
 		items,
 	};
@@ -181,13 +186,15 @@ describe("commands/list", () => {
 						id: "light",
 						title: "Light",
 						description: "Light",
-						files: [],
+						payload: "r/theme-a/light.json",
+						files: [{ source: "light.css", target: "light.css" }],
 					},
 					{
 						id: "dark",
 						title: "Dark",
 						description: "Dark",
-						files: [],
+						payload: "r/theme-a/dark.json",
+						files: [{ source: "dark.css", target: "dark.css" }],
 					},
 				],
 			}),

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { isRegularFileAsync } from "@tuckshop/core";
+import { isFileAsync } from "@tuckshop/core";
 
 /** How a resolved registry source was located. */
 export enum RegistrySourceKind {
@@ -53,7 +53,7 @@ async function resolveBuiltRegistryPath(
 	];
 
 	for (const candidate of candidates)
-		if (await isRegularFileAsync(candidate)) return candidate;
+		if (await isFileAsync(candidate)) return candidate;
 
 	return null;
 }

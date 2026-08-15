@@ -6,14 +6,17 @@ import {
 	parseRegistryItemTypes,
 	parseWithSchema,
 } from "./parse";
-import { RegistryConditionInference, registryItemSchema } from "./schema";
+import {
+	authoredRegistryItemSchema,
+	RegistryConditionInference,
+	registryPayloadSchema,
+} from "./schema";
 
 /** Minimal valid registry document for parseRegistryDocument tests. */
 function validDocument(
 	overrides: Record<string, unknown> = {},
 ): Record<string, unknown> {
 	return {
-		contentBaseUrl: "https://example.com/content/",
 		types: {
 			component: { label: "Components" },
 		},
@@ -28,6 +31,7 @@ function validDocument(
 						id: "react",
 						title: "React",
 						description: "React button",
+						payload: "r/button/react.json",
 						files: [
 							{
 								source: "registry/component/button/react/button.tsx",
@@ -46,7 +50,6 @@ describe("registry/parse", () => {
 	it("parses a valid registry document", () => {
 		const parsed = parseRegistryDocument(
 			validDocument({
-				contentBaseUrl: "https://example.com/content/",
 				conditions: {
 					language: {
 						label: "Language",
@@ -64,6 +67,7 @@ describe("registry/parse", () => {
 								id: "react",
 								title: "React",
 								description: "React button",
+								payload: "r/button/react.json",
 								when: { language: "typescript" },
 								files: [
 									{
@@ -78,21 +82,10 @@ describe("registry/parse", () => {
 			}),
 		);
 
-		expect(parsed.contentBaseUrl).toBe("https://example.com/content");
 		expect(parsed.items.button.type).toBe("component");
 		expect(parsed.types).toEqual({
 			component: { label: "Components" },
 		});
-	});
-
-	it("strips all trailing slashes from contentBaseUrl", () => {
-		expect(
-			parseRegistryDocument(
-				validDocument({
-					contentBaseUrl: "https://example.com/content///",
-				}),
-			).contentBaseUrl,
-		).toBe("https://example.com/content");
 	});
 
 	it("rejects malformed registry items", () => {
@@ -118,7 +111,7 @@ describe("registry/parse", () => {
 	it("accepts unknown custom item types", () => {
 		expect(
 			parseWithSchema(
-				registryItemSchema,
+				authoredRegistryItemSchema,
 				{
 					id: "legacy-item",
 					title: "Legacy Item",
@@ -164,6 +157,7 @@ describe("registry/parse", () => {
 										id: "react",
 										title: "React",
 										description: "React button",
+										payload: "r/button/react.json",
 										files: [
 											{
 												source: "a.tsx",
@@ -194,6 +188,7 @@ describe("registry/parse", () => {
 										id: "react",
 										title: "React",
 										description: "React button",
+										payload: "r/button/react.json",
 										extra: "nope",
 										files: [
 											{
@@ -301,7 +296,6 @@ describe("registry/parse", () => {
 	it("round-trips types through parseRegistryDocument", () => {
 		const parsed = parseRegistryDocument(
 			validDocument({
-				contentBaseUrl: "https://example.com/content",
 				types: {
 					component: {
 						label: "Components",
@@ -322,7 +316,6 @@ describe("registry/parse", () => {
 	it("rejects documents with items but no types", () => {
 		expect(() =>
 			parseRegistryDocument({
-				contentBaseUrl: "https://example.com/content",
 				items: {
 					button: {
 						id: "button",
@@ -334,6 +327,7 @@ describe("registry/parse", () => {
 								id: "react",
 								title: "React",
 								description: "React button",
+								payload: "r/button/react.json",
 								files: [
 									{
 										source: "registry/component/button/react/button.tsx",
@@ -405,6 +399,7 @@ describe("registry/parse", () => {
 									id: "react",
 									title: "React",
 									description: "React button",
+									payload: "r/button/react.json",
 									files: [],
 								},
 							],
@@ -533,6 +528,7 @@ describe("registry/parse", () => {
 										id: "react",
 										title: "React",
 										description: "React button",
+										payload: "r/button/react.json",
 										when: { language: "typescript" },
 										files: [{ source: "a.tsx", target: "a.tsx" }],
 									},
@@ -567,6 +563,7 @@ describe("registry/parse", () => {
 										id: "react",
 										title: "React",
 										description: "React button",
+										payload: "r/button/react.json",
 										when: { language: "javascript" },
 										files: [{ source: "a.tsx", target: "a.tsx" }],
 									},
@@ -618,6 +615,54 @@ describe("registry/parse", () => {
 			expect(() =>
 				parseWithSchema(z.string().email(), "not-an-email", "Email"),
 			).toThrow("Email must be a non-empty string.");
+		});
+	});
+
+	describe("registry payload parsing", () => {
+		it("parses a payload with inlined content", () => {
+			expect(
+				parseWithSchema(
+					registryPayloadSchema,
+					{
+						id: "button",
+						variantId: "react",
+						files: [
+							{
+								source: "a.txt",
+								target: "a.txt",
+								content: "hello",
+							},
+						],
+					},
+					"Registry payload",
+				),
+			).toEqual({
+				id: "button",
+				variantId: "react",
+				files: [
+					{
+						source: "a.txt",
+						target: "a.txt",
+						content: "hello",
+					},
+				],
+			});
+		});
+
+		it("rejects sources without content", () => {
+			expect(() =>
+				parseWithSchema(
+					registryPayloadSchema,
+					{
+						id: "button",
+						variantId: "react",
+						files: [{ source: "a.txt", target: "a.txt" }],
+					},
+					"Registry payload",
+				),
+			).toThrow(
+				"Registry payload.files[0].content must be a non-empty string.",
+			);
 		});
 	});
 

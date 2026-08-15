@@ -81,7 +81,6 @@ function createMockApp() {
 
 describe("commands/index", () => {
 	const registry = {
-		contentBaseUrl: "https://example.com",
 		types: {
 			component: { label: "Components" },
 			theme: { label: "Themes" },
