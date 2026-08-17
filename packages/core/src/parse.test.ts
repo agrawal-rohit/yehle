@@ -7,10 +7,36 @@ import {
 	parseWithSchema,
 } from "./parse";
 import {
+	catalogItemSchema,
 	RegistryConditionInference,
 	registryItemSchema,
 	registryPayloadSchema,
 } from "./schema";
+
+/** Minimal valid catalog item for parseRegistryDocument tests. */
+function validCatalogItem(
+	overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+	return {
+		title: "Button",
+		description: "A button",
+		type: "component",
+		variants: [validCatalogVariant()],
+		...overrides,
+	};
+}
+
+/** Minimal valid catalog variant. */
+function validCatalogVariant(
+	overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+	return {
+		id: "react",
+		title: "React",
+		source: "r/button/react.json",
+		...overrides,
+	};
+}
 
 /** Minimal valid registry document for parseRegistryDocument tests. */
 function validDocument(
@@ -21,25 +47,7 @@ function validDocument(
 			component: { label: "Components" },
 		},
 		items: {
-			button: {
-				id: "button",
-				title: "Button",
-				description: "A button",
-				type: "component",
-				variants: [
-					{
-						id: "react",
-						title: "React",
-						description: "React button",
-						files: [
-							{
-								source: "r/button/react.json",
-								target: "src/components/ui/button.tsx",
-							},
-						],
-					},
-				],
-			},
+			button: validCatalogItem(),
 		},
 		...overrides,
 	};
@@ -56,26 +64,11 @@ describe("registry/parse", () => {
 					},
 				},
 				items: {
-					button: {
-						id: "button",
-						title: "Button",
-						description: "A button",
-						type: "component",
+					button: validCatalogItem({
 						variants: [
-							{
-								id: "react",
-								title: "React",
-								description: "React button",
-								when: { language: "typescript" },
-								files: [
-									{
-										source: "r/button/react.json",
-										target: "src/components/ui/button.tsx",
-									},
-								],
-							},
+							validCatalogVariant({ when: { language: "typescript" } }),
 						],
-					},
+					}),
 				},
 			}),
 		);
@@ -86,58 +79,72 @@ describe("registry/parse", () => {
 		});
 	});
 
-	it("rejects items with neither files nor variants", () => {
+	it("rejects items with neither source nor variants", () => {
 		expect(() =>
 			parseRegistryDocument(
 				validDocument({
 					items: {
-						button: {
-							id: "button",
-							title: "Button",
-							description: "A button",
-							type: "component",
-							variants: [],
-						},
+						button: validCatalogItem({ variants: [] }),
 					},
 				}),
 			),
 		).toThrow(
-			'Registry items["button"] must declare files or at least one variant.',
+			'Registry items["button"] must declare source or at least one variant.',
 		);
 	});
 
-	it("accepts a variant-less item with top-level files", () => {
+	it("rejects items that declare source together with variants", () => {
+		expect(() =>
+			parseRegistryDocument(
+				validDocument({
+					items: {
+						button: validCatalogItem({ source: "r/button.json" }),
+					},
+				}),
+			),
+		).toThrow(
+			'Registry items["button"] cannot declare source together with variants.',
+		);
+	});
+
+	it("accepts a variant-less item with a payload source", () => {
 		expect(
 			parseRegistryDocument(
 				validDocument({
 					items: {
-						"assign-owner": {
-							id: "assign-owner",
+						"assign-owner": validCatalogItem({
 							title: "Assign Owner",
 							description: "Assigns the owner",
-							type: "component",
-							files: [
-								{
-									source: "r/assign-owner.json",
-									target: ".github/workflows/assign-owner.yml",
-								},
-							],
-						},
+							variants: undefined,
+							source: "r/assign-owner.json",
+						}),
 					},
 				}),
 			).items["assign-owner"],
 		).toEqual({
-			id: "assign-owner",
 			title: "Assign Owner",
 			description: "Assigns the owner",
 			type: "component",
-			files: [
-				{
-					source: "r/assign-owner.json",
-					target: ".github/workflows/assign-owner.yml",
-				},
-			],
+			source: "r/assign-owner.json",
 		});
+	});
+
+	it("omits item id from catalog entries", () => {
+		expect(
+			parseRegistryDocument(validDocument()).items.button,
+		).not.toHaveProperty("id");
+	});
+
+	it("rejects a catalog item that declares id", () => {
+		expect(() =>
+			parseRegistryDocument(
+				validDocument({
+					items: {
+						button: validCatalogItem({ id: "button" }),
+					},
+				}),
+			),
+		).toThrow('Registry items["button"] has an unknown key: id.');
 	});
 
 	it("accepts unknown custom item types", () => {
@@ -166,6 +173,27 @@ describe("registry/parse", () => {
 		});
 	});
 
+	it("parses catalog items with catalogItemSchema", () => {
+		expect(
+			parseWithSchema(
+				catalogItemSchema,
+				validCatalogItem(),
+				'Registry items["button"]',
+			),
+		).toEqual({
+			title: "Button",
+			description: "A button",
+			type: "component",
+			variants: [
+				{
+					id: "react",
+					title: "React",
+					source: "r/button/react.json",
+				},
+			],
+		});
+	});
+
 	describe("unknown keys", () => {
 		it("rejects an unknown top-level key", () => {
 			expect(() =>
@@ -178,26 +206,7 @@ describe("registry/parse", () => {
 				parseRegistryDocument(
 					validDocument({
 						items: {
-							button: {
-								id: "button",
-								title: "Button",
-								description: "A button",
-								type: "component",
-								typo: true,
-								variants: [
-									{
-										id: "react",
-										title: "React",
-										description: "React button",
-										files: [
-											{
-												source: "r/button/react.json",
-												target: "a.tsx",
-											},
-										],
-									},
-								],
-							},
+							button: validCatalogItem({ typo: true }),
 						},
 					}),
 				),
@@ -209,26 +218,9 @@ describe("registry/parse", () => {
 				parseRegistryDocument(
 					validDocument({
 						items: {
-							button: {
-								id: "button",
-								title: "Button",
-								description: "A button",
-								type: "component",
-								variants: [
-									{
-										id: "react",
-										title: "React",
-										description: "React button",
-										extra: "nope",
-										files: [
-											{
-												source: "r/button/react.json",
-												target: "a.tsx",
-											},
-										],
-									},
-								],
-							},
+							button: validCatalogItem({
+								variants: [validCatalogVariant({ extra: "nope" })],
+							}),
 						},
 					}),
 				),
@@ -347,25 +339,7 @@ describe("registry/parse", () => {
 		expect(() =>
 			parseRegistryDocument({
 				items: {
-					button: {
-						id: "button",
-						title: "Button",
-						description: "A button",
-						type: "component",
-						variants: [
-							{
-								id: "react",
-								title: "React",
-								description: "React button",
-								files: [
-									{
-										source: "r/button/react.json",
-										target: "src/components/ui/button.tsx",
-									},
-								],
-							},
-						],
-					},
+					button: validCatalogItem(),
 				},
 			}),
 		).toThrow("Registry types must be declared.");
@@ -400,43 +374,31 @@ describe("registry/parse", () => {
 			parseRegistryDocument(
 				validDocument({
 					items: {
-						button: {
-							id: "button",
-							title: "Button",
-							description: "A button",
-							type: "component",
-							variants: "react",
-						},
+						button: validCatalogItem({ variants: "react" }),
 					},
 				}),
 			),
 		).toThrow('Registry items["button"].variants must be an array.');
 	});
 
-	it("rejects an empty variant files list", () => {
+	it("rejects a variant without a payload source", () => {
 		expect(() =>
 			parseRegistryDocument(
 				validDocument({
 					items: {
-						button: {
-							id: "button",
-							title: "Button",
-							description: "A button",
-							type: "component",
+						button: validCatalogItem({
 							variants: [
 								{
 									id: "react",
 									title: "React",
-									description: "React button",
-									files: [],
 								},
 							],
-						},
+						}),
 					},
 				}),
 			),
 		).toThrow(
-			'Registry items["button"].variants[0].files must declare at least one file.',
+			'Registry items["button"].variants[0].source must be a non-empty string.',
 		);
 	});
 
@@ -546,26 +508,11 @@ describe("registry/parse", () => {
 				parseRegistryDocument(
 					validDocument({
 						items: {
-							button: {
-								id: "button",
-								title: "Button",
-								description: "A button",
-								type: "component",
+							button: validCatalogItem({
 								variants: [
-									{
-										id: "react",
-										title: "React",
-										description: "React button",
-										when: { language: "typescript" },
-										files: [
-											{
-												source: "r/button/react.json",
-												target: "a.tsx",
-											},
-										],
-									},
+									validCatalogVariant({ when: { language: "typescript" } }),
 								],
-							},
+							}),
 						},
 					}),
 				),
@@ -585,26 +532,11 @@ describe("registry/parse", () => {
 							},
 						},
 						items: {
-							button: {
-								id: "button",
-								title: "Button",
-								description: "A button",
-								type: "component",
+							button: validCatalogItem({
 								variants: [
-									{
-										id: "react",
-										title: "React",
-										description: "React button",
-										when: { language: "javascript" },
-										files: [
-											{
-												source: "r/button/react.json",
-												target: "a.tsx",
-											},
-										],
-									},
+									validCatalogVariant({ when: { language: "javascript" } }),
 								],
-							},
+							}),
 						},
 					}),
 				),
@@ -618,19 +550,13 @@ describe("registry/parse", () => {
 				parseRegistryDocument(
 					validDocument({
 						items: {
-							"assign-owner": {
-								id: "assign-owner",
+							"assign-owner": validCatalogItem({
 								title: "Assign Owner",
 								description: "Assigns the owner",
-								type: "component",
 								when: { language: "typescript" },
-								files: [
-									{
-										source: "r/assign-owner.json",
-										target: "a.yml",
-									},
-								],
-							},
+								variants: undefined,
+								source: "r/assign-owner.json",
+							}),
 						},
 					}),
 				),
@@ -650,19 +576,13 @@ describe("registry/parse", () => {
 							},
 						},
 						items: {
-							"assign-owner": {
-								id: "assign-owner",
+							"assign-owner": validCatalogItem({
 								title: "Assign Owner",
 								description: "Assigns the owner",
-								type: "component",
 								when: { language: "javascript" },
-								files: [
-									{
-										source: "r/assign-owner.json",
-										target: "a.yml",
-									},
-								],
-							},
+								variants: undefined,
+								source: "r/assign-owner.json",
+							}),
 						},
 					}),
 				),
@@ -718,8 +638,6 @@ describe("registry/parse", () => {
 				parseWithSchema(
 					registryPayloadSchema,
 					{
-						id: "button",
-						variantId: "react",
 						files: [
 							{
 								target: "a.txt",
@@ -730,8 +648,6 @@ describe("registry/parse", () => {
 					"Registry payload",
 				),
 			).toEqual({
-				id: "button",
-				variantId: "react",
 				files: [
 					{
 						target: "a.txt",
@@ -746,8 +662,6 @@ describe("registry/parse", () => {
 				parseWithSchema(
 					registryPayloadSchema,
 					{
-						id: "button",
-						variantId: "react",
 						files: [{ target: "a.txt" }],
 					},
 					"Registry payload",

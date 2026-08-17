@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ZodType } from "zod";
 import {
+	catalogItemSchema,
+	catalogVariantSchema,
 	RegistryConditionInference,
 	registryConditionSchema,
 	registryConditionValueSchema,
@@ -144,8 +146,6 @@ describe("core/schema", () => {
 		it("accepts a payload with files", () => {
 			expect(
 				registryPayloadSchema.parse({
-					id: "button",
-					variantId: "react",
 					files: [
 						{
 							target: "a.txt",
@@ -153,29 +153,50 @@ describe("core/schema", () => {
 						},
 					],
 				}),
-			).toMatchObject({ id: "button", variantId: "react" });
-		});
-
-		it("omits absent variantId for variant-less payloads", () => {
-			expect(
-				registryPayloadSchema.parse({
-					id: "assign-owner",
-					files: [{ target: "a.yml", content: "name: a\n" }],
-				}),
 			).toEqual({
-				id: "assign-owner",
-				files: [{ target: "a.yml", content: "name: a\n" }],
+				files: [
+					{
+						target: "a.txt",
+						content: "hello",
+					},
+				],
 			});
 		});
 
-		it("rejects unsafe ids", () => {
+		it("rejects leftover identity fields", () => {
 			expect(
 				registryPayloadSchema.safeParse({
-					id: "a/b",
-					variantId: "react",
-					files: [{ target: "a.txt", content: "x" }],
+					id: "button",
+					files: [{ target: "a.txt", content: "hello" }],
 				}).success,
 			).toBe(false);
+			expect(
+				registryPayloadSchema.safeParse({
+					variantId: "react",
+					files: [{ target: "a.txt", content: "hello" }],
+				}).success,
+			).toBe(false);
+		});
+
+		it("keeps non-empty npm dependency lists and omits empty ones", () => {
+			expect(
+				registryPayloadSchema.parse({
+					files: [{ target: "a.txt", content: "x" }],
+					dependencies: ["react"],
+					devDependencies: ["typescript"],
+				}),
+			).toMatchObject({
+				dependencies: ["react"],
+				devDependencies: ["typescript"],
+			});
+
+			expect(
+				registryPayloadSchema.parse({
+					files: [{ target: "a.txt", content: "x" }],
+					dependencies: [],
+					devDependencies: [],
+				}),
+			).not.toHaveProperty("dependencies");
 		});
 	});
 
@@ -516,6 +537,152 @@ describe("core/schema", () => {
 			).toBe(false);
 			expect(
 				registryItemSchema.safeParse(validItem({ typo: true })).success,
+			).toBe(false);
+		});
+	});
+
+	describe("catalogVariantSchema", () => {
+		it("accepts an index variant with a payload source", () => {
+			expect(
+				catalogVariantSchema.parse({
+					id: "react",
+					title: "React",
+					source: "r/button/react.json",
+				}),
+			).toEqual({
+				id: "react",
+				title: "React",
+				source: "r/button/react.json",
+			});
+		});
+
+		it("keeps when and registryDependencies and rejects files", () => {
+			expect(
+				catalogVariantSchema.parse({
+					id: "react",
+					title: "React",
+					source: "r/button/react.json",
+					when: { language: "typescript" },
+					registryDependencies: ["utils"],
+				}),
+			).toMatchObject({
+				when: { language: "typescript" },
+				registryDependencies: ["utils"],
+			});
+
+			expect(
+				catalogVariantSchema.safeParse({
+					id: "react",
+					title: "React",
+					source: "r/button/react.json",
+					files: [{ source: "a.txt", target: "a.txt" }],
+				}).success,
+			).toBe(false);
+		});
+	});
+
+	describe("catalogItemSchema", () => {
+		it("accepts a variant index without an item id", () => {
+			expect(
+				catalogItemSchema.parse({
+					title: "Button",
+					description: "A button",
+					type: "component",
+					variants: [
+						{
+							id: "react",
+							title: "React",
+							source: "r/button/react.json",
+						},
+					],
+				}),
+			).toEqual({
+				title: "Button",
+				description: "A button",
+				type: "component",
+				variants: [
+					{
+						id: "react",
+						title: "React",
+						source: "r/button/react.json",
+					},
+				],
+			});
+		});
+
+		it("accepts a variant-less item with a payload source", () => {
+			expect(
+				catalogItemSchema.parse({
+					title: "Assign Owner",
+					description: "Assigns the owner",
+					type: "workflow",
+					source: "r/assign-owner.json",
+				}),
+			).toEqual({
+				title: "Assign Owner",
+				description: "Assigns the owner",
+				type: "workflow",
+				source: "r/assign-owner.json",
+			});
+		});
+
+		it("rejects an item with neither source nor variants", () => {
+			expect(
+				rejectMessage(catalogItemSchema, {
+					title: "Button",
+					description: "A button",
+					type: "component",
+				}),
+			).toBe("missing_source_or_variants");
+		});
+
+		it("rejects an item that declares source together with variants", () => {
+			expect(
+				rejectMessage(catalogItemSchema, {
+					title: "Button",
+					description: "A button",
+					type: "component",
+					source: "r/button.json",
+					variants: [
+						{
+							id: "react",
+							title: "React",
+							source: "r/button/react.json",
+						},
+					],
+				}),
+			).toBe("source_with_variants");
+		});
+
+		it("rejects duplicate variant ids and unknown keys including id", () => {
+			expect(
+				rejectMessage(catalogItemSchema, {
+					title: "Button",
+					description: "A button",
+					type: "component",
+					variants: [
+						{
+							id: "default",
+							title: "One",
+							source: "r/button/default.json",
+						},
+						{
+							id: "default",
+							title: "Two",
+							source: "r/button/default.json",
+						},
+					],
+				}),
+			).toBe("duplicate_variant:default");
+
+			expect(
+				catalogItemSchema.safeParse({
+					id: "button",
+					title: "Button",
+					description: "A button",
+					type: "component",
+					source: "r/button.json",
+				}).success,
 			).toBe(false);
 		});
 	});

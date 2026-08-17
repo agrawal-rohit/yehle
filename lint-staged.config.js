@@ -7,7 +7,6 @@
 function rebuildRegistryCommands() {
 	return [
 		"pnpm run build:registry",
-		"pnpm exec biome check --write packages/registry/registry.json",
 		"git add packages/registry/registry.json",
 	];
 }

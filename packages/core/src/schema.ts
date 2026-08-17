@@ -61,9 +61,9 @@ function optionalDescription() {
 		);
 }
 
-/** File metadata shared by authoring manifests and the compiled catalog. */
+/** File metadata in an authoring `registry-item.json`. */
 export const registryFileSchema = z.strictObject({
-	/** Authoring path, or compiled payload URI the CLI resolves against the catalog. */
+	/** Path to the file in the item folder. */
 	source: nonEmptyString,
 	/** Destination path in the consuming project. */
 	target: nonEmptyString,
@@ -85,12 +85,12 @@ export type RegistryPayloadFile = z.infer<typeof registryPayloadFileSchema>;
 /** Install payload for one item or variant (templates, not rendered output). */
 export const registryPayloadSchema = z
 	.strictObject({
-		/** Registry item id. */
-		id: safePathSegment,
-		/** Variant id within the item; omitted for variant-less items. */
-		variantId: safePathSegment.optional(),
 		/** Files to install (item-level files first when folded into a variant). */
 		files: z.array(registryPayloadFileSchema).min(1),
+		/** Dependencies added when this item is installed. */
+		dependencies: optionalNonEmptyStringArray(),
+		/** Dev dependencies added when this item is installed. */
+		devDependencies: optionalNonEmptyStringArray(),
 	})
 	.transform(omitUndefined);
 export type RegistryPayload = z.infer<typeof registryPayloadSchema>;
@@ -186,7 +186,29 @@ export const registryItemTypeSchema = z
 	.transform(omitUndefined);
 export type RegistryItemTypeDefinition = z.infer<typeof registryItemTypeSchema>;
 
-/** Variant from `registry-item.json` or compiled `registry.json`. */
+/**
+ * Reject duplicate variant ids on an authored or catalog item.
+ * @param variants - Variant list that may contain duplicate ids.
+ * @param context - Zod refinement context.
+ */
+function rejectDuplicateVariantIds(
+	variants: Array<{ id: string }> | undefined,
+	context: z.RefinementCtx,
+): void {
+	const seenVariantIds = new Set<string>();
+	for (const variant of variants ?? []) {
+		if (seenVariantIds.has(variant.id)) {
+			context.addIssue({
+				code: "custom",
+				message: `duplicate_variant:${variant.id}`,
+			});
+			return;
+		}
+		seenVariantIds.add(variant.id);
+	}
+}
+
+/** Variant from an authoring `registry-item.json`. */
 export const registryVariantSchema = z
 	.strictObject({
 		/** Unique variant id within the item. */
@@ -207,9 +229,9 @@ export const registryVariantSchema = z
 		registryDependencies: optionalNonEmptyStringArray(),
 	})
 	.transform(omitUndefined);
-export type RegistryVariant = z.infer<typeof registryVariantSchema>;
+export type AuthoredRegistryVariant = z.infer<typeof registryVariantSchema>;
 
-/** Item from `registry-item.json` or compiled `registry.json`. */
+/** Item from an authoring `registry-item.json`. */
 export const registryItemSchema = z
 	.strictObject({
 		/** Unique item id. */
@@ -220,7 +242,7 @@ export const registryItemSchema = z
 		description: nonEmptyString,
 		/** Item type key declared in `types`. */
 		type: nonEmptyString,
-		/** Install files for a variant-less item, or files shared by every variant */
+		/** Install files for a variant-less item, or files shared by every variant. */
 		files: z.array(registryFileSchema).min(1).optional(),
 		/** Condition matcher for a variant-less item. */
 		when: registryWhenSchema,
@@ -247,20 +269,71 @@ export const registryItemSchema = z
 			return;
 		}
 
-		const seenVariantIds = new Set<string>();
-		for (const variant of item.variants ?? []) {
-			if (seenVariantIds.has(variant.id)) {
-				context.addIssue({
-					code: "custom",
-					message: `duplicate_variant:${variant.id}`,
-				});
-				return;
-			}
-			seenVariantIds.add(variant.id);
-		}
+		rejectDuplicateVariantIds(item.variants, context);
 	})
 	.transform(omitUndefined);
-export type RegistryItem = z.infer<typeof registryItemSchema>;
+export type AuthoredRegistryItem = z.infer<typeof registryItemSchema>;
+
+/** Variant index entry in compiled `registry.json`. */
+export const catalogVariantSchema = z
+	.strictObject({
+		/** Unique variant id within the item. */
+		id: safePathSegment,
+		/** Display title. */
+		title: nonEmptyString,
+		/** Payload URI resolved against the catalog location. */
+		source: nonEmptyString,
+		/** Condition matcher that selects this variant. */
+		when: registryWhenSchema,
+		/** Other registry items this variant depends on. */
+		registryDependencies: optionalNonEmptyStringArray(),
+	})
+	.transform(omitUndefined);
+export type RegistryVariant = z.infer<typeof catalogVariantSchema>;
+
+/** Item index entry in compiled `registry.json`. Identity is the `items` map key. */
+export const catalogItemSchema = z
+	.strictObject({
+		/** Display title. */
+		title: nonEmptyString,
+		/** Short description of the item. */
+		description: nonEmptyString,
+		/** Item type key declared in `types`. */
+		type: nonEmptyString,
+		/** Payload URI for a variant-less item, resolved against the catalog location. */
+		source: nonEmptyString.optional(),
+		/** Condition matcher for a variant-less item. */
+		when: registryWhenSchema,
+		/** Other registry items this item depends on. */
+		registryDependencies: optionalNonEmptyStringArray(),
+		/** Installable slices of this item; omit for a single top-level configuration. */
+		variants: z
+			.array(catalogVariantSchema)
+			.optional()
+			.transform((value) => (value && value.length > 0 ? value : undefined)),
+	})
+	.superRefine((item, context) => {
+		const hasVariants = (item.variants?.length ?? 0) > 0;
+		const hasSource = Boolean(item.source);
+		if (!hasVariants && !hasSource) {
+			context.addIssue({
+				code: "custom",
+				message: "missing_source_or_variants",
+			});
+			return;
+		}
+		if (hasVariants && hasSource) {
+			context.addIssue({
+				code: "custom",
+				message: "source_with_variants",
+			});
+			return;
+		}
+
+		rejectDuplicateVariantIds(item.variants, context);
+	})
+	.transform(omitUndefined);
+export type RegistryItem = z.infer<typeof catalogItemSchema>;
 
 /**
  * Top-level registry document fields validated before nested parsing.

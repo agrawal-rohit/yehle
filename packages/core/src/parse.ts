@@ -1,6 +1,7 @@
 import { type ZodType, z } from "zod";
 import { primaryText } from "./labels";
 import {
+	catalogItemSchema,
 	type Registry,
 	type RegistryCondition,
 	RegistryConditionInference,
@@ -8,7 +9,6 @@ import {
 	type RegistryItemTypeDefinition,
 	registryConditionSchema,
 	registryDocumentFieldsSchema,
-	registryItemSchema,
 	registryItemTypeSchema,
 } from "./schema";
 
@@ -57,9 +57,13 @@ function mapZodError(error: z.ZodError, label: string): Error {
 			"invalid_inference:",
 			"invalid_id:",
 			"missing_files_or_variants",
+			"missing_source_or_variants",
+			"source_with_variants",
 		].find((candidate) => issue.message.startsWith(candidate)) ?? "";
 	const customValue =
-		prefix === "missing_files_or_variants"
+		prefix === "missing_files_or_variants" ||
+		prefix === "missing_source_or_variants" ||
+		prefix === "source_with_variants"
 			? ""
 			: issue.message.slice(prefix.length);
 
@@ -75,6 +79,8 @@ function mapZodError(error: z.ZodError, label: string): Error {
 		"invalid_inference:": `${label} has invalid inference "${customValue}" (expected one of: ${Object.values(RegistryConditionInference).join(", ")}).`,
 		"invalid_id:": String.raw`${primaryText(fieldLabel)} must be a single path segment (no "/", "\", or "..").`,
 		missing_files_or_variants: `${label} must declare files or at least one variant.`,
+		missing_source_or_variants: `${label} must declare source or at least one variant.`,
+		source_with_variants: `${label} cannot declare source together with variants.`,
 	};
 
 	// Object and record both surface as "must be an object"; primaryText highlights field names.
@@ -202,10 +208,10 @@ function crossValidateWhen(
 	items: Record<string, RegistryItem>,
 	conditions: Record<string, RegistryCondition> | undefined,
 ): void {
-	for (const item of Object.values(items)) {
-		validateWhenEntries(item.id, item.when, conditions);
+	for (const [itemId, item] of Object.entries(items)) {
+		validateWhenEntries(itemId, item.when, conditions);
 		for (const variant of item.variants ?? []) {
-			validateWhenEntries(item.id, variant.when, conditions, variant.id);
+			validateWhenEntries(itemId, variant.when, conditions, variant.id);
 		}
 	}
 }
@@ -253,10 +259,10 @@ function crossValidateItemTypes(
 	items: Record<string, RegistryItem>,
 	types: Record<string, RegistryItemTypeDefinition>,
 ): void {
-	for (const item of Object.values(items)) {
+	for (const [itemId, item] of Object.entries(items)) {
 		if (!(item.type in types))
 			throw new Error(
-				`Registry item "${item.id}" has undeclared type "${item.type}".`,
+				`Registry item "${itemId}" has undeclared type "${item.type}".`,
 			);
 	}
 }
@@ -273,7 +279,7 @@ export function parseRegistryDocument(raw: unknown): Registry {
 	const items: Record<string, RegistryItem> = {};
 	for (const [key, item] of Object.entries(source.items)) {
 		items[key] = parseWithSchema(
-			registryItemSchema,
+			catalogItemSchema,
 			item,
 			`Registry items["${key}"]`,
 		);

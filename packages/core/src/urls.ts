@@ -30,12 +30,12 @@ export function publishedRegistryUrl(version: string): string {
 }
 
 /**
- * Resolve a catalog file `source` against the catalog location.
+ * Resolve a catalog item or variant `source` against the catalog location.
  * Absolute http(s) sources pass through unchanged. Relative sources use
  * WHATWG URL resolution against http(s) catalogs, or a traversal-safe join
  * under the catalog directory for local file paths.
  * @param catalogLocation - Absolute path or http(s) URL of `registry.json`.
- * @param source - Opaque URI from a compiled catalog file `source`.
+ * @param source - Opaque URI from a compiled catalog item or variant `source`.
  * @returns Absolute http(s) URL or absolute local filesystem path.
  * @throws Error when a local relative source escapes the catalog directory.
  */

@@ -19,10 +19,10 @@ await buildRegistry({
 
 That writes a fixed artefact layout under `outDir` (authors only control the `sourceDir` tree):
 
-- `registry.json` — lean catalog metadata (each compiled file `source` is a relative payload URI of `r/{itemId}.json` or `r/{itemId}/{variantId}.json`)
-- `r/{itemId}.json` or `r/{itemId}/{variantId}.json` — install payloads with `target` and inlined template `content`
+- `registry.json` — compact catalog index (identity is the `items` map key; each item or variant has a `source` payload URI of `r/{itemId}.json` or `r/{itemId}/{variantId}.json`)
+- `r/{itemId}.json` or `r/{itemId}/{variantId}.json` — compact install payloads with `target`, inlined template `content`, and npm dependencies
 
-Consumers resolve those catalog file `source` values against the catalog location (`resolveRegistryPayload`).
+Consumers resolve those catalog `source` values against the catalog location (`resolveRegistryPayload`).
 
 ## Validate artefacts
 

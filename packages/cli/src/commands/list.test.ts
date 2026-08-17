@@ -62,22 +62,17 @@ function makeItem(
 		title: string;
 	},
 ): Registry["items"][string] {
+	const { id, ...rest } = overrides;
 	return {
 		description: `${overrides.title} description`,
 		variants: [
 			{
 				id: "default",
 				title: "Default",
-				description: "Default variant",
-				files: [
-					{
-						source: `r/${overrides.id}/default.json`,
-						target: "file.txt",
-					},
-				],
+				source: `r/${id}/default.json`,
 			},
 		],
-		...overrides,
+		...rest,
 	};
 }
 
@@ -184,24 +179,12 @@ describe("commands/list", () => {
 					{
 						id: "light",
 						title: "Light",
-						description: "Light",
-						files: [
-							{
-								source: "r/theme-a/light.json",
-								target: "light.css",
-							},
-						],
+						source: "r/theme-a/light.json",
 					},
 					{
 						id: "dark",
 						title: "Dark",
-						description: "Dark",
-						files: [
-							{
-								source: "r/theme-a/dark.json",
-								target: "dark.css",
-							},
-						],
+						source: "r/theme-a/dark.json",
 					},
 				],
 			}),
@@ -237,12 +220,7 @@ describe("commands/list", () => {
 				title: "Alpha Theme",
 				type: "theme",
 				variants: undefined,
-				files: [
-					{
-						source: "r/theme-a.json",
-						target: "theme.css",
-					},
-				],
+				source: "r/theme-a.json",
 			}),
 		});
 

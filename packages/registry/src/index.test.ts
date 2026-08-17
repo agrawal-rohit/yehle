@@ -129,11 +129,13 @@ describe("registry startCli", () => {
 		const written = JSON.parse(
 			fs.readFileSync(path.join(tempDir, "registry.json"), "utf8"),
 		) as Registry;
-		expect(written.items.button.variants?.[0].files[0]).toEqual({
+		expect(written.items.button.variants?.[0]).toEqual({
+			id: "default",
+			title: "Default",
 			source: "r/button/default.json",
-			target: "a.txt",
 		});
-		expect(written.items.button.variants?.[0]).not.toHaveProperty("payload");
+		expect(written.items.button).not.toHaveProperty("id");
+		expect(written.items.button.variants?.[0]).not.toHaveProperty("files");
 		expect(
 			fs.existsSync(path.join(tempDir, "r", "button", "default.json")),
 		).toBe(true);

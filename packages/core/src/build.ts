@@ -9,12 +9,12 @@ import {
 } from "./fs";
 import { parseRegistryDocument, parseWithSchema } from "./parse";
 import {
+	type AuthoredRegistryItem,
+	type AuthoredRegistryVariant,
 	type Registry,
 	type RegistryFile,
-	type RegistryItem,
 	type RegistryPayload,
 	type RegistryPayloadFile,
-	type RegistryVariant,
 	registryItemSchema,
 } from "./schema";
 
@@ -99,7 +99,7 @@ export async function buildRegistry(
 	// Collect authored registry items
 	const authoredItems: Array<{
 		itemDir: string;
-		item: RegistryItem;
+		item: AuthoredRegistryItem;
 	}> = [];
 	const seenItemIds = new Set<string>();
 	for (const itemDir of await collectItemDirs(sourceDir)) {
@@ -120,8 +120,8 @@ export async function buildRegistry(
 	// Plan the output payloads: one per variant, or a single item-level payload.
 	const plannedPayloads: Array<{
 		itemDir: string;
-		item: RegistryItem;
-		variant?: RegistryVariant;
+		item: AuthoredRegistryItem;
+		variant?: AuthoredRegistryVariant;
 		relativeFile: string;
 		absoluteFile: string;
 	}> = [];
@@ -152,12 +152,21 @@ export async function buildRegistry(
 	// Remove the existing payloads directory
 	await removeAsync(payloadsDir);
 
-	// Build the output registry catalog items
-	const catalogItems: Record<string, unknown> = {};
+	// Write one payload per variant, or a single item-level payload.
 	for (const { itemDir, item, variant, absoluteFile } of plannedPayloads) {
+		const dependencies = [
+			...new Set([
+				...(item.dependencies ?? []),
+				...(variant?.dependencies ?? []),
+			]),
+		];
+		const devDependencies = [
+			...new Set([
+				...(item.devDependencies ?? []),
+				...(variant?.devDependencies ?? []),
+			]),
+		];
 		const payload: RegistryPayload = {
-			id: item.id,
-			variantId: variant?.id,
 			files: [
 				...(await materializePayloadFiles(
 					itemDir,
@@ -172,43 +181,47 @@ export async function buildRegistry(
 					variant?.files,
 				)),
 			],
+			...(dependencies.length > 0 ? { dependencies } : {}),
+			...(devDependencies.length > 0 ? { devDependencies } : {}),
 		};
 
-		await writeFileAsync(
-			absoluteFile,
-			`${JSON.stringify(payload, null, "\t")}\n`,
-		);
+		await writeFileAsync(absoluteFile, `${JSON.stringify(payload)}\n`);
 	}
 
+	// Index items by id; payload URIs live on the item or each variant.
+	const catalogItems: Record<string, unknown> = {};
 	for (const { item } of authoredItems) {
 		if (item.variants?.length) {
-			const { files: itemFiles, ...itemRest } = item;
 			catalogItems[item.id] = {
-				...itemRest,
-				variants: plannedPayloads
-					.filter((entry) => entry.item.id === item.id)
-					.map((entry) => ({
-						...entry.variant,
-						files: [...(itemFiles ?? []), ...(entry.variant?.files ?? [])].map(
-							({ target }) => ({
-								source: entry.relativeFile,
-								target,
-							}),
-						),
-					})),
+				title: item.title,
+				description: item.description,
+				type: item.type,
+				...(item.when ? { when: item.when } : {}),
+				...(item.registryDependencies
+					? { registryDependencies: item.registryDependencies }
+					: {}),
+				variants: item.variants.map((variant) => ({
+					id: variant.id,
+					title: variant.title,
+					source: `r/${item.id}/${variant.id}.json`,
+					...(variant.when ? { when: variant.when } : {}),
+					...(variant.registryDependencies
+						? { registryDependencies: variant.registryDependencies }
+						: {}),
+				})),
 			};
 			continue;
 		}
 
-		const itemPayload = plannedPayloads.find(
-			(entry) => entry.item.id === item.id,
-		);
 		catalogItems[item.id] = {
-			...item,
-			files: (item.files ?? []).map(({ target }) => ({
-				source: itemPayload?.relativeFile ?? `r/${item.id}.json`,
-				target,
-			})),
+			title: item.title,
+			description: item.description,
+			type: item.type,
+			source: `r/${item.id}.json`,
+			...(item.when ? { when: item.when } : {}),
+			...(item.registryDependencies
+				? { registryDependencies: item.registryDependencies }
+				: {}),
 		};
 	}
 
@@ -239,10 +252,7 @@ export async function buildRegistry(
 	});
 
 	// Write the compiled registry document to disk
-	await writeFileAsync(
-		registryPath,
-		`${JSON.stringify(document, null, "\t")}\n`,
-	);
+	await writeFileAsync(registryPath, `${JSON.stringify(document)}\n`);
 
 	return document;
 }

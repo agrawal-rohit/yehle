@@ -3,8 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildRegistry } from "./build";
-import * as parse from "./parse";
-import type { Registry, RegistryItem, RegistryPayload } from "./schema";
+import type { Registry, RegistryPayload } from "./schema";
 
 /**
  * Write a registry item fixture under a temp package root.
@@ -139,26 +138,45 @@ describe("buildRegistry", () => {
 
 		expect(document).toEqual(written);
 		expect(Object.keys(written.items)).toEqual(["build", "button"]);
-		expect(written.items.button.variants?.[0].files[0]).toEqual({
-			source: "r/button/react.json",
-			target: "src/components/ui/button.tsx",
+		expect(fs.readFileSync(path.join(tempDir, "registry.json"), "utf8")).toBe(
+			`${JSON.stringify(document)}\n`,
+		);
+		expect(written.items.button).toEqual({
+			title: "Button",
+			description: "A button",
+			type: "component",
+			variants: [
+				{
+					id: "react",
+					title: "React",
+					source: "r/button/react.json",
+				},
+			],
 		});
-		expect(written.items.button.variants?.[0]).not.toHaveProperty("payload");
-		expect(written.items.button.variants?.[0].dependencies).toEqual(["react"]);
+		expect(written.items.button).not.toHaveProperty("id");
+		expect(written.items.button.variants?.[0]).not.toHaveProperty("files");
+		expect(written.items.button.variants?.[0]).not.toHaveProperty(
+			"description",
+		);
+		expect(written.items.button.variants?.[0]).not.toHaveProperty(
+			"dependencies",
+		);
 
-		const payload = JSON.parse(
-			fs.readFileSync(path.join(tempDir, "r/button/react.json"), "utf8"),
-		) as RegistryPayload;
+		const payloadPath = path.join(tempDir, "r/button/react.json");
+		const payloadRaw = fs.readFileSync(payloadPath, "utf8");
+		const payload = JSON.parse(payloadRaw) as RegistryPayload;
 		expect(payload).toEqual({
-			id: "button",
-			variantId: "react",
 			files: [
 				{
 					target: "src/components/ui/button.tsx",
 					content: "export const Button = () => null;\n",
 				},
 			],
+			dependencies: ["react"],
 		});
+		expect(payload).not.toHaveProperty("id");
+		expect(payload).not.toHaveProperty("variantId");
+		expect(payloadRaw).toBe(`${JSON.stringify(payload)}\n`);
 	});
 
 	it("inlines item-level shared files into every variant payload", async () => {
@@ -170,6 +188,7 @@ describe("buildRegistry", () => {
 				title: "Git Hooks",
 				description: "Hooks",
 				type: "configuration",
+				when: { language: "typescript" },
 				files: [
 					{ source: "commitlint.config.js", target: "commitlint.config.js" },
 				],
@@ -201,17 +220,17 @@ describe("buildRegistry", () => {
 		});
 
 		const document = await runBuild();
-		expect(document.items["git-hooks"].files).toBeUndefined();
-		expect(document.items["git-hooks"].variants?.[0].files).toEqual([
-			{
-				source: "r/git-hooks/typescript.json",
-				target: "commitlint.config.js",
-			},
-			{
-				source: "r/git-hooks/typescript.json",
-				target: "lint-staged.config.js",
-			},
-		]);
+		expect(document.items["git-hooks"]).not.toHaveProperty("id");
+		expect(document.items["git-hooks"]).not.toHaveProperty("files");
+		expect(document.items["git-hooks"].when).toEqual({
+			language: "typescript",
+		});
+		expect(document.items["git-hooks"].variants?.[0]).toEqual({
+			id: "typescript",
+			title: "TypeScript",
+			source: "r/git-hooks/typescript.json",
+			when: { language: "typescript" },
+		});
 
 		const payload = JSON.parse(
 			fs.readFileSync(
@@ -237,6 +256,8 @@ describe("buildRegistry", () => {
 				title: "Assign Owner",
 				description: "Assigns the repository owner",
 				type: "configuration",
+				when: { language: "typescript" },
+				registryDependencies: ["setup-workspace"],
 				files: [
 					{
 						source: ".github/workflows/assign-owner.yml",
@@ -248,27 +269,58 @@ describe("buildRegistry", () => {
 				".github/workflows/assign-owner.yml": "name: assign-owner\n",
 			},
 		);
+		writeItem(
+			tempDir,
+			"configuration/pr-template",
+			{
+				id: "pr-template",
+				title: "PR Template",
+				description: "A pull request template",
+				type: "configuration",
+				files: [
+					{
+						source: ".github/pull_request_template.md",
+						target: ".github/pull_request_template.md",
+					},
+				],
+			},
+			{
+				".github/pull_request_template.md": "## Summary\n",
+			},
+		);
+		writeRegistryJson(tempDir, "conditions.json", {
+			language: {
+				label: "Language",
+				values: [{ value: "typescript", label: "TypeScript" }],
+			},
+		});
 
 		const document = await runBuild();
 		expect(document.items["assign-owner"]).toEqual({
-			id: "assign-owner",
 			title: "Assign Owner",
 			description: "Assigns the repository owner",
 			type: "configuration",
-			files: [
-				{
-					source: "r/assign-owner.json",
-					target: ".github/workflows/assign-owner.yml",
-				},
-			],
+			source: "r/assign-owner.json",
+			when: { language: "typescript" },
+			registryDependencies: ["setup-workspace"],
 		});
 		expect(document.items["assign-owner"]).not.toHaveProperty("variants");
+		expect(document.items["assign-owner"]).not.toHaveProperty("files");
+		expect(document.items["assign-owner"]).not.toHaveProperty("id");
+		expect(document.items["pr-template"]).toEqual({
+			title: "PR Template",
+			description: "A pull request template",
+			type: "configuration",
+			source: "r/pr-template.json",
+		});
+		expect(document.items["pr-template"]).not.toHaveProperty(
+			"registryDependencies",
+		);
 
 		const payload = JSON.parse(
 			fs.readFileSync(path.join(tempDir, "r/assign-owner.json"), "utf8"),
 		) as RegistryPayload;
 		expect(payload).toEqual({
-			id: "assign-owner",
 			files: [
 				{
 					target: ".github/workflows/assign-owner.yml",
@@ -276,6 +328,7 @@ describe("buildRegistry", () => {
 				},
 			],
 		});
+		expect(payload).not.toHaveProperty("id");
 		expect(payload).not.toHaveProperty("variantId");
 	});
 
@@ -474,147 +527,66 @@ describe("buildRegistry", () => {
 		expect(fs.existsSync(path.join(sourceDir, "registry.json"))).toBe(false);
 	});
 
-	it("falls back to empty variant files when a variant omits files", async () => {
+	it("moves npm dependencies into payloads and keeps registryDependencies in the catalog", async () => {
 		writeItem(
 			tempDir,
-			"configuration/shared",
+			"configuration/testing",
 			{
-				id: "shared",
-				title: "Shared",
-				description: "Shared files",
+				id: "testing",
+				title: "Testing",
+				description: "Tests",
 				type: "configuration",
-				files: [{ source: "shared.txt", target: "shared.txt" }],
+				registryDependencies: ["setup-workspace"],
+				dependencies: ["shared-lib"],
+				devDependencies: ["vitest"],
 				variants: [
 					{
-						id: "default",
-						title: "Default",
-						description: "Default",
-						files: [{ source: "shared.txt", target: "shared.txt" }],
+						id: "typescript",
+						title: "TypeScript",
+						description: "TS tests",
+						when: { language: "typescript" },
+						registryDependencies: ["setup-workspace-workflow"],
+						dependencies: ["react"],
+						devDependencies: ["@vitest/coverage-v8"],
+						files: [{ source: "vitest.config.ts", target: "vitest.config.ts" }],
 					},
 				],
 			},
-			{ "shared.txt": "shared\n" },
+			{ "vitest.config.ts": "export default {};\n" },
 		);
-
-		const originalParseWithSchema = parse.parseWithSchema;
-		const spy = vi
-			.spyOn(parse, "parseWithSchema")
-			.mockImplementation((schema, raw, label) => {
-				if (label === "Registry item") {
-					return {
-						id: "shared",
-						title: "Shared",
-						description: "Shared files",
-						type: "configuration",
-						files: [{ source: "shared.txt", target: "shared.txt" }],
-						variants: [
-							{
-								id: "default",
-								title: "Default",
-								description: "Default",
-							},
-						],
-					} as RegistryItem;
-				}
-				return originalParseWithSchema(schema, raw, label);
-			});
-
-		try {
-			const document = await runBuild();
-			expect(document.items.shared.variants?.[0].files).toEqual([
-				{ source: "r/shared/default.json", target: "shared.txt" },
-			]);
-		} finally {
-			spy.mockRestore();
-		}
-	});
-
-	it("falls back to an empty file list when a variant-less item omits files", async () => {
-		writeItem(
-			tempDir,
-			"configuration/empty",
-			{
-				id: "empty",
-				title: "Empty",
-				description: "Empty",
-				type: "configuration",
-				files: [{ source: "a.txt", target: "a.txt" }],
+		writeRegistryJson(tempDir, "conditions.json", {
+			language: {
+				label: "Language",
+				values: [{ value: "typescript", label: "TypeScript" }],
 			},
-			{ "a.txt": "a\n" },
-		);
+		});
 
-		const originalParseWithSchema = parse.parseWithSchema;
-		const spy = vi
-			.spyOn(parse, "parseWithSchema")
-			.mockImplementation((schema, raw, label) => {
-				if (label === "Registry item") {
-					return {
-						id: "empty",
-						title: "Empty",
-						description: "Empty",
-						type: "configuration",
-					} as RegistryItem;
-				}
-				return originalParseWithSchema(schema, raw, label);
-			});
+		const document = await runBuild();
+		expect(document.items.testing).toEqual({
+			title: "Testing",
+			description: "Tests",
+			type: "configuration",
+			registryDependencies: ["setup-workspace"],
+			variants: [
+				{
+					id: "typescript",
+					title: "TypeScript",
+					source: "r/testing/typescript.json",
+					when: { language: "typescript" },
+					registryDependencies: ["setup-workspace-workflow"],
+				},
+			],
+		});
+		expect(document.items.testing).not.toHaveProperty("dependencies");
+		expect(document.items.testing).not.toHaveProperty("devDependencies");
 
-		try {
-			await expect(runBuild()).rejects.toThrow(/files/);
-		} finally {
-			spy.mockRestore();
-		}
-	});
-
-	it("falls back to the default payload path when the planned entry is missing", async () => {
-		writeItem(
-			tempDir,
-			"workflow/assign-owner",
-			{
-				id: "assign-owner",
-				title: "Assign Owner",
-				description: "Assigns the repository owner",
-				type: "configuration",
-				files: [
-					{
-						source: ".github/workflows/assign-owner.yml",
-						target: ".github/workflows/assign-owner.yml",
-					},
-				],
-			},
-			{
-				".github/workflows/assign-owner.yml": "name: assign-owner\n",
-			},
-		);
-
-		const originalFind = Array.prototype.find;
-		const findSpy = vi
-			.spyOn(Array.prototype, "find")
-			.mockImplementation(function (this: unknown[], ...args) {
-				const first = this[0] as
-					| { relativeFile?: string; absoluteFile?: string }
-					| undefined;
-				if (
-					first &&
-					typeof first === "object" &&
-					"relativeFile" in first &&
-					"absoluteFile" in first
-				) {
-					return undefined;
-				}
-				return originalFind.apply(
-					this,
-					args as Parameters<typeof originalFind>,
-				);
-			});
-
-		try {
-			const document = await runBuild();
-			expect(document.items["assign-owner"].files?.[0]).toEqual({
-				source: "r/assign-owner.json",
-				target: ".github/workflows/assign-owner.yml",
-			});
-		} finally {
-			findSpy.mockRestore();
-		}
+		const payload = JSON.parse(
+			fs.readFileSync(path.join(tempDir, "r/testing/typescript.json"), "utf8"),
+		) as RegistryPayload;
+		expect(payload.dependencies).toEqual(["shared-lib", "react"]);
+		expect(payload.devDependencies).toEqual(["vitest", "@vitest/coverage-v8"]);
+		expect(payload).not.toHaveProperty("id");
+		expect(payload).not.toHaveProperty("variantId");
+		expect(payload).not.toHaveProperty("registryDependencies");
 	});
 });
