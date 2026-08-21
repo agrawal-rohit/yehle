@@ -31,7 +31,7 @@ import tasks from "../cli/tasks";
 import { loadRegistryPayloads } from "../registry/load";
 
 /** Options accepted by the add command. */
-export interface AddCommandOptions {
+interface AddCommandOptions {
 	/** Registry items (`id` or `id@variant`) from positional arguments. */
 	items?: string[];
 	/** Overwrite existing files without prompting. */

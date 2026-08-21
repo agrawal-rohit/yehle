@@ -62,6 +62,29 @@ export const ecosystemManagers = {
 } satisfies Record<RegistryEcosystem, readonly PackageManagerSpec[]>;
 
 /**
+ * Deduplicate and sort package names for stable merge output.
+ * @param names - Package names from one or more sources.
+ * @returns Sorted unique names.
+ */
+function uniqueSortedNames(names: string[]): string[] {
+	return [...new Set(names)].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Read one dependency list from a package set, treating missing sets as empty.
+ * @param set - Package set that may be undefined.
+ * @param key - Which dependency list to read.
+ * @returns The named list, or an empty array.
+ */
+function packageNames(
+	set: RegistryPackageSet | undefined,
+	key: "dependencies" | "devDependencies",
+): string[] {
+	if (!set) return [];
+	return set[key] ?? [];
+}
+
+/**
  * Merge non-empty dependency lists within one ecosystem package set.
  * @param left - Existing merged set.
  * @param right - Set to fold in.
@@ -71,26 +94,22 @@ function mergePackageSet(
 	left: RegistryPackageSet | undefined,
 	right: RegistryPackageSet | undefined,
 ): RegistryPackageSet | undefined {
-	// Union names from both sides, then sort so merged payloads stay deterministic.
-	const dependencies = [
-		...new Set([...(left?.dependencies ?? []), ...(right?.dependencies ?? [])]),
-	].sort((a, b) => a.localeCompare(b));
-	const devDependencies = [
-		...new Set([
-			...(left?.devDependencies ?? []),
-			...(right?.devDependencies ?? []),
-		]),
-	].sort((a, b) => a.localeCompare(b));
+	const dependencies = uniqueSortedNames([
+		...packageNames(left, "dependencies"),
+		...packageNames(right, "dependencies"),
+	]);
+	const devDependencies = uniqueSortedNames([
+		...packageNames(left, "devDependencies"),
+		...packageNames(right, "devDependencies"),
+	]);
 
-	// Omit empty keys so callers never persist a packages object with nothing to install.
 	if (dependencies.length === 0 && devDependencies.length === 0)
 		return undefined;
 
-	// Omit empty keys so callers never persist a packages object with nothing to install.
-	return {
-		...(dependencies.length > 0 ? { dependencies } : {}),
-		...(devDependencies.length > 0 ? { devDependencies } : {}),
-	};
+	const merged: RegistryPackageSet = {};
+	if (dependencies.length > 0) merged.dependencies = dependencies;
+	if (devDependencies.length > 0) merged.devDependencies = devDependencies;
+	return merged;
 }
 
 /**

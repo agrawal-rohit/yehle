@@ -26,6 +26,20 @@ export interface BuildRegistryOptions {
 	outDir: string;
 }
 
+/** Authored item paired with its source folder. */
+interface AuthoredItemEntry {
+	itemDir: string;
+	item: AuthoredRegistryItem;
+}
+
+/** Planned payload write location for one item or variant. */
+interface PlannedPayload {
+	itemDir: string;
+	item: AuthoredRegistryItem;
+	variant?: AuthoredRegistryVariant;
+	absoluteFile: string;
+}
+
 /**
  * Recursively collect the folder of every registry-item.json under a source tree.
  * @param dir - Directory to walk.
@@ -84,24 +98,15 @@ async function materializePayloadFiles(
 }
 
 /**
- * Compile a registry authoring tree into `registry.json` and install payloads under `r/`.
- * @param options - Absolute `sourceDir` (authoring) and `outDir` (compiled artefacts).
- * @returns The compiled registry document that was written to disk.
- * @throws Error when an item is invalid, a source is missing, or types are absent.
+ * Load and validate every authored registry item under the source tree.
+ * @param sourceDir - Absolute authoring root.
+ * @returns Authored items with their folders.
+ * @throws Error when an item is invalid or an id is duplicated.
  */
-export async function buildRegistry(
-	options: BuildRegistryOptions,
-): Promise<Registry> {
-	const sourceDir = path.resolve(options.sourceDir);
-	const outDir = path.resolve(options.outDir);
-	const registryPath = path.join(outDir, "registry.json");
-	const payloadsDir = path.join(outDir, "r");
-
-	// Collect authored registry items
-	const authoredItems: Array<{
-		itemDir: string;
-		item: AuthoredRegistryItem;
-	}> = [];
+async function loadAuthoredItems(
+	sourceDir: string,
+): Promise<AuthoredItemEntry[]> {
+	const authoredItems: AuthoredItemEntry[] = [];
 	const seenItemIds = new Set<string>();
 	for (const itemDir of await collectItemDirs(sourceDir)) {
 		const manifestPath = path.join(itemDir, "registry-item.json");
@@ -118,39 +123,56 @@ export async function buildRegistry(
 		authoredItems.push({ itemDir, item });
 	}
 
-	// Plan the output payloads: one per variant, or a single item-level payload.
-	const plannedPayloads: Array<{
-		itemDir: string;
-		item: AuthoredRegistryItem;
-		variant?: AuthoredRegistryVariant;
-		relativeFile: string;
-		absoluteFile: string;
-	}> = [];
+	return authoredItems;
+}
+
+/**
+ * Plan payload output paths: one per variant, or a single item-level payload.
+ * @param authoredItems - Loaded authored items.
+ * @param outDir - Absolute compiled output root.
+ * @returns Planned payload writes.
+ */
+function planPayloadWrites(
+	authoredItems: AuthoredItemEntry[],
+	outDir: string,
+): PlannedPayload[] {
+	const planned: PlannedPayload[] = [];
+
 	for (const { itemDir, item } of authoredItems) {
 		if (item.variants?.length) {
 			for (const variant of item.variants) {
 				const relativeFile = `r/${item.id}/${variant.id}.json`;
-				plannedPayloads.push({
+				planned.push({
 					itemDir,
 					item,
 					variant,
-					relativeFile,
 					absoluteFile: path.join(outDir, relativeFile),
 				});
 			}
 			continue;
 		}
 
-		const relativeFile = `r/${item.id}.json`;
-		plannedPayloads.push({
+		planned.push({
 			itemDir,
 			item,
-			relativeFile,
-			absoluteFile: path.join(outDir, relativeFile),
+			absoluteFile: path.join(outDir, `r/${item.id}.json`),
 		});
 	}
 
-	// Remove the existing payloads directory
+	return planned;
+}
+
+/**
+ * Materialize and write every planned payload under `r/`.
+ * @param plannedPayloads - Planned payload writes.
+ * @param sourceDir - Absolute authoring root.
+ * @param payloadsDir - Absolute `r/` directory to wipe and rebuild.
+ */
+async function writePlannedPayloads(
+	plannedPayloads: PlannedPayload[],
+	sourceDir: string,
+	payloadsDir: string,
+): Promise<void> {
 	await removeAsync(payloadsDir);
 
 	// Write one payload per variant, or a single item-level payload.
@@ -176,72 +198,116 @@ export async function buildRegistry(
 
 		await writeFileAsync(absoluteFile, `${JSON.stringify(payload)}\n`);
 	}
+}
 
-	// Index items by id; payload URIs live on the item or each variant.
-	const catalogItems: Record<string, unknown> = {};
-	for (const { item } of authoredItems) {
-		if (item.variants?.length) {
-			catalogItems[item.id] = {
-				title: item.title,
-				description: item.description,
-				type: item.type,
-				...(item.when ? { when: item.when } : {}),
-				...(item.registryDependencies
-					? { registryDependencies: item.registryDependencies }
+/**
+ * Build the catalog index entry for one authored item.
+ * @param item - Authored registry item.
+ * @returns Catalog item shape (variant list or item-level source).
+ */
+function catalogEntryForItem(item: AuthoredRegistryItem): unknown {
+	const shared = {
+		title: item.title,
+		description: item.description,
+		type: item.type,
+		...(item.when ? { when: item.when } : {}),
+		...(item.registryDependencies
+			? { registryDependencies: item.registryDependencies }
+			: {}),
+	};
+
+	if (item.variants?.length) {
+		return {
+			...shared,
+			variants: item.variants.map((variant) => ({
+				id: variant.id,
+				title: variant.title,
+				source: `r/${item.id}/${variant.id}.json`,
+				...(variant.when ? { when: variant.when } : {}),
+				...(variant.registryDependencies
+					? { registryDependencies: variant.registryDependencies }
 					: {}),
-				variants: item.variants.map((variant) => ({
-					id: variant.id,
-					title: variant.title,
-					source: `r/${item.id}/${variant.id}.json`,
-					...(variant.when ? { when: variant.when } : {}),
-					...(variant.registryDependencies
-						? { registryDependencies: variant.registryDependencies }
-						: {}),
-				})),
-			};
-			continue;
-		}
-
-		catalogItems[item.id] = {
-			title: item.title,
-			description: item.description,
-			type: item.type,
-			source: `r/${item.id}.json`,
-			...(item.when ? { when: item.when } : {}),
-			...(item.registryDependencies
-				? { registryDependencies: item.registryDependencies }
-				: {}),
+			})),
 		};
 	}
 
-	// Sort items by id for stable catalog output.
-	const sortedItems = Object.fromEntries(
+	return {
+		...shared,
+		source: `r/${item.id}.json`,
+	};
+}
+
+/**
+ * Index authored items by id with payload URIs on the item or each variant.
+ * @param authoredItems - Loaded authored items.
+ * @returns Catalog items sorted by id.
+ */
+function buildCatalogItems(
+	authoredItems: AuthoredItemEntry[],
+): Record<string, unknown> {
+	const catalogItems: Record<string, unknown> = {};
+	for (const { item } of authoredItems)
+		catalogItems[item.id] = catalogEntryForItem(item);
+
+	return Object.fromEntries(
 		Object.entries(catalogItems).sort(([a], [b]) => a.localeCompare(b)),
 	);
+}
 
-	// Read the conditions file
+/**
+ * Read optional conditions and required types sidecars from the authoring root.
+ * @param sourceDir - Absolute authoring root.
+ * @returns Raw JSON values for document assembly.
+ * @throws Error when `types.json` is missing.
+ */
+async function readRegistrySidecars(
+	sourceDir: string,
+): Promise<{ rawConditions: unknown; rawTypes: unknown }> {
 	const conditionsPath = path.join(sourceDir, "conditions.json");
 	let rawConditions: unknown;
 	if (await isFileAsync(conditionsPath))
 		rawConditions = JSON.parse(await readFileAsync(conditionsPath));
 
-	// Read the types file
 	const typesPath = path.join(sourceDir, "types.json");
 	if (!(await isFileAsync(typesPath)))
 		throw new Error(
 			`Registry types not found at ${path.relative(sourceDir, typesPath) || "types.json"}.`,
 		);
-	const rawTypes: unknown = JSON.parse(await readFileAsync(typesPath));
 
-	// Validate the compiled registry document
+	return {
+		rawConditions,
+		rawTypes: JSON.parse(await readFileAsync(typesPath)),
+	};
+}
+
+/**
+ * Compile a registry authoring tree into `registry.json` and install payloads under `r/`.
+ * @param options - Absolute `sourceDir` (authoring) and `outDir` (compiled artefacts).
+ * @returns The compiled registry document that was written to disk.
+ * @throws Error when an item is invalid, a source is missing, or types are absent.
+ */
+export async function buildRegistry(
+	options: BuildRegistryOptions,
+): Promise<Registry> {
+	const sourceDir = path.resolve(options.sourceDir);
+	const outDir = path.resolve(options.outDir);
+	const registryPath = path.join(outDir, "registry.json");
+
+	const authoredItems = await loadAuthoredItems(sourceDir);
+	await writePlannedPayloads(
+		planPayloadWrites(authoredItems, outDir),
+		sourceDir,
+		path.join(outDir, "r"),
+	);
+
+	const { rawConditions, rawTypes } = await readRegistrySidecars(sourceDir);
 	const document = parseRegistryDocument({
 		conditions: rawConditions,
 		types: rawTypes,
-		items: sortedItems,
+		items: buildCatalogItems(authoredItems),
 	});
 
 	// Write the compiled registry document to disk
 	await writeFileAsync(registryPath, `${JSON.stringify(document)}\n`);
-
 	return document;
 }

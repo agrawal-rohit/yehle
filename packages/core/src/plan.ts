@@ -207,6 +207,22 @@ function collectItemDependencies(
 }
 
 /**
+ * Collect every dependency id referenced by an item or any of its variants.
+ * @param item - Catalog item to scan.
+ * @returns Unique dependency item ids.
+ */
+function collectAllDependencyIds(item: RegistryItem): string[] {
+	const dependencyIds = new Set<string>();
+	for (const dependency of item.registryDependencies ?? [])
+		dependencyIds.add(parseItemId(dependency).id);
+	for (const variant of item.variants ?? []) {
+		for (const dependency of variant.registryDependencies ?? [])
+			dependencyIds.add(parseItemId(dependency).id);
+	}
+	return [...dependencyIds];
+}
+
+/**
  * Collect selected items and every transitive `registryDependencies` entry.
  * Variant `when` is ignored so condition prompts cover the full dependency graph.
  * @param items - Selected items (`id` or `id@variant`).
@@ -228,16 +244,8 @@ export function collectRegistryDependencies(
 
 		visited.add(itemId);
 		ordered.push({ itemId, item });
-
-		// Union item-level and every variant's dependencies.
-		const dependencyIds = new Set<string>();
-		for (const dependency of item.registryDependencies ?? [])
-			dependencyIds.add(parseItemId(dependency).id);
-		for (const variant of item.variants ?? []) {
-			for (const dependency of variant.registryDependencies ?? [])
-				dependencyIds.add(parseItemId(dependency).id);
-		}
-		for (const dependencyId of dependencyIds) visit(dependencyId);
+		for (const dependencyId of collectAllDependencyIds(item))
+			visit(dependencyId);
 	};
 
 	for (const item of items) visit(parseItemId(item).id);

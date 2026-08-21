@@ -27,8 +27,36 @@ describe("core/packages", () => {
 			});
 		});
 
+		it("unions runtime and dev dependencies across sources", () => {
+			expect(
+				mergeRegistryPackages(
+					{ npm: { dependencies: ["react"], devDependencies: ["vitest"] } },
+					{ npm: { dependencies: ["react", "zod"] } },
+				),
+			).toEqual({
+				npm: {
+					dependencies: ["react", "zod"],
+					devDependencies: ["vitest"],
+				},
+			});
+		});
+
+		it("keeps only the non-empty dependency list when the other side is blank", () => {
+			expect(
+				mergeRegistryPackages(
+					{ npm: { dependencies: ["left-pad"] } },
+					{ npm: { dependencies: [], devDependencies: [] } },
+				),
+			).toEqual({
+				npm: { dependencies: ["left-pad"] },
+			});
+		});
+
 		it("returns undefined when all sources are empty", () => {
 			expect(mergeRegistryPackages(undefined, {})).toBeUndefined();
+			expect(
+				mergeRegistryPackages({ npm: { dependencies: [] } }, undefined),
+			).toBeUndefined();
 		});
 	});
 

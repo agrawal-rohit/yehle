@@ -253,6 +253,36 @@ describe("core/plan", () => {
 				"setup-workspace",
 			]);
 		});
+
+		it("walks item-level dependencies and skips already-visited ids", () => {
+			const shared = makeItem({ source: "r/shared.json" });
+			const left = makeItem({
+				source: "r/left.json",
+				registryDependencies: ["shared", "shared@default"],
+			});
+			const right = makeItem({
+				source: "r/right.json",
+				registryDependencies: ["shared"],
+			});
+
+			const dependencies = collectRegistryDependencies(["left", "right"], {
+				left,
+				right,
+				shared,
+			});
+
+			expect(dependencies.map((entry) => entry.itemId)).toEqual([
+				"left",
+				"shared",
+				"right",
+			]);
+		});
+
+		it("throws when a dependency is missing from the catalog", () => {
+			expect(() => collectRegistryDependencies(["missing"], {})).toThrow(
+				'Registry item not found: "missing"',
+			);
+		});
 	});
 
 	describe("collectRequiredConditions", () => {

@@ -81,7 +81,7 @@ Common types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, 
 - Full codebase quality scan: `pnpm run quality` (or `pnpm run quality dead-code`, `pnpm run quality health`, etc.)
 - Format code: `pnpm run format`
 
-Pre-commit hooks will automatically check your code quality. If they block your commit, run the appropriate fix commands and try again.
+Pre-commit hooks run lint-staged (Biome/typecheck/registry rebuild) and then `pnpm run quality:changes`. If they block your commit, fix the reported issues and try again.
 
 ## Documentation
 
