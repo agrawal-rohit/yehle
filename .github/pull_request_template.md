@@ -2,7 +2,7 @@
 
 ## Summary
 
-[Provide a concise description of the bug and the fix.]
+[Provide a concise description of the change.]
 
 ## Description
 

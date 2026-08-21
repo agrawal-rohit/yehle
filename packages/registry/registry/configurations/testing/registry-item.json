@@ -12,10 +12,14 @@
 				"language": "typescript"
 			},
 			"registryDependencies": ["setup-workspace-workflow"],
-			"devDependencies": [
-				"vitest@^3",
-				"@vitest/coverage-v8@^3"
-			],
+			"packages": {
+				"npm": {
+					"devDependencies": [
+						"vitest@^3",
+						"@vitest/coverage-v8@^3"
+					]
+				}
+			},
 			"files": [
 				{
 					"source": "typescript/vitest.config.ts",

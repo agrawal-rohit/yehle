@@ -11,6 +11,18 @@ description: Running tuckshop with the bundled or custom registry.
 npx tuckshop list
 ```
 
+## Adding registry items
+
+Install items from the bundled or custom registry into the current project:
+
+```bash
+npx tuckshop add pr-template-configuration
+npx tuckshop add testing-configuration --overwrite
+npx tuckshop add
+```
+
+`add` resolves variants from shared registry conditions (inferring from marker files when possible), fetches install payloads from the catalog location, writes files into the project, and optionally installs packages per ecosystem after confirming or selecting a package manager.
+
 That keeps the default experience fast and offline-capable after install.
 
 ## Using a custom registry

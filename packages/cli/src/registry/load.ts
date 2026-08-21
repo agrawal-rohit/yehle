@@ -3,18 +3,20 @@ import https from "node:https";
 import { isIP } from "node:net";
 import path from "node:path";
 import {
+	isAbsoluteHttpUrl,
 	parseRegistryDocument,
 	type Registry,
 	readFileAsync,
+	resolveRegistryPayload,
 } from "@tuckshop/core";
-import { RegistrySourceKind, resolveRegistrySource } from "./source";
+import { resolveRegistrySource } from "./source";
 
 /**
  * Reject remote registry URLs that are not HTTPS hostnames.
- * @param url - Parsed remote registry URL.
+ * @param url - Parsed remote URL.
  * @throws Error when the URL uses a disallowed protocol, credentials, localhost, or IP host.
  */
-function assertSafeRegistryUrl(url: URL): void {
+function assertSafeRemoteUrl(url: URL): void {
 	if (url.protocol !== "https:")
 		throw new Error("Remote registries must use HTTPS.");
 	if (url.username || url.password)
@@ -36,13 +38,15 @@ function assertSafeRegistryUrl(url: URL): void {
 }
 
 /**
- * Read and parse a registry HTTP response with status and size checks.
- * @param response - HTTPS response for the registry document.
+ * Read and parse an HTTP response body with status and size checks.
+ * @param response - HTTPS response stream.
+ * @param label - Error context label for fetch failures.
  * @returns Parsed JSON value.
  * @throws Error when the response is redirected, failed, oversized, or invalid JSON.
  */
-async function readRemoteRegistryBody(
+async function readRemoteJsonBody(
 	response: IncomingMessage,
+	label: string,
 ): Promise<unknown> {
 	const maxRegistryBytes = 5_000_000; // 5MB
 	const status = response.statusCode ?? 0;
@@ -57,14 +61,14 @@ async function readRemoteRegistryBody(
 	// If the response is not successful, reject it.
 	if (status < 200 || status >= 300) {
 		response.destroy();
-		throw new Error(`Failed to fetch registry (${status} ${statusMessage}).`);
+		throw new Error(`Failed to fetch ${label} (${status} ${statusMessage}).`);
 	}
 
 	// If the response is too large, reject it.
 	const contentLength = response.headers["content-length"];
 	if (contentLength && Number(contentLength) > maxRegistryBytes) {
 		response.destroy();
-		throw new Error("Remote registry is too large.");
+		throw new Error(`Remote ${label} is too large.`);
 	}
 
 	// If the response is valid, read the body and parse it as JSON.
@@ -75,7 +79,7 @@ async function readRemoteRegistryBody(
 		totalBytes += buffer.length;
 		if (totalBytes > maxRegistryBytes) {
 			response.destroy();
-			throw new Error("Remote registry is too large.");
+			throw new Error(`Remote ${label} is too large.`);
 		}
 		chunks.push(buffer);
 	}
@@ -85,32 +89,33 @@ async function readRemoteRegistryBody(
 		return JSON.parse(body) as unknown;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		throw new Error(`Remote registry returned invalid JSON: ${message}`);
+		throw new Error(`Remote ${label} returned invalid JSON: ${message}`);
 	}
 }
 
 /**
- * Fetch and read a remote registry document body.
- * @param registryUrl - Absolute remote registry URL.
- * @returns Parsed JSON value from the registry document.
+ * Fetch and parse a remote JSON document over HTTPS with SSRF protections.
+ * @param url - Absolute HTTPS URL.
+ * @param label - Error context label for fetch failures.
+ * @returns Parsed JSON value.
  * @throws Error when the request fails or the response is invalid.
  */
-async function fetchRemoteRegistry(registryUrl: string): Promise<unknown> {
-	const url = new URL(registryUrl);
-	assertSafeRegistryUrl(url);
+async function fetchRemoteJson(url: string, label: string): Promise<unknown> {
+	const parsedUrl = new URL(url);
+	assertSafeRemoteUrl(parsedUrl);
 
 	let response: IncomingMessage;
+	const fetchTimeoutMs = 10_000; // 10 seconds
+
 	try {
 		// Attempt to fetch the registry document with a 10s timeout.
 		response = await new Promise<IncomingMessage>((resolve, reject) => {
 			const req = https.request(
-				url,
+				parsedUrl,
 				{
 					method: "GET",
-					signal: AbortSignal.timeout(10_000),
-					headers: {
-						accept: "application/json",
-					},
+					signal: AbortSignal.timeout(fetchTimeoutMs),
+					headers: { accept: "application/json" },
 				},
 				(res) => resolve(res),
 			);
@@ -123,30 +128,30 @@ async function fetchRemoteRegistry(registryUrl: string): Promise<unknown> {
 			(error.name === "TimeoutError" || error.name === "AbortError")
 		)
 			throw new Error(
-				`Timed out fetching registry from ${registryUrl} after 10s.`,
-				{ cause: error },
+				`Timed out fetching ${label} from ${url} after ${Math.floor(fetchTimeoutMs / 1000)}s.`,
+				{
+					cause: error,
+				},
 			);
-		throw new Error(`Failed to fetch registry from ${registryUrl}.`, {
-			cause: error,
-		});
+		throw new Error(`Failed to fetch ${label} from ${url}.`, { cause: error });
 	}
 
-	return readRemoteRegistryBody(response);
+	return readRemoteJsonBody(response, label);
 }
 
 /**
  * Load the registry selected by CLI flags, env, saved config, or bundled defaults.
  * @param registryOverride - Optional `--registry` flag value.
  * @param savedRegistry - Optional registry source persisted via `tuckshop config set`.
- * @returns Registry document used for the current CLI invocation.
+ * @returns Parsed registry and the catalog path or URL it was loaded from.
  * @throws Error when the resolved registry source cannot be loaded safely.
  */
 export async function loadRuntimeRegistry(
 	registryOverride?: string,
 	savedRegistry?: string,
-): Promise<Registry> {
+): Promise<{ registry: Registry; catalogLocation: string }> {
 	const packageRoot = path.resolve(__dirname, "../..");
-	const source = await resolveRegistrySource({
+	const catalogLocation = await resolveRegistrySource({
 		registry: registryOverride,
 		savedRegistry,
 		bundledRegistryPath: path.resolve(packageRoot, "registry.json"),
@@ -155,11 +160,56 @@ export async function loadRuntimeRegistry(
 		],
 	});
 
-	// Fetch a registry from a remote URL or load one from a local file path.
-	const fetchedRegistry =
-		source.kind === RegistrySourceKind.URL
-			? await fetchRemoteRegistry(source.location)
-			: (JSON.parse(await readFileAsync(source.location)) as unknown);
+	const rawRegistry = isAbsoluteHttpUrl(catalogLocation)
+		? await fetchRemoteJson(catalogLocation, "registry")
+		: (JSON.parse(await readFileAsync(catalogLocation)) as unknown);
+	return {
+		registry: parseRegistryDocument(rawRegistry),
+		catalogLocation,
+	};
+}
 
-	return parseRegistryDocument(fetchedRegistry);
+/**
+ * Load unique install payloads relative to a catalog location.
+ * @param catalogLocation - Absolute path or HTTPS URL of the catalog document.
+ * @param sources - Catalog `source` URIs from the install plan.
+ * @returns Map of catalog source URI to parsed JSON value.
+ */
+export async function loadRegistryPayloads(
+	catalogLocation: string,
+	sources: readonly string[],
+): Promise<Map<string, unknown>> {
+	const uniqueSources = [...new Set(sources)];
+	const documents = new Map<string, unknown>();
+	let nextIndex = 0;
+
+	// Load payloads in parallel with a worker pool
+	const worker = async (): Promise<void> => {
+		while (nextIndex < uniqueSources.length) {
+			const current = nextIndex;
+			nextIndex += 1;
+
+			// Resolve the source URI relative to the catalog location.
+			const source = uniqueSources[current];
+			const location = resolveRegistryPayload(catalogLocation, source);
+
+			// Determine the error context label for fetch failures.
+			const label = isAbsoluteHttpUrl(location)
+				? "registry payload"
+				: "registry payload file";
+			const rawPayload = isAbsoluteHttpUrl(location)
+				? await fetchRemoteJson(location, label)
+				: (JSON.parse(await readFileAsync(location)) as unknown);
+			documents.set(source, rawPayload);
+		}
+	};
+
+	const concurrency = 8; // 8 concurrent payload fetches
+	await Promise.all(
+		Array.from({ length: Math.min(concurrency, uniqueSources.length) }, () =>
+			worker(),
+		),
+	);
+
+	return documents;
 }

@@ -8,7 +8,6 @@ import {
 } from "./parse";
 import {
 	catalogItemSchema,
-	RegistryConditionInference,
 	registryItemSchema,
 	registryPayloadSchema,
 } from "./schema";
@@ -424,7 +423,6 @@ describe("registry/parse", () => {
 					language: {
 						label: "Language",
 						description: "Pick a language.",
-						inference: RegistryConditionInference.FILES,
 						values: [{ value: "typescript", label: "TypeScript" }],
 					},
 				}),
@@ -432,7 +430,6 @@ describe("registry/parse", () => {
 				language: {
 					label: "Language",
 					description: "Pick a language.",
-					inference: RegistryConditionInference.FILES,
 					values: [{ value: "typescript", label: "TypeScript" }],
 				},
 			});
@@ -472,20 +469,6 @@ describe("registry/parse", () => {
 					},
 				}),
 			).toThrow('Registry condition "language" has duplicate value "ts".');
-		});
-
-		it("rejects an unknown inference mode", () => {
-			expect(() =>
-				parseRegistryConditions({
-					language: {
-						label: "Language",
-						inference: "guess",
-						values: [{ value: "typescript", label: "TypeScript" }],
-					},
-				}),
-			).toThrow(
-				'Registry condition "language" has invalid inference "guess" (expected one of: files).',
-			);
 		});
 
 		it("rejects an empty nested condition value", () => {

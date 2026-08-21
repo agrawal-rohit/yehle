@@ -1,9 +1,10 @@
 import type { Registry } from "@tuckshop/core";
 import type { CAC } from "cac";
-import consola from "consola";
 import { readConfig } from "../cli/config";
 import logger from "../cli/logger";
-import { pickStringOptions } from "../cli/options";
+import { getBooleanOption, pickStringOptions } from "../cli/options";
+import { textInput } from "../cli/prompts";
+import addCommand from "./add";
 import {
 	configGetCommand,
 	configSetCommand,
@@ -26,9 +27,33 @@ enum ConfigAction {
  */
 export async function registerCommandsCli(
 	app: CAC,
-	loadRegistry: () => Promise<Registry>,
+	loadRegistry: () => Promise<{ registry: Registry; catalogLocation: string }>,
 ): Promise<void> {
 	app.usage("<command> [options]");
+
+	const addCmd = app.command(
+		"add [items...]",
+		"Add registry items to the current working directory",
+	);
+	addCmd.option("--overwrite", "Overwrite existing files");
+	addCmd.action(
+		async (
+			items: string[] | undefined,
+			commandOptions: Record<string, unknown>,
+		) => {
+			try {
+				const { registry, catalogLocation } = await loadRegistry();
+				await logger.intro("adding registry items");
+				await addCommand(registry, catalogLocation, {
+					items: (items ?? []).filter(Boolean),
+					overwrite: getBooleanOption(commandOptions, "overwrite"),
+				});
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				logger.error(msg);
+			}
+		},
+	);
 
 	// Create the list command
 	const listCmd = app.command("list", "List available registry items");
@@ -38,7 +63,7 @@ export async function registerCommandsCli(
 	);
 	listCmd.action(async (commandOptions: Record<string, unknown>) => {
 		try {
-			const registry = await loadRegistry();
+			const { registry } = await loadRegistry();
 			const itemTypes = Object.keys(registry.types);
 
 			await logger.intro("here's the menu");
@@ -82,12 +107,10 @@ export async function registerCommandsCli(
 					// Prompt when the positional source was omitted
 					let resolved = source?.trim() ?? "";
 					if (!resolved) {
-						const answer = await consola.prompt("Registry URL or local path", {
-							type: "text",
+						resolved = await textInput("Registry URL or local path", {
 							placeholder: "https://example.com/registry.json",
-							cancel: "reject",
+							required: true,
 						});
-						resolved = typeof answer === "string" ? answer.trim() : "";
 					}
 					if (!resolved) throw new Error("Registry source must not be empty.");
 

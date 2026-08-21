@@ -72,9 +72,19 @@ describe("cli/logger", () => {
 	});
 
 	describe("default export", () => {
-		test("should expose intro and error methods", () => {
+		test("should expose intro, error, and end methods", () => {
 			expect(typeof logger.intro).toBe("function");
 			expect(typeof logger.error).toBe("function");
+			expect(typeof logger.end).toBe("function");
+		});
+	});
+
+	describe("end", () => {
+		test("should exit with code 0", () => {
+			expect(() => logger.end("Done")).toThrow(
+				"process.exit called with code 0",
+			);
+			expect(processExitSpy).toHaveBeenCalledWith(0);
 		});
 	});
 });

@@ -2,6 +2,16 @@
 export type CliOptions = Record<string, unknown>;
 
 /**
+ * Read a boolean CLI flag from CAC options.
+ * @param options - Raw CAC options.
+ * @param key - Option key.
+ * @returns True when the flag was explicitly set to true.
+ */
+export function getBooleanOption(options: CliOptions, key: string): boolean {
+	return options[key] === true;
+}
+
+/**
  * Read a trimmed string option from CAC options.
  * @param options - Raw CAC options.
  * @param key - Option key.

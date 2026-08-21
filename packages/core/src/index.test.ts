@@ -3,7 +3,6 @@ import * as core from "./index";
 
 describe("package entry", () => {
 	it("re-exports the public core API", () => {
-		expect(core.RegistryConditionInference).toBeDefined();
 		expect(typeof core.isFileAsync).toBe("function");
 		expect(typeof core.readDirectoryAsync).toBe("function");
 		expect(typeof core.readFileAsync).toBe("function");
@@ -18,7 +17,11 @@ describe("package entry", () => {
 		expect(typeof core.parseRegistryDocument).toBe("function");
 		expect(typeof core.parseWithSchema).toBe("function");
 		expect(typeof core.buildRegistry).toBe("function");
-		expect(typeof core.resolveRegistryPayload).toBe("function");
+		expect(typeof core.resolveInstallPlan).toBe("function");
+		expect(typeof core.runAsync).toBe("function");
+		expect(typeof core.mergeRegistryPackages).toBe("function");
+		expect(typeof core.buildPackageInstallCommands).toBe("function");
+		expect(typeof core.inferPackageManagerFromLockfile).toBe("function");
 		expect(core.registryPayloadSchema).toBeDefined();
 	});
 });

@@ -11,12 +11,16 @@
 			"when": {
 				"language": "typescript"
 			},
-			"devDependencies": [
-				"husky@^9",
-				"lint-staged@^16",
-				"@commitlint/cli@^20",
-				"@commitlint/config-conventional@^20"
-			],
+			"packages": {
+				"npm": {
+					"devDependencies": [
+						"husky@^9",
+						"lint-staged@^16",
+						"@commitlint/cli@^20",
+						"@commitlint/config-conventional@^20"
+					]
+				}
+			},
 			"files": [
 				{
 					"source": "typescript/.husky/commit-msg",

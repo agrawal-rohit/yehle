@@ -1,7 +1,7 @@
 import readline from "node:readline";
+import { stripVTControlCharacters } from "node:util";
 import { primaryText } from "@tuckshop/core";
 import chalk from "chalk";
-import { stripAnsi } from "consola/utils";
 
 type Message = string | Promise<string>;
 
@@ -41,7 +41,7 @@ function sleep(ms: number): Promise<void> {
  * @returns The truncated string (with "..." if truncated).
  */
 function truncate(s: string, max: number): string {
-	const raw = stripAnsi(s);
+	const raw = stripVTControlCharacters(s);
 	if (raw.length <= max) return s;
 	return `${raw.slice(0, Math.max(0, max - 3))}...`;
 }

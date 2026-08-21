@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseMultiValueOption, pickStringOptions } from "./options";
+import {
+	getBooleanOption,
+	parseMultiValueOption,
+	pickStringOptions,
+} from "./options";
 
 describe("cli/options", () => {
 	describe("pickStringOptions", () => {
@@ -25,6 +29,14 @@ describe("cli/options", () => {
 			expect(pickStringOptions({}, ["type"])).toEqual({});
 			expect(pickStringOptions({ type: "   " }, ["type"])).toEqual({});
 			expect(pickStringOptions({ type: 1 }, ["type"])).toEqual({});
+		});
+	});
+
+	describe("getBooleanOption", () => {
+		it("returns true only when the flag is explicitly true", () => {
+			expect(getBooleanOption({ overwrite: true }, "overwrite")).toBe(true);
+			expect(getBooleanOption({ overwrite: false }, "overwrite")).toBe(false);
+			expect(getBooleanOption({}, "overwrite")).toBe(false);
 		});
 	});
 

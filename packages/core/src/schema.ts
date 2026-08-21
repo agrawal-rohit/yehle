@@ -82,15 +82,59 @@ export const registryPayloadFileSchema = z.strictObject({
 });
 export type RegistryPayloadFile = z.infer<typeof registryPayloadFileSchema>;
 
+/** Supported package ecosystems declared on registry payloads. Add variants here when introducing new ecosystems. */
+export enum RegistryEcosystem {
+	NPM = "npm",
+}
+
+/** Runtime and dev package names for one ecosystem. */
+export const registryPackageSetSchema = z
+	.strictObject({
+		/** Runtime packages to install. */
+		dependencies: optionalNonEmptyStringArray(),
+		/** Dev packages to install. */
+		devDependencies: optionalNonEmptyStringArray(),
+	})
+	.transform(omitUndefined);
+export type RegistryPackageSet = z.infer<typeof registryPackageSetSchema>;
+
+/** Ecosystem keys accepted on registry package maps. Add a key here when introducing a new ecosystem. */
+const registryPackagesShape = {
+	[RegistryEcosystem.NPM]: registryPackageSetSchema.optional(),
+} satisfies Record<
+	RegistryEcosystem,
+	z.ZodOptional<typeof registryPackageSetSchema>
+>;
+
+/** Packages keyed by ecosystem. Add a key here when introducing a new ecosystem. */
+export const registryPackagesSchema = z
+	.strictObject(registryPackagesShape)
+	.transform((value) => {
+		const merged: Partial<Record<RegistryEcosystem, RegistryPackageSet>> = {};
+		for (const ecosystem of Object.keys(
+			registryPackagesShape,
+		) as RegistryEcosystem[]) {
+			const pkgSet = value[ecosystem];
+			if (
+				pkgSet &&
+				((pkgSet.dependencies?.length ?? 0) > 0 ||
+					(pkgSet.devDependencies?.length ?? 0) > 0)
+			)
+				merged[ecosystem] = pkgSet;
+		}
+		return Object.keys(merged).length > 0 ? merged : undefined;
+	});
+export type RegistryPackages = NonNullable<
+	z.infer<typeof registryPackagesSchema>
+>;
+
 /** Install payload for one item or variant (templates, not rendered output). */
 export const registryPayloadSchema = z
 	.strictObject({
 		/** Files to install (item-level files first when folded into a variant). */
 		files: z.array(registryPayloadFileSchema).min(1),
-		/** Dependencies added when this item is installed. */
-		dependencies: optionalNonEmptyStringArray(),
-		/** Dev dependencies added when this item is installed. */
-		devDependencies: optionalNonEmptyStringArray(),
+		/** Packages to install, keyed by ecosystem. */
+		packages: registryPackagesSchema.optional(),
 	})
 	.transform(omitUndefined);
 export type RegistryPayload = z.infer<typeof registryPayloadSchema>;
@@ -104,16 +148,6 @@ const registryWhenSchema = z
 		return value;
 	});
 
-/** Supported condition inference modes. */
-export enum RegistryConditionInference {
-	FILES = "files",
-}
-
-const inferenceModes = Object.values(RegistryConditionInference) as [
-	RegistryConditionInference,
-	...RegistryConditionInference[],
-];
-
 /** A labelled value for a shared condition. */
 export const registryConditionValueSchema = z
 	.strictObject({
@@ -121,8 +155,6 @@ export const registryConditionValueSchema = z
 		value: nonEmptyString,
 		/** Display label for this value. */
 		label: nonEmptyString,
-		/** Files used to infer this value when inference is `files`. */
-		files: optionalNonEmptyStringArray(),
 	})
 	.transform(omitUndefined);
 export type RegistryConditionValue = z.infer<
@@ -136,19 +168,6 @@ export const registryConditionSchema = z
 		label: nonEmptyString,
 		/** Optional longer description shown in the CLI. */
 		description: optionalDescription(),
-		/** How to infer this condition when it is not set explicitly. */
-		inference: z
-			.string()
-			.optional()
-			.superRefine((value, context) => {
-				if (value === undefined) return;
-				if (!inferenceModes.includes(value as RegistryConditionInference)) {
-					context.addIssue({
-						code: "custom",
-						message: `invalid_inference:${value}`,
-					});
-				}
-			}),
 		/** Allowed labelled values for this condition. */
 		values: z.array(registryConditionValueSchema).min(1),
 	})
@@ -170,7 +189,6 @@ export const registryConditionSchema = z
 			label: condition.label,
 			values: condition.values,
 			description: condition.description,
-			inference: condition.inference as RegistryConditionInference | undefined,
 		}),
 	);
 export type RegistryCondition = z.infer<typeof registryConditionSchema>;
@@ -221,10 +239,8 @@ export const registryVariantSchema = z
 		files: z.array(registryFileSchema).min(1),
 		/** Condition matcher that selects this variant. */
 		when: registryWhenSchema,
-		/** npm dependencies added with this variant. */
-		dependencies: optionalNonEmptyStringArray(),
-		/** npm devDependencies added with this variant. */
-		devDependencies: optionalNonEmptyStringArray(),
+		/** Packages added with this variant, keyed by ecosystem. */
+		packages: registryPackagesSchema.optional(),
 		/** Other registry items this variant depends on. */
 		registryDependencies: optionalNonEmptyStringArray(),
 	})
@@ -246,10 +262,8 @@ export const registryItemSchema = z
 		files: z.array(registryFileSchema).min(1).optional(),
 		/** Condition matcher for a variant-less item. */
 		when: registryWhenSchema,
-		/** npm dependencies added with this item. */
-		dependencies: optionalNonEmptyStringArray(),
-		/** npm devDependencies added with this item. */
-		devDependencies: optionalNonEmptyStringArray(),
+		/** Packages added with this item, keyed by ecosystem. */
+		packages: registryPackagesSchema.optional(),
 		/** Other registry items this item depends on. */
 		registryDependencies: optionalNonEmptyStringArray(),
 		/** Installable slices of this item; omit for a single top-level configuration. */

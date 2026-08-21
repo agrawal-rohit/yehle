@@ -3,7 +3,6 @@ import type { ZodType } from "zod";
 import {
 	catalogItemSchema,
 	catalogVariantSchema,
-	RegistryConditionInference,
 	registryConditionSchema,
 	registryConditionValueSchema,
 	registryDocumentFieldsSchema,
@@ -178,36 +177,60 @@ describe("core/schema", () => {
 			).toBe(false);
 		});
 
-		it("keeps non-empty npm dependency lists and omits empty ones", () => {
+		it("keeps non-empty package maps and omits empty ones", () => {
 			expect(
 				registryPayloadSchema.parse({
 					files: [{ target: "a.txt", content: "x" }],
-					dependencies: ["react"],
-					devDependencies: ["typescript"],
+					packages: {
+						npm: {
+							dependencies: ["react"],
+							devDependencies: ["typescript"],
+						},
+					},
 				}),
 			).toMatchObject({
-				dependencies: ["react"],
-				devDependencies: ["typescript"],
+				packages: {
+					npm: {
+						dependencies: ["react"],
+						devDependencies: ["typescript"],
+					},
+				},
 			});
 
 			expect(
 				registryPayloadSchema.parse({
 					files: [{ target: "a.txt", content: "x" }],
-					dependencies: [],
-					devDependencies: [],
+					packages: {
+						npm: {
+							dependencies: [],
+							devDependencies: [],
+						},
+					},
 				}),
-			).not.toHaveProperty("dependencies");
+			).not.toHaveProperty("packages");
 		});
-	});
 
-	describe("RegistryConditionInference", () => {
-		it("exposes the files inference mode", () => {
-			expect(RegistryConditionInference.FILES).toBe("files");
+		it("rejects untagged dependency lists", () => {
+			expect(
+				registryPayloadSchema.safeParse({
+					files: [{ target: "a.txt", content: "x" }],
+					dependencies: ["react"],
+				}).success,
+			).toBe(false);
+		});
+
+		it("rejects unknown ecosystem keys", () => {
+			expect(
+				registryPayloadSchema.safeParse({
+					files: [{ target: "a.txt", content: "x" }],
+					packages: { pypi: { dependencies: ["ruff"] } },
+				}).success,
+			).toBe(false);
 		});
 	});
 
 	describe("registryConditionValueSchema", () => {
-		it("accepts a labelled value without files", () => {
+		it("accepts a labelled value", () => {
 			expect(registryConditionValueSchema.parse(validConditionValue())).toEqual(
 				{
 					value: "typescript",
@@ -216,28 +239,7 @@ describe("core/schema", () => {
 			);
 		});
 
-		it("keeps a non-empty files list", () => {
-			expect(
-				registryConditionValueSchema.parse(
-					validConditionValue({ files: ["button.tsx"] }),
-				),
-			).toEqual({
-				value: "typescript",
-				label: "TypeScript",
-				files: ["button.tsx"],
-			});
-		});
-
-		it("omits an empty files list", () => {
-			expect(
-				registryConditionValueSchema.parse(validConditionValue({ files: [] })),
-			).toEqual({
-				value: "typescript",
-				label: "TypeScript",
-			});
-		});
-
-		it("rejects empty value, label, or file path entries", () => {
+		it("rejects empty value or label", () => {
 			expect(
 				registryConditionValueSchema.safeParse(
 					validConditionValue({ value: "" }),
@@ -248,9 +250,12 @@ describe("core/schema", () => {
 					validConditionValue({ label: "" }),
 				).success,
 			).toBe(false);
+		});
+
+		it("rejects unknown keys", () => {
 			expect(
 				registryConditionValueSchema.safeParse(
-					validConditionValue({ files: [""] }),
+					validConditionValue({ files: ["button.tsx"] }),
 				).success,
 			).toBe(false);
 		});
@@ -274,23 +279,6 @@ describe("core/schema", () => {
 			expect(
 				registryConditionSchema.parse(validCondition({ description: "" })),
 			).not.toHaveProperty("description");
-		});
-
-		it("keeps a valid files inference mode", () => {
-			expect(
-				registryConditionSchema.parse(
-					validCondition({ inference: RegistryConditionInference.FILES }),
-				),
-			).toMatchObject({ inference: RegistryConditionInference.FILES });
-		});
-
-		it("rejects an unknown inference mode", () => {
-			expect(
-				rejectMessage(
-					registryConditionSchema,
-					validCondition({ inference: "guess" }),
-				),
-			).toBe("invalid_inference:guess");
 		});
 
 		it("rejects duplicate condition values", () => {
@@ -366,13 +354,17 @@ describe("core/schema", () => {
 			});
 		});
 
-		it("keeps non-empty when, dependencies, and registryDependencies", () => {
+		it("keeps non-empty when, packages, and registryDependencies", () => {
 			expect(
 				registryVariantSchema.parse(
 					validVariant({
 						when: { language: "typescript" },
-						dependencies: ["react"],
-						devDependencies: ["typescript"],
+						packages: {
+							npm: {
+								dependencies: ["react"],
+								devDependencies: ["typescript"],
+							},
+						},
 						registryDependencies: ["utils"],
 					}),
 				),
@@ -382,19 +374,27 @@ describe("core/schema", () => {
 				description: "React variant",
 				files: [validFile()],
 				when: { language: "typescript" },
-				dependencies: ["react"],
-				devDependencies: ["typescript"],
+				packages: {
+					npm: {
+						dependencies: ["react"],
+						devDependencies: ["typescript"],
+					},
+				},
 				registryDependencies: ["utils"],
 			});
 		});
 
-		it("omits empty when maps and empty dependency lists", () => {
+		it("omits empty when maps and empty package lists", () => {
 			expect(
 				registryVariantSchema.parse(
 					validVariant({
 						when: {},
-						dependencies: [],
-						devDependencies: [],
+						packages: {
+							npm: {
+								dependencies: [],
+								devDependencies: [],
+							},
+						},
 						registryDependencies: [],
 					}),
 				),
@@ -459,36 +459,47 @@ describe("core/schema", () => {
 			).toBe("duplicate_variant:default");
 		});
 
-		it("keeps item-level files and non-empty dependency lists", () => {
+		it("keeps item-level files and non-empty package lists", () => {
 			expect(
 				registryItemSchema.parse(
 					validItem({
 						files: [validFile()],
-						dependencies: ["clsx"],
-						devDependencies: ["vitest"],
+						packages: {
+							npm: {
+								dependencies: ["clsx"],
+								devDependencies: ["vitest"],
+							},
+						},
 						registryDependencies: ["utils"],
 					}),
 				),
 			).toMatchObject({
 				files: [validFile()],
-				dependencies: ["clsx"],
-				devDependencies: ["vitest"],
+				packages: {
+					npm: {
+						dependencies: ["clsx"],
+						devDependencies: ["vitest"],
+					},
+				},
 				registryDependencies: ["utils"],
 			});
 		});
 
-		it("omits empty dependency lists", () => {
+		it("omits empty package lists", () => {
 			const parsed = registryItemSchema.parse(
 				validItem({
-					dependencies: [],
-					devDependencies: [],
+					packages: {
+						npm: {
+							dependencies: [],
+							devDependencies: [],
+						},
+					},
 					registryDependencies: [],
 				}),
 			);
 
 			expect(parsed).not.toHaveProperty("files");
-			expect(parsed).not.toHaveProperty("dependencies");
-			expect(parsed).not.toHaveProperty("devDependencies");
+			expect(parsed).not.toHaveProperty("packages");
 			expect(parsed).not.toHaveProperty("registryDependencies");
 		});
 

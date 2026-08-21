@@ -4,7 +4,6 @@ import {
 	catalogItemSchema,
 	type Registry,
 	type RegistryCondition,
-	RegistryConditionInference,
 	type RegistryItem,
 	type RegistryItemTypeDefinition,
 	registryConditionSchema,
@@ -54,7 +53,6 @@ function mapZodError(error: z.ZodError, label: string): Error {
 		[
 			"duplicate_variant:",
 			"duplicate:",
-			"invalid_inference:",
 			"invalid_id:",
 			"missing_files_or_variants",
 			"missing_source_or_variants",
@@ -76,7 +74,6 @@ function mapZodError(error: z.ZodError, label: string): Error {
 	const customMessages: Record<string, string> = {
 		"duplicate:": `${label} has duplicate value "${customValue}".`,
 		"duplicate_variant:": `${label} has duplicate variant id "${customValue}".`,
-		"invalid_inference:": `${label} has invalid inference "${customValue}" (expected one of: ${Object.values(RegistryConditionInference).join(", ")}).`,
 		"invalid_id:": String.raw`${primaryText(fieldLabel)} must be a single path segment (no "/", "\", or "..").`,
 		missing_files_or_variants: `${label} must declare files or at least one variant.`,
 		missing_source_or_variants: `${label} must declare source or at least one variant.`,

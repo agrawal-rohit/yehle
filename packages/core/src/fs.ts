@@ -41,7 +41,12 @@ export async function readDirectoryAsync(
  * @param targetPath - File or directory to remove.
  */
 export async function removeAsync(targetPath: string): Promise<void> {
-	await fs.promises.rm(targetPath, { recursive: true, force: true });
+	await fs.promises.rm(targetPath, {
+		recursive: true,
+		force: true,
+		maxRetries: 5,
+		retryDelay: 50,
+	});
 }
 
 /**

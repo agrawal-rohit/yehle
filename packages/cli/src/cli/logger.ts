@@ -21,6 +21,17 @@ class Logger {
 		console.log();
 		process.exit(1);
 	}
+
+	/**
+	 * Prints a completion message and exits the process with code 0.
+	 * @param message - The completion message to display.
+	 */
+	end(message: string) {
+		console.log();
+		console.error(`${dangerHighlight(" end ")} ${message}`);
+		console.log();
+		process.exit(0);
+	}
 }
 
 const logger = new Logger();

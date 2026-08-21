@@ -92,7 +92,11 @@ describe("buildRegistry", () => {
 						id: "react",
 						title: "React",
 						description: "React button",
-						dependencies: ["react"],
+						packages: {
+							npm: {
+								dependencies: ["react"],
+							},
+						},
 						files: [
 							{
 								source: "react/button.tsx",
@@ -158,9 +162,7 @@ describe("buildRegistry", () => {
 		expect(written.items.button.variants?.[0]).not.toHaveProperty(
 			"description",
 		);
-		expect(written.items.button.variants?.[0]).not.toHaveProperty(
-			"dependencies",
-		);
+		expect(written.items.button.variants?.[0]).not.toHaveProperty("packages");
 
 		const payloadPath = path.join(tempDir, "r/button/react.json");
 		const payloadRaw = fs.readFileSync(payloadPath, "utf8");
@@ -172,7 +174,11 @@ describe("buildRegistry", () => {
 					content: "export const Button = () => null;\n",
 				},
 			],
-			dependencies: ["react"],
+			packages: {
+				npm: {
+					dependencies: ["react"],
+				},
+			},
 		});
 		expect(payload).not.toHaveProperty("id");
 		expect(payload).not.toHaveProperty("variantId");
@@ -527,7 +533,7 @@ describe("buildRegistry", () => {
 		expect(fs.existsSync(path.join(sourceDir, "registry.json"))).toBe(false);
 	});
 
-	it("moves npm dependencies into payloads and keeps registryDependencies in the catalog", async () => {
+	it("moves packages into payloads and keeps registryDependencies in the catalog", async () => {
 		writeItem(
 			tempDir,
 			"configuration/testing",
@@ -537,8 +543,12 @@ describe("buildRegistry", () => {
 				description: "Tests",
 				type: "configuration",
 				registryDependencies: ["setup-workspace"],
-				dependencies: ["shared-lib"],
-				devDependencies: ["vitest"],
+				packages: {
+					npm: {
+						dependencies: ["shared-lib"],
+						devDependencies: ["vitest"],
+					},
+				},
 				variants: [
 					{
 						id: "typescript",
@@ -546,8 +556,12 @@ describe("buildRegistry", () => {
 						description: "TS tests",
 						when: { language: "typescript" },
 						registryDependencies: ["setup-workspace-workflow"],
-						dependencies: ["react"],
-						devDependencies: ["@vitest/coverage-v8"],
+						packages: {
+							npm: {
+								dependencies: ["react"],
+								devDependencies: ["@vitest/coverage-v8"],
+							},
+						},
 						files: [{ source: "vitest.config.ts", target: "vitest.config.ts" }],
 					},
 				],
@@ -577,14 +591,17 @@ describe("buildRegistry", () => {
 				},
 			],
 		});
-		expect(document.items.testing).not.toHaveProperty("dependencies");
-		expect(document.items.testing).not.toHaveProperty("devDependencies");
+		expect(document.items.testing).not.toHaveProperty("packages");
 
 		const payload = JSON.parse(
 			fs.readFileSync(path.join(tempDir, "r/testing/typescript.json"), "utf8"),
 		) as RegistryPayload;
-		expect(payload.dependencies).toEqual(["shared-lib", "react"]);
-		expect(payload.devDependencies).toEqual(["vitest", "@vitest/coverage-v8"]);
+		expect(payload.packages).toEqual({
+			npm: {
+				dependencies: ["react", "shared-lib"],
+				devDependencies: ["@vitest/coverage-v8", "vitest"],
+			},
+		});
 		expect(payload).not.toHaveProperty("id");
 		expect(payload).not.toHaveProperty("variantId");
 		expect(payload).not.toHaveProperty("registryDependencies");

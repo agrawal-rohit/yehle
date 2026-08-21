@@ -19,8 +19,8 @@ If applicable, add screenshots to help explain your problem.
 
 **Environment (please complete the following information):**
 
-- OS: [e.g. MacOS, Linux]
-- Node version
+- OS: [e.g. macOS, Linux, Windows]
+- Runtime version: [e.g. Node 20, Python 3.12]
 
 **Additional context**
 Add any other context about the problem here.

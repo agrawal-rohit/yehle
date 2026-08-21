@@ -34,6 +34,14 @@ List available templates from the default registry:
 npx tuckshop list
 ```
 
+Add registry items to the current project:
+
+```bash
+npx tuckshop add pr-template-configuration
+npx tuckshop add testing-configuration --overwrite
+npx tuckshop add
+```
+
 Use a custom registry for one invocation:
 
 ```bash
@@ -83,7 +91,7 @@ await buildRegistry({ sourceDir, outDir });
 const registry = parseRegistryDocument(JSON.parse(registryJson));
 ```
 
-That emits a compact `registry.json` catalog plus compact install payloads at `r/{itemId}.json` (variant-less items) or `r/{itemId}/{variantId}.json` under `outDir`. Item identity is the `items` map key; each item or variant has a `source` payload URI. Consumers resolve it against the catalog location (`resolveRegistryPayload`). File contents and npm dependencies live in the payload, not the catalog.
+That emits a compact `registry.json` catalog plus compact install payloads at `r/{itemId}.json` (variant-less items) or `r/{itemId}/{variantId}.json` under `outDir`. Item identity is the `items` map key; each item or variant has a `source` payload URI. Consumers resolve it against the catalog location (`resolveRegistryPayload`). File contents and ecosystem-tagged packages live in the payload, not the catalog.
 
 `@tuckshop/core` exposes:
 

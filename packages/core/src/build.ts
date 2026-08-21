@@ -7,6 +7,7 @@ import {
 	removeAsync,
 	writeFileAsync,
 } from "./fs";
+import { mergeRegistryPackages } from "./packages";
 import { parseRegistryDocument, parseWithSchema } from "./parse";
 import {
 	type AuthoredRegistryItem,
@@ -154,18 +155,7 @@ export async function buildRegistry(
 
 	// Write one payload per variant, or a single item-level payload.
 	for (const { itemDir, item, variant, absoluteFile } of plannedPayloads) {
-		const dependencies = [
-			...new Set([
-				...(item.dependencies ?? []),
-				...(variant?.dependencies ?? []),
-			]),
-		];
-		const devDependencies = [
-			...new Set([
-				...(item.devDependencies ?? []),
-				...(variant?.devDependencies ?? []),
-			]),
-		];
+		const packages = mergeRegistryPackages(item.packages, variant?.packages);
 		const payload: RegistryPayload = {
 			files: [
 				...(await materializePayloadFiles(
@@ -181,8 +171,7 @@ export async function buildRegistry(
 					variant?.files,
 				)),
 			],
-			...(dependencies.length > 0 ? { dependencies } : {}),
-			...(devDependencies.length > 0 ? { devDependencies } : {}),
+			...(packages ? { packages } : {}),
 		};
 
 		await writeFileAsync(absoluteFile, `${JSON.stringify(payload)}\n`);

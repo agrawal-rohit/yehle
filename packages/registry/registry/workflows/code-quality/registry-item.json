@@ -18,9 +18,13 @@
 				"language": "typescript"
 			},
 			"registryDependencies": ["setup-workspace-workflow"],
-			"devDependencies": [
-				"@biomejs/biome@^2"
-			],
+			"packages": {
+				"npm": {
+					"devDependencies": [
+						"@biomejs/biome@^2"
+					]
+				}
+			},
 			"files": [
 				{
 					"source": "typescript/.github/workflows/quality.yml",

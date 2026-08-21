@@ -1,6 +1,6 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RegistrySourceKind, resolveRegistrySource } from "./source";
+import { resolveRegistrySource } from "./source";
 
 const mockIsFileAsync = vi.fn<(candidate: string) => Promise<boolean>>();
 
@@ -31,10 +31,7 @@ describe("registry/source", () => {
 				registry: "https://example.com/registry.json",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
-		).resolves.toEqual({
-			kind: RegistrySourceKind.URL,
-			location: "https://example.com/registry.json",
-		});
+		).resolves.toBe("https://example.com/registry.json");
 		expect(mockIsFileAsync).not.toHaveBeenCalled();
 	});
 
@@ -44,10 +41,7 @@ describe("registry/source", () => {
 				registry: "./custom/registry.json",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
-		).resolves.toEqual({
-			kind: RegistrySourceKind.PATH,
-			location: path.resolve("/workspace", "./custom/registry.json"),
-		});
+		).resolves.toBe(path.resolve("/workspace", "./custom/registry.json"));
 	});
 
 	it("loads the current working directory registry before bundled fallbacks", async () => {
@@ -60,10 +54,7 @@ describe("registry/source", () => {
 			resolveRegistrySource({
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
-		).resolves.toEqual({
-			kind: RegistrySourceKind.PATH,
-			location: cwdRegistry,
-		});
+		).resolves.toBe(cwdRegistry);
 	});
 
 	it("falls back to the bundled registry.json when cwd has none", async () => {
@@ -76,10 +67,7 @@ describe("registry/source", () => {
 			resolveRegistrySource({
 				bundledRegistryPath: packagedRegistry,
 			}),
-		).resolves.toEqual({
-			kind: RegistrySourceKind.BUNDLED,
-			location: packagedRegistry,
-		});
+		).resolves.toBe(packagedRegistry);
 	});
 
 	it("uses fallback registry probe paths before the bundled copy", async () => {
@@ -94,10 +82,7 @@ describe("registry/source", () => {
 				bundledRegistryPath: packagedRegistry,
 				fallbackRegistryPaths: [fallbackRegistry],
 			}),
-		).resolves.toEqual({
-			kind: RegistrySourceKind.PATH,
-			location: fallbackRegistry,
-		});
+		).resolves.toBe(fallbackRegistry);
 	});
 
 	it("uses fallback registry probe paths when the bundled copy is absent", async () => {
@@ -111,10 +96,7 @@ describe("registry/source", () => {
 				bundledRegistryPath: "/bundle/registry.json",
 				fallbackRegistryPaths: [fallbackRegistry],
 			}),
-		).resolves.toEqual({
-			kind: RegistrySourceKind.PATH,
-			location: fallbackRegistry,
-		});
+		).resolves.toBe(fallbackRegistry);
 	});
 
 	it("uses TUCKSHOP_REGISTRY from the environment when no flag is provided", async () => {
@@ -124,10 +106,7 @@ describe("registry/source", () => {
 			resolveRegistrySource({
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
-		).resolves.toEqual({
-			kind: RegistrySourceKind.URL,
-			location: "https://example.com/env-registry.json",
-		});
+		).resolves.toBe("https://example.com/env-registry.json");
 	});
 
 	it("uses a saved registry config when flag and env are absent", async () => {
@@ -136,10 +115,7 @@ describe("registry/source", () => {
 				savedRegistry: "https://example.com/saved-registry.json",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
-		).resolves.toEqual({
-			kind: RegistrySourceKind.URL,
-			location: "https://example.com/saved-registry.json",
-		});
+		).resolves.toBe("https://example.com/saved-registry.json");
 	});
 
 	it("prefers TUCKSHOP_REGISTRY over a saved registry config", async () => {
@@ -150,10 +126,7 @@ describe("registry/source", () => {
 				savedRegistry: "https://example.com/saved-registry.json",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
-		).resolves.toEqual({
-			kind: RegistrySourceKind.URL,
-			location: "https://example.com/env-registry.json",
-		});
+		).resolves.toBe("https://example.com/env-registry.json");
 	});
 
 	it("prefers an explicit flag over env and saved registry config", async () => {
@@ -165,10 +138,7 @@ describe("registry/source", () => {
 				savedRegistry: "https://example.com/saved-registry.json",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
-		).resolves.toEqual({
-			kind: RegistrySourceKind.URL,
-			location: "https://example.com/flag-registry.json",
-		});
+		).resolves.toBe("https://example.com/flag-registry.json");
 	});
 
 	it("defaults bundledRegistryPath relative to the module when omitted", async () => {
@@ -181,10 +151,7 @@ describe("registry/source", () => {
 			return candidate === defaultBundledPath;
 		});
 
-		await expect(resolveRegistrySource()).resolves.toEqual({
-			kind: RegistrySourceKind.BUNDLED,
-			location: defaultBundledPath,
-		});
+		await expect(resolveRegistrySource()).resolves.toBe(defaultBundledPath);
 	});
 
 	it("throws a clear error when no registry source can be found", async () => {

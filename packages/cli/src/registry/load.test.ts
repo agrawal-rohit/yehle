@@ -3,7 +3,6 @@ import type { IncomingMessage } from "node:http";
 import { Readable } from "node:stream";
 import type { Registry } from "@tuckshop/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RegistrySourceKind } from "./source";
 
 const mockHttpsRequest = vi.fn();
 const mockResolveRegistrySource = vi.fn();
@@ -21,11 +20,6 @@ vi.mock("node:https", () => ({
 }));
 
 vi.mock("./source", () => ({
-	RegistrySourceKind: {
-		BUNDLED: "bundled",
-		PATH: "path",
-		URL: "url",
-	},
 	resolveRegistrySource: (options: unknown) =>
 		mockResolveRegistrySource(options),
 }));
@@ -40,7 +34,7 @@ vi.mock("@tuckshop/core", async () => {
 	};
 });
 
-import { loadRuntimeRegistry } from "./load";
+import { loadRegistryPayloads, loadRuntimeRegistry } from "./load";
 
 const sampleRegistry: Registry = {
 	types: {},
@@ -57,10 +51,7 @@ const publicRegistryBody = JSON.stringify({
  * @param location - Absolute registry URL.
  */
 function mockRemoteSource(location: string): void {
-	mockResolveRegistrySource.mockResolvedValue({
-		kind: RegistrySourceKind.URL,
-		location,
-	});
+	mockResolveRegistrySource.mockResolvedValue(location);
 }
 
 interface MockResponseOptions {
@@ -139,23 +130,20 @@ describe("registry/load", () => {
 	});
 
 	it("loads local registry sources from disk", async () => {
-		mockResolveRegistrySource.mockResolvedValue({
-			kind: RegistrySourceKind.PATH,
-			location: "/workspace/registry.json",
-		});
+		mockResolveRegistrySource.mockResolvedValue("/workspace/registry.json");
 		mockReadFileAsync.mockResolvedValue(JSON.stringify(sampleRegistry));
 
-		await expect(loadRuntimeRegistry()).resolves.toEqual(sampleRegistry);
+		await expect(loadRuntimeRegistry()).resolves.toEqual({
+			registry: sampleRegistry,
+			catalogLocation: "/workspace/registry.json",
+		});
 		expect(mockReadFileAsync).toHaveBeenCalledWith("/workspace/registry.json");
 		expect(mockParseRegistryDocument).toHaveBeenCalledWith(sampleRegistry);
 		expect(mockHttpsRequest).not.toHaveBeenCalled();
 	});
 
 	it("forwards flag and saved registry sources to resolveRegistrySource", async () => {
-		mockResolveRegistrySource.mockResolvedValue({
-			kind: RegistrySourceKind.PATH,
-			location: "/workspace/registry.json",
-		});
+		mockResolveRegistrySource.mockResolvedValue("/workspace/registry.json");
 		mockReadFileAsync.mockResolvedValue(JSON.stringify(sampleRegistry));
 
 		await loadRuntimeRegistry(
@@ -236,7 +224,10 @@ describe("registry/load", () => {
 		mockRemoteSource("https://example.com/registry.json");
 		mockHttpsOk();
 
-		await expect(loadRuntimeRegistry()).resolves.toEqual(sampleRegistry);
+		await expect(loadRuntimeRegistry()).resolves.toEqual({
+			registry: sampleRegistry,
+			catalogLocation: "https://example.com/registry.json",
+		});
 		expect(mockParseRegistryDocument).toHaveBeenCalled();
 		expect(mockHttpsRequest).toHaveBeenCalledWith(
 			expect.any(URL),
@@ -296,10 +287,10 @@ describe("registry/load", () => {
 			body: Buffer.from(publicRegistryBody),
 		});
 
-		await expect(loadRuntimeRegistry()).resolves.toEqual(sampleRegistry);
-		expect(mockParseRegistryDocument).toHaveBeenCalledWith(
-			JSON.parse(publicRegistryBody),
-		);
+		await expect(loadRuntimeRegistry()).resolves.toEqual({
+			registry: sampleRegistry,
+			catalogLocation: "https://example.com/buffer-registry.json",
+		});
 	});
 
 	it("rejects remote registries whose content-length exceeds the size limit", async () => {
@@ -371,5 +362,24 @@ describe("registry/load", () => {
 		await expect(loadRuntimeRegistry()).rejects.toThrow(
 			"Failed to fetch registry from https://example.com/down-registry.json.",
 		);
+	});
+
+	it("loads unique payloads relative to the given catalog location", async () => {
+		mockReadFileAsync.mockResolvedValueOnce(
+			JSON.stringify({
+				files: [{ target: "a.txt", content: "hello" }],
+			}),
+		);
+
+		const payloads = await loadRegistryPayloads("/workspace/registry.json", [
+			"r/item.json",
+			"r/item.json",
+		]);
+
+		expect(payloads.size).toBe(1);
+		expect(payloads.get("r/item.json")).toEqual({
+			files: [{ target: "a.txt", content: "hello" }],
+		});
+		expect(mockReadFileAsync).toHaveBeenCalledWith("/workspace/r/item.json");
 	});
 });

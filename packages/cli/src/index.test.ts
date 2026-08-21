@@ -20,7 +20,8 @@ vi.mock("./commands", () => ({
 
 vi.mock("./registry/load", () => ({
 	loadRuntimeRegistry: vi.fn(async () => ({
-		items: {},
+		registry: { items: {} },
+		catalogLocation: "/bundle/registry.json",
 	})),
 }));
 

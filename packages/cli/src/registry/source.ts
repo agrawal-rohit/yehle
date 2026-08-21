@@ -1,18 +1,6 @@
 import path from "node:path";
 import { isFileAsync } from "@tuckshop/core";
 
-/** How a resolved registry source was located. */
-export enum RegistrySourceKind {
-	BUNDLED = "bundled",
-	PATH = "path",
-	URL = "url",
-}
-
-export interface RegistrySource {
-	kind: RegistrySourceKind;
-	location: string;
-}
-
 export interface ResolveRegistrySourceOptions {
 	/** Explicit registry flag value from the CLI. */
 	registry?: string;
@@ -61,12 +49,12 @@ async function resolveBuiltRegistryPath(
 /**
  * Resolve which registry source the CLI should use.
  * @param options - Resolution inputs from CLI flags, env, and package defaults.
- * @returns Resolved source descriptor.
+ * @returns Absolute local path or HTTP(S) URL to the catalog.
  * @throws Error when no local or bundled registry can be found.
  */
 export async function resolveRegistrySource(
 	options: ResolveRegistrySourceOptions = {},
-): Promise<RegistrySource> {
+): Promise<string> {
 	const bundledRegistryPath =
 		options.bundledRegistryPath ??
 		path.resolve(__dirname, "../../", "registry.json");
@@ -78,15 +66,8 @@ export async function resolveRegistrySource(
 
 	// If a source is explicitly provided, use it.
 	if (source) {
-		// If the source is a URL, use it as is.
-		if (isUrlSource(source))
-			return { kind: RegistrySourceKind.URL, location: source };
-
-		// Otherwise, resolve it relative to the current working directory.
-		return {
-			kind: RegistrySourceKind.PATH,
-			location: path.resolve(process.cwd(), source),
-		};
+		if (isUrlSource(source)) return source;
+		return path.resolve(process.cwd(), source);
 	}
 
 	// If no source is explicitly provided, resolve the built registry path.
@@ -100,11 +81,5 @@ export async function resolveRegistrySource(
 			"Registry not found (registry.json). Run `pnpm run build:registry` before using tuckshop.",
 		);
 
-	return {
-		kind:
-			builtRegistryPath === bundledRegistryPath
-				? RegistrySourceKind.BUNDLED
-				: RegistrySourceKind.PATH,
-		location: builtRegistryPath,
-	};
+	return builtRegistryPath;
 }

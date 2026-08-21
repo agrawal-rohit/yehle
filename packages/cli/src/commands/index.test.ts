@@ -3,18 +3,23 @@ import type { CAC } from "cac";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockListCommand = vi.fn();
+const mockAddCommand = vi.fn();
 const mockPickStringOptions = vi.fn();
 const mockLoggerIntro = vi.fn();
 const mockLoggerError = vi.fn();
 const mockConfigGetCommand = vi.fn();
 const mockConfigSetCommand = vi.fn();
 const mockConfigUnsetCommand = vi.fn();
-const mockConsolaPrompt = vi.fn();
+const mockTextInput = vi.fn();
 const mockReadConfig = vi.fn();
 const mockLoadRegistry = vi.fn();
 
 vi.mock("./list", () => ({
 	default: (...args: unknown[]) => mockListCommand(...args),
+}));
+
+vi.mock("./add", () => ({
+	default: (...args: unknown[]) => mockAddCommand(...args),
 }));
 
 vi.mock("./config", () => ({
@@ -29,6 +34,8 @@ vi.mock("../cli/config", () => ({
 
 vi.mock("../cli/options", () => ({
 	pickStringOptions: (...args: unknown[]) => mockPickStringOptions(...args),
+	getBooleanOption: (options: Record<string, unknown>, key: string) =>
+		options[key] === true,
 }));
 
 vi.mock("../cli/logger", () => ({
@@ -38,10 +45,8 @@ vi.mock("../cli/logger", () => ({
 	},
 }));
 
-vi.mock("consola", () => ({
-	default: {
-		prompt: (...args: unknown[]) => mockConsolaPrompt(...args),
-	},
+vi.mock("../cli/prompts", () => ({
+	textInput: (...args: unknown[]) => mockTextInput(...args),
 }));
 
 import { registerCommandsCli } from "./index";
@@ -101,27 +106,35 @@ describe("commands/index", () => {
 		vi.clearAllMocks();
 		mockPickStringOptions.mockReturnValue({ type: "theme" });
 		mockListCommand.mockResolvedValue(undefined);
+		mockAddCommand.mockResolvedValue(undefined);
 		mockLoggerIntro.mockResolvedValue(undefined);
 		mockConfigGetCommand.mockResolvedValue(undefined);
 		mockConfigSetCommand.mockResolvedValue("/tmp/config.json");
 		mockConfigUnsetCommand.mockResolvedValue(true);
-		mockConsolaPrompt.mockResolvedValue(
+		mockTextInput.mockResolvedValue(
 			"https://example.com/prompted-registry.json",
 		);
 		mockReadConfig.mockResolvedValue({});
-		mockLoadRegistry.mockResolvedValue(registry);
+		mockLoadRegistry.mockResolvedValue({
+			registry,
+			catalogLocation: "/workspace/registry.json",
+		});
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	it("registers the list and config commands with usage and type option", async () => {
+	it("registers the add, list, and config commands with usage and type option", async () => {
 		const { app, command, option, example, help } = createMockApp();
 
 		await registerCommandsCli(app, mockLoadRegistry);
 
 		expect(app.usage).toHaveBeenCalledWith("<command> [options]");
+		expect(command).toHaveBeenCalledWith(
+			"add [items...]",
+			"Add registry items to the current working directory",
+		);
 		expect(command).toHaveBeenCalledWith(
 			"list",
 			"List available registry items",
@@ -129,6 +142,10 @@ describe("commands/index", () => {
 		expect(command).toHaveBeenCalledWith(
 			"config <action> [source]",
 			"Get, set, or unset the default registry source",
+		);
+		expect(option).toHaveBeenCalledWith(
+			"--overwrite",
+			"Overwrite existing files",
 		);
 		expect(option).toHaveBeenCalledWith(
 			"--type <types>",
@@ -173,6 +190,42 @@ describe("commands/index", () => {
 			{ body: "tuckshop" },
 			{ title: "Usage", body: "  $ tuckshop list" },
 		]);
+	});
+
+	it("runs the add command action with no positional items", async () => {
+		const { app, actions } = createMockApp();
+		await registerCommandsCli(app, mockLoadRegistry);
+
+		await actions.get("add [items...]")?.(undefined, {});
+
+		expect(mockAddCommand).toHaveBeenCalledWith(
+			registry,
+			"/workspace/registry.json",
+			{
+				items: [],
+				overwrite: false,
+			},
+		);
+	});
+
+	it("runs the add command action with positional items", async () => {
+		const { app, actions } = createMockApp();
+		await registerCommandsCli(app, mockLoadRegistry);
+
+		const addAction = actions.get("add [items...]");
+		expect(addAction).toBeDefined();
+		await addAction?.(["pr-template-configuration"], { overwrite: true });
+
+		expect(mockLoadRegistry).toHaveBeenCalled();
+		expect(mockLoggerIntro).toHaveBeenCalledWith("adding registry items");
+		expect(mockAddCommand).toHaveBeenCalledWith(
+			registry,
+			"/workspace/registry.json",
+			{
+				items: ["pr-template-configuration"],
+				overwrite: true,
+			},
+		);
 	});
 
 	it("runs the list command action with picked options", async () => {
@@ -257,7 +310,7 @@ describe("commands/index", () => {
 		);
 
 		expect(mockLoggerIntro).toHaveBeenCalledWith("updating the configuration");
-		expect(mockConsolaPrompt).not.toHaveBeenCalled();
+		expect(mockTextInput).not.toHaveBeenCalled();
 		expect(mockConfigSetCommand).toHaveBeenCalledWith(
 			"https://example.com/registry.json",
 		);
@@ -269,9 +322,12 @@ describe("commands/index", () => {
 
 		await actions.get("config <action> [source]")?.("set");
 
-		expect(mockConsolaPrompt).toHaveBeenCalledWith(
+		expect(mockTextInput).toHaveBeenCalledWith(
 			"Registry URL or local path",
-			expect.objectContaining({ type: "text", cancel: "reject" }),
+			expect.objectContaining({
+				placeholder: "https://example.com/registry.json",
+				required: true,
+			}),
 		);
 		expect(mockConfigSetCommand).toHaveBeenCalledWith(
 			"https://example.com/prompted-registry.json",
@@ -280,20 +336,7 @@ describe("commands/index", () => {
 
 	it("rejects an empty prompted source", async () => {
 		const { app, actions } = createMockApp();
-		mockConsolaPrompt.mockResolvedValue("   ");
-		await registerCommandsCli(app, mockLoadRegistry);
-
-		await actions.get("config <action> [source]")?.("set");
-
-		expect(mockConfigSetCommand).not.toHaveBeenCalled();
-		expect(mockLoggerError).toHaveBeenCalledWith(
-			"Registry source must not be empty.",
-		);
-	});
-
-	it("rejects a non-string prompted source", async () => {
-		const { app, actions } = createMockApp();
-		mockConsolaPrompt.mockResolvedValue(undefined);
+		mockTextInput.mockResolvedValue("");
 		await registerCommandsCli(app, mockLoadRegistry);
 
 		await actions.get("config <action> [source]")?.("set");
