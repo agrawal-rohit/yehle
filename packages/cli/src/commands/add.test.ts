@@ -139,10 +139,10 @@ describe("commands/add", () => {
 			"# PR Template",
 		);
 		expect(consoleLogSpy).toHaveBeenCalledWith(
-			expect.stringContaining("Registry items installed successfully!"),
+			expect.stringContaining("Installed 1 item."),
 		);
-		expect(consoleLogSpy).toHaveBeenCalledWith(
-			expect.stringContaining("1 item(s) installed"),
+		expect(consoleLogSpy).not.toHaveBeenCalledWith(
+			expect.stringContaining("Registry items installed successfully!"),
 		);
 	});
 
@@ -475,7 +475,7 @@ describe("commands/add", () => {
 		expect(mockSelectInput).not.toHaveBeenCalled();
 		expect(mockRunAsync).not.toHaveBeenCalled();
 		expect(consoleLogSpy).toHaveBeenCalledWith(
-			expect.stringContaining("Next steps:"),
+			expect.stringContaining("Next steps"),
 		);
 		expect(consoleLogSpy).toHaveBeenCalledWith(
 			expect.stringContaining("npm install -D vitest@^3"),

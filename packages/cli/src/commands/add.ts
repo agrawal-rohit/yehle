@@ -17,6 +17,7 @@ import {
 	type RegistryPackageManager,
 	type RegistryPackages,
 	type RegistryPayload,
+	type ResolvedRegistryItem,
 	registryPayloadSchema,
 	runAsync,
 	writeFileAsync,
@@ -36,6 +37,14 @@ interface AddCommandOptions {
 	items?: string[];
 	/** Overwrite existing files without prompting. */
 	overwrite?: boolean;
+}
+
+/** Parsed payload paired with the display label used in install progress. */
+interface PreparedInstallItem {
+	/** Human-readable item title for task output. */
+	label: string;
+	/** Validated install payload. */
+	payload: RegistryPayload;
 }
 
 /**
@@ -292,17 +301,65 @@ async function captureRequiredConditions(
 }
 
 /**
- * Write payload files to disk, prompting before overwriting existing targets.
+ * Prompt before overwriting payload targets that already exist on disk.
+ * @param projectDir - Absolute project root.
+ * @param payloads - Parsed install payloads whose files may collide with existing paths.
+ * @param overwrite - Skip overwrite prompts when true.
+ * @throws Error when the user declines an overwrite or two payloads share a target.
+ */
+async function confirmFileOverwrites(
+	projectDir: string,
+	payloads: RegistryPayload[],
+	overwrite: boolean,
+): Promise<void> {
+	if (overwrite) return;
+
+	const seenTargets = new Set<string>();
+	const existingTargets: string[] = [];
+	for (const payload of payloads) {
+		for (const file of payload.files) {
+			const destination = absoluteProjectTarget(projectDir, file.target);
+
+			// Absolute paths catch collisions even when payloads use different relative spellings.
+			if (seenTargets.has(destination))
+				throw new Error(
+					`Multiple registry payloads write to the same target "${primaryText(file.target)}".`,
+				);
+			seenTargets.add(destination);
+
+			if (await isFileAsync(destination)) existingTargets.push(file.target);
+		}
+	}
+
+	if (existingTargets.length === 0) return;
+
+	// Blank lines keep Clack prompts from colliding with Listr output on either side.
+	console.log();
+	for (const target of existingTargets) {
+		const shouldOverwrite = await confirmInput(
+			`Overwrite existing file ${primaryText(target)}?`,
+			{},
+			false,
+		);
+		if (!shouldOverwrite)
+			throw new Error(
+				`Installation canceled before overwriting ${primaryText(target)}.`,
+			);
+	}
+	console.log();
+}
+
+/**
+ * Write payload files to disk. Callers must resolve overwrite conflicts first.
  * @param projectDir - Absolute project root.
  * @param payload - Parsed install payload.
  * @param writtenTargets - Targets already written during this install.
- * @param overwrite - Skip overwrite prompts when true.
+ * @throws Error when two payloads in this run share a destination.
  */
 async function writePayloadFiles(
 	projectDir: string,
 	payload: RegistryPayload,
 	writtenTargets: Set<string>,
-	overwrite: boolean,
 ): Promise<void> {
 	for (const file of payload.files) {
 		const destination = absoluteProjectTarget(projectDir, file.target);
@@ -313,44 +370,27 @@ async function writePayloadFiles(
 				`Multiple registry payloads write to the same target "${primaryText(file.target)}".`,
 			);
 
-		// Prompt to overwrite existing files if the user didn't specify to overwrite.
-		if (!overwrite && (await isFileAsync(destination))) {
-			const shouldOverwrite = await confirmInput(
-				`Overwrite existing file ${primaryText(file.target)}?`,
-				{},
-				false,
-			);
-			if (!shouldOverwrite)
-				throw new Error(
-					`Installation canceled before overwriting ${primaryText(file.target)}.`,
-				);
-		}
-
 		await writeFileAsync(destination, file.content);
 		writtenTargets.add(destination);
 	}
 }
 
 /**
- * Print install results and optional follow-up steps after task execution.
- * @param installedLabels - Installed registry item labels.
+ * Print a compact install outro. Item names are already shown by the task list.
+ * @param installedCount - Number of registry items written.
  * @param pendingInstallCommands - Install commands the user can run manually.
  */
 function printInstallSummary(
-	installedLabels: string[],
+	installedCount: number,
 	pendingInstallCommands: string[] = [],
 ): void {
+	const itemWord = installedCount === 1 ? "item" : "items";
 	console.log();
-	console.log(chalk.bold("Registry items installed successfully!"));
-	console.log();
-	for (const label of installedLabels) console.log(defaultText(`  ✓ ${label}`));
-	console.log();
-	console.log(defaultText(`${installedLabels.length} item(s) installed`));
+	console.log(defaultText(`Installed ${installedCount} ${itemWord}.`));
 
 	if (pendingInstallCommands.length > 0) {
 		console.log();
-		console.log(chalk.bold("Next steps:"));
-		console.log();
+		console.log(chalk.bold("Next steps"));
 		pendingInstallCommands.forEach((command, index) => {
 			console.log(
 				`  ${index + 1}. Install dependencies with ${primaryText(command)}`,
@@ -359,6 +399,99 @@ function printInstallSummary(
 	}
 
 	console.log();
+}
+
+/**
+ * Parse fetched payload documents into labeled install units.
+ * @param planItems - Ordered install nodes from the resolved plan.
+ * @param registry - Loaded registry catalog for display titles.
+ * @param payloadDocuments - Raw payload documents keyed by source URI.
+ * @returns Prepared items ready for overwrite checks and file writes.
+ * @throws Error when a planned source is missing from the fetched documents.
+ */
+function prepareInstallItems(
+	planItems: ResolvedRegistryItem[],
+	registry: Registry,
+	payloadDocuments: Map<string, unknown>,
+): PreparedInstallItem[] {
+	return planItems.map((node) => {
+		const rawPayload = payloadDocuments.get(node.source);
+		if (rawPayload === undefined)
+			throw new Error(
+				`Missing payload for registry item "${node.itemId}" (${node.source}).`,
+			);
+
+		return {
+			label: registry.items[node.itemId]?.title ?? node.itemId,
+			payload: parseWithSchema(
+				registryPayloadSchema,
+				rawPayload,
+				`Registry payload for "${node.itemId}"`,
+			),
+		};
+	});
+}
+
+/**
+ * Write prepared payloads to disk and collect any declared package maps.
+ * @param projectDir - Absolute project root.
+ * @param preparedItems - Parsed payloads with display labels.
+ * @returns Package declarations found on the written payloads.
+ */
+async function writePreparedItems(
+	projectDir: string,
+	preparedItems: PreparedInstallItem[],
+): Promise<RegistryPackages[]> {
+	const writtenTargets = new Set<string>();
+	const packageDeclarations: RegistryPackages[] = [];
+
+	// One top-level task per item so names stay visible after Listr collapses.
+	for (const { label, payload } of preparedItems) {
+		await tasks.runWithTasks(`Installing "${label}"`, async () => {
+			if (payload.packages) packageDeclarations.push(payload.packages);
+			await writePayloadFiles(projectDir, payload, writtenTargets);
+		});
+	}
+
+	return packageDeclarations;
+}
+
+/**
+ * Prompt for and optionally run package install commands from payload declarations.
+ * @param packageDeclarations - Per-payload package maps collected during writes.
+ * @param projectDir - Absolute project root.
+ * @returns Commands still left for the user when installation was skipped.
+ */
+async function installDeclaredPackages(
+	packageDeclarations: RegistryPackages[],
+	projectDir: string,
+): Promise<string[]> {
+	if (packageDeclarations.length === 0) return [];
+
+	console.log();
+	const shouldInstall = await confirmInput(
+		"Would you like to install the required dependencies?",
+		{},
+		true,
+	);
+	const { installCommands, pendingCommands } =
+		await collectPackageInstallCommands(
+			packageDeclarations,
+			projectDir,
+			shouldInstall,
+		);
+
+	if (installCommands.length === 0) return pendingCommands;
+
+	console.log();
+	for (const command of installCommands) {
+		await tasks.runWithTasks(command, async () => {
+			await runAsync(command, { cwd: projectDir, stdio: "inherit" });
+		});
+	}
+
+	// Successful installs replace manual next steps for the same packages.
+	return [];
 }
 
 /**
@@ -383,87 +516,37 @@ async function addCommand(
 	if (plan.items.length === 0)
 		throw new Error("No registry items were selected for installation.");
 
-	const writtenTargets = new Set<string>();
-	const packageDeclarations: RegistryPackages[] = [];
-	const installedLabels: string[] = [];
-	let payloadDocuments = new Map<string, unknown>();
-
 	console.log();
 
-	// Fetch all required registry payloads and install each planned item sequentially.
-	await tasks.runWithTasks("Installing registry items", undefined, [
-		{
-			title: "Fetch registry payloads",
-			task: async () => {
-				payloadDocuments = await loadRegistryPayloads(
-					catalogLocation,
-					plan.items.map((node) => node.source),
-				);
-			},
-		},
-		...plan.items.map((node) => {
-			const label = registry.items[node.itemId]?.title ?? node.itemId;
-
-			return {
-				title: label,
-				task: async () => {
-					const rawPayload = payloadDocuments.get(node.source);
-					if (rawPayload === undefined)
-						throw new Error(
-							`Missing payload for registry item "${node.itemId}" (${node.source}).`,
-						);
-
-					const payload = parseWithSchema(
-						registryPayloadSchema,
-						rawPayload,
-						`Registry payload for "${node.itemId}"`,
-					);
-					if (payload.packages) packageDeclarations.push(payload.packages);
-
-					await writePayloadFiles(
-						projectDir,
-						payload,
-						writtenTargets,
-						options.overwrite === true,
-					);
-					installedLabels.push(label);
-				},
-			};
-		}),
-	]);
-
-	let installCommands: string[] = [];
-	let pendingInstallCommands: string[] = [];
-	if (packageDeclarations.length > 0) {
-		const shouldInstall = await confirmInput(
-			"Would you like to install the required dependencies?",
-			{},
-			true,
+	// Fetch first; overwrite prompts must not run under Listr or Clack stays invisible.
+	let payloadDocuments = new Map<string, unknown>();
+	await tasks.runWithTasks("Pre-flight checks", async () => {
+		payloadDocuments = await loadRegistryPayloads(
+			catalogLocation,
+			plan.items.map((node) => node.source),
 		);
-		const packageInstalls = await collectPackageInstallCommands(
-			packageDeclarations,
-			projectDir,
-			shouldInstall,
-		);
-		installCommands = packageInstalls.installCommands;
-		pendingInstallCommands = packageInstalls.pendingCommands;
-	}
+	});
 
-	if (installCommands.length > 0) {
-		console.log();
-		await tasks.runWithTasks("Finishing up", undefined, [
-			...installCommands.map((command) => ({
-				title: command,
-				task: async () => {
-					await runAsync(command, { cwd: projectDir, stdio: "inherit" });
-				},
-			})),
-		]);
-		// Successful installs replace manual next steps for the same packages.
-		pendingInstallCommands = [];
-	}
+	const preparedItems = prepareInstallItems(
+		plan.items,
+		registry,
+		payloadDocuments,
+	);
+	await confirmFileOverwrites(
+		projectDir,
+		preparedItems.map((item) => item.payload),
+		options.overwrite === true,
+	);
 
-	printInstallSummary(installedLabels, pendingInstallCommands);
+	const packageDeclarations = await writePreparedItems(
+		projectDir,
+		preparedItems,
+	);
+	const pendingInstallCommands = await installDeclaredPackages(
+		packageDeclarations,
+		projectDir,
+	);
+	printInstallSummary(preparedItems.length, pendingInstallCommands);
 }
 
 export default addCommand;
