@@ -1,16 +1,42 @@
 import { describe, expect, it } from "vitest";
 import { type ZodType, z } from "zod";
+import { conditionKindPolicy, RegistryConditionKind } from "./condition-kind";
 import {
-	parseRegistryConditions,
+	parseKeyedRecord,
 	parseRegistryDocument,
-	parseRegistryItemTypes,
 	parseWithSchema,
 } from "./parse";
 import {
 	catalogItemSchema,
+	registryConditionSchema,
 	registryItemSchema,
+	registryItemTypeSchema,
 	registryPayloadSchema,
 } from "./schema";
+
+/** Parse conditions the same way build/document parsing does. */
+function parseRegistryConditions(raw: unknown) {
+	return parseKeyedRecord(
+		registryConditionSchema,
+		raw,
+		"Registry conditions",
+		(key) => `Registry condition "${key}"`,
+	);
+}
+
+/** Parse types the same way build/document parsing does. */
+function parseRegistryItemTypes(raw: unknown) {
+	return parseKeyedRecord(
+		registryItemTypeSchema,
+		raw,
+		"Registry types",
+		(key) => `Registry type "${key}"`,
+		{
+			absent: "Registry types must be declared.",
+			empty: "Registry types must declare at least one type.",
+		},
+	);
+}
 
 /** Minimal valid catalog item for parseRegistryDocument tests. */
 function validCatalogItem(
@@ -88,7 +114,7 @@ describe("registry/parse", () => {
 				}),
 			),
 		).toThrow(
-			'Registry items["button"] must declare source or at least one variant.',
+			'Registry items["button"] must declare source, a handler, or at least one variant.',
 		);
 	});
 
@@ -457,6 +483,30 @@ describe("registry/parse", () => {
 			);
 		});
 
+		it("rejects a select condition that omits values", () => {
+			expect(() =>
+				parseRegistryConditions({
+					language: { label: "Language" },
+				}),
+			).toThrow(
+				'Registry condition "language" must declare at least one value.',
+			);
+		});
+
+		it("rejects a text condition that declares values", () => {
+			expect(() =>
+				parseRegistryConditions({
+					author: {
+						kind: "text",
+						label: "Author",
+						values: [{ value: "ada", label: "Ada" }],
+					},
+				}),
+			).toThrow(
+				'Registry condition "author" of kind "text" cannot declare values.',
+			);
+		});
+
 		it("rejects duplicate condition values", () => {
 			expect(() =>
 				parseRegistryConditions({
@@ -528,7 +578,7 @@ describe("registry/parse", () => {
 			);
 		});
 
-		it("rejects an item-level when key that is not a declared condition", () => {
+		it("rejects an unrecognized item-level when key", () => {
 			expect(() =>
 				parseRegistryDocument(
 					validDocument({
@@ -543,35 +593,255 @@ describe("registry/parse", () => {
 						},
 					}),
 				),
-			).toThrow(
-				'Registry item "assign-owner" references unknown when key "language".',
-			);
+			).toThrow('Registry items["assign-owner"] has an unknown key: when.');
 		});
 
-		it("rejects an item-level when value that is not declared for the condition", () => {
+		it("rejects an item uses key that is not a declared condition", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						items: {
+							license: validCatalogItem({
+								title: "License",
+								description: "License file",
+								uses: ["authorName"],
+								variants: undefined,
+								handler: "r/license.handler.js",
+							}),
+						},
+					}),
+				),
+			).toThrow('Registry item "license" uses unknown condition "authorName".');
+		});
+
+		it("rejects text conditions used in when", () => {
 			expect(() =>
 				parseRegistryDocument(
 					validDocument({
 						conditions: {
-							language: {
-								label: "Language",
-								values: [{ value: "typescript", label: "TypeScript" }],
-							},
+							authorName: { kind: "text", label: "Author" },
 						},
 						items: {
-							"assign-owner": validCatalogItem({
-								title: "Assign Owner",
-								description: "Assigns the owner",
-								when: { language: "javascript" },
-								variants: undefined,
-								source: "r/assign-owner.json",
+							license: validCatalogItem({
+								title: "License",
+								description: "License file",
+								variants: [
+									validCatalogVariant({
+										id: "default",
+										when: { authorName: "Ada" },
+									}),
+								],
 							}),
 						},
 					}),
 				),
 			).toThrow(
-				'Registry item "assign-owner" uses undeclared when value "javascript" for key "language".',
+				'Registry item "license" variant "default" references text condition "authorName" in when (text conditions cannot be used in when).',
 			);
+		});
+
+		it("rejects invalid boolean when values", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						conditions: {
+							enableCi: { kind: "boolean", label: "Enable CI" },
+						},
+						items: {
+							ci: validCatalogItem({
+								title: "CI",
+								description: "CI workflow",
+								variants: [
+									validCatalogVariant({
+										id: "default",
+										when: { enableCi: "yes" },
+									}),
+								],
+							}),
+						},
+					}),
+				),
+			).toThrow(
+				'Registry item "ci" variant "default" uses invalid when value "yes" for boolean key "enableCi" (expected "true" or "false").',
+			);
+		});
+
+		it("accepts boolean and multiselect when values", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						conditions: {
+							enableCi: { kind: "boolean", label: "Enable CI" },
+							platforms: {
+								kind: "multiselect",
+								label: "Platforms",
+								values: [
+									{ value: "ios", label: "iOS" },
+									{ value: "android", label: "Android" },
+								],
+							},
+						},
+						items: {
+							mobile: validCatalogItem({
+								title: "Mobile",
+								description: "Mobile app",
+								variants: [
+									validCatalogVariant({
+										id: "ios",
+										when: { enableCi: "true", platforms: "ios" },
+									}),
+								],
+							}),
+						},
+					}),
+				),
+			).not.toThrow();
+		});
+	});
+
+	describe("mapped custom schema messages", () => {
+		it("rejects invalid path-segment ids", () => {
+			expect(() =>
+				parseWithSchema(
+					registryItemSchema,
+					{
+						id: "../escape",
+						title: "Bad",
+						description: "Bad id",
+						type: "configuration",
+						files: [{ source: "a.txt", target: "a.txt" }],
+					},
+					"Registry item",
+				),
+			).toThrow(
+				String.raw`Registry item.id must be a single path segment (no "/", "\", or "..").`,
+			);
+		});
+
+		it("rejects unsafe handler paths", () => {
+			expect(() =>
+				parseWithSchema(
+					registryItemSchema,
+					{
+						id: "license",
+						title: "License",
+						description: "License",
+						type: "configuration",
+						handler: "/abs/handler.ts",
+						files: [{ source: "a.txt", target: "a.txt" }],
+					},
+					"Registry item",
+				),
+			).toThrow(
+				'Registry item.handler must be a relative path under the registry (no absolute paths, URLs, or "..").',
+			);
+		});
+
+		it("rejects items with neither files, handler, nor variants", () => {
+			expect(() =>
+				parseWithSchema(
+					registryItemSchema,
+					{
+						id: "empty",
+						title: "Empty",
+						description: "Empty",
+						type: "configuration",
+					},
+					"Registry item",
+				),
+			).toThrow(
+				"Registry item must declare files, a handler, or at least one variant.",
+			);
+		});
+
+		it("rejects boolean conditions that declare values", () => {
+			expect(() =>
+				parseRegistryConditions({
+					enableCi: {
+						kind: "boolean",
+						label: "Enable CI",
+						values: [{ value: "true", label: "Yes" }],
+					},
+				}),
+			).toThrow(
+				'Registry condition "enableCi" of kind "boolean" cannot declare values.',
+			);
+		});
+
+		it("falls through for unmapped array too_small paths", () => {
+			expect(() =>
+				parseWithSchema(
+					z.object({ tags: z.array(z.string()).min(1) }),
+					{ tags: [] },
+					"Thing",
+				),
+			).toThrow(/Thing\.tags/);
+		});
+
+		it("maps empty files arrays and root array too_small issues", () => {
+			expect(() =>
+				parseWithSchema(
+					z.object({
+						id: z.string(),
+						title: z.string(),
+						description: z.string(),
+						files: z
+							.array(z.object({ source: z.string(), target: z.string() }))
+							.min(1),
+					}),
+					{
+						id: "x",
+						title: "X",
+						description: "X",
+						files: [],
+					},
+					"Registry item",
+				),
+			).toThrow("Registry item.files must declare at least one file.");
+
+			expect(() =>
+				parseWithSchema(z.array(z.string()).min(1), [], "Tags"),
+			).toThrow(/Tags/);
+		});
+
+		it("falls through for non-array too_small origins", () => {
+			expect(() => parseWithSchema(z.number().min(5), 1, "Count")).toThrow(
+				/Count/,
+			);
+		});
+
+		it("rethrows unrecognized when-assertion failures", () => {
+			const assertWhenValue =
+				conditionKindPolicy[RegistryConditionKind.SELECT].assertWhenValue;
+			conditionKindPolicy[RegistryConditionKind.SELECT].assertWhenValue =
+				() => {
+					throw "unexpected-failure";
+				};
+
+			try {
+				expect(() =>
+					parseRegistryDocument(
+						validDocument({
+							conditions: {
+								language: {
+									label: "Language",
+									values: [{ value: "typescript", label: "TypeScript" }],
+								},
+							},
+							items: {
+								button: validCatalogItem({
+									variants: [
+										validCatalogVariant({ when: { language: "typescript" } }),
+									],
+								}),
+							},
+						}),
+					),
+				).toThrow("unexpected-failure");
+			} finally {
+				conditionKindPolicy[RegistryConditionKind.SELECT].assertWhenValue =
+					assertWhenValue;
+			}
 		});
 	});
 
@@ -608,10 +878,10 @@ describe("registry/parse", () => {
 			).toThrow("not allowed");
 		});
 
-		it("falls back to a non-empty-string message for unmapped issue codes", () => {
+		it("surfaces stock Zod messages for unmapped issue codes", () => {
 			expect(() =>
 				parseWithSchema(z.string().email(), "not-an-email", "Email"),
-			).toThrow("Email must be a non-empty string.");
+			).toThrow("Email: Invalid email address");
 		});
 	});
 

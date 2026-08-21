@@ -1,10 +1,10 @@
 import { type ZodType, z } from "zod";
-import { primaryText } from "./labels";
+import { policyForConditionKind } from "./condition-kind";
 import {
+	type CatalogItem,
 	catalogItemSchema,
 	type Registry,
 	type RegistryCondition,
-	type RegistryItem,
 	type RegistryItemTypeDefinition,
 	registryConditionSchema,
 	registryDocumentFieldsSchema,
@@ -35,6 +35,109 @@ function formatIssuePath(label: string, path: PropertyKey[]): string {
 }
 
 /**
+ * Phrase a custom schema issue (superRefine prefixes).
+ * @param issue - Zod custom issue.
+ * @param label - Base error context.
+ * @param fieldLabel - Label with issue path appended.
+ * @returns User-facing message, or undefined when the custom code is unmapped.
+ */
+function messageForCustomIssue(
+	issue: z.core.$ZodIssueCustom,
+	label: string,
+	fieldLabel: string,
+): string | undefined {
+	const customMessages: Record<string, (value: string) => string> = {
+		"duplicate:": (value) => `${label} has duplicate value "${value}".`,
+		"duplicate_variant:": (value) =>
+			`${label} has duplicate variant id "${value}".`,
+		"invalid_id:": () =>
+			String.raw`${fieldLabel} must be a single path segment (no "/", "\", or "..").`,
+		"invalid_handler:": () =>
+			`${fieldLabel} must be a relative path under the registry (no absolute paths, URLs, or "..").`,
+		missing_files_or_variants: () =>
+			`${label} must declare files, a handler, or at least one variant.`,
+		missing_source_or_variants: () =>
+			`${label} must declare source, a handler, or at least one variant.`,
+		source_with_variants: () =>
+			`${label} cannot declare source together with variants.`,
+		select_requires_values: () => `${label} must declare at least one value.`,
+		text_with_values: () => `${label} of kind "text" cannot declare values.`,
+		boolean_with_values: () =>
+			`${label} of kind "boolean" cannot declare values.`,
+	};
+
+	const prefix =
+		Object.keys(customMessages).find((candidate) =>
+			issue.message.startsWith(candidate),
+		) ?? "";
+	const mapper = customMessages[prefix] ?? customMessages[issue.message];
+	if (!mapper) return undefined;
+
+	const value =
+		prefix.endsWith(":") && prefix.length > 0
+			? issue.message.slice(prefix.length)
+			: "";
+	return mapper(value);
+}
+
+/**
+ * Phrase an unrecognized_keys Zod issue.
+ * @param issue - Zod unrecognized_keys issue.
+ * @param fieldLabel - Label with issue path appended.
+ * @returns User-facing message.
+ */
+function messageForUnrecognizedKeys(
+	issue: z.core.$ZodIssueUnrecognizedKeys,
+	fieldLabel: string,
+): string {
+	const kind = issue.keys.length > 1 ? "unknown keys" : "an unknown key";
+	return `${fieldLabel} has ${kind}: ${issue.keys.join(", ")}.`;
+}
+
+/**
+ * Phrase an invalid_type Zod issue for common registry shapes.
+ * @param issue - Zod invalid_type issue.
+ * @param fieldLabel - Label with issue path appended.
+ * @returns User-facing message, or undefined when the expected type is unmapped.
+ */
+function messageForInvalidType(
+	issue: z.core.$ZodIssueInvalidType,
+	fieldLabel: string,
+): string | undefined {
+	const byExpected: Record<string, string> = {
+		object: `${fieldLabel} must be an object.`,
+		record: `${fieldLabel} must be an object.`,
+		array: `${fieldLabel} must be an array.`,
+		string: `${fieldLabel} must be a non-empty string.`,
+	};
+	return byExpected[issue.expected];
+}
+
+/**
+ * Phrase a too_small Zod issue for strings and known arrays.
+ * @param issue - Zod too_small issue.
+ * @param label - Base error context.
+ * @param fieldLabel - Label with issue path appended.
+ * @returns User-facing message, or undefined when unmapped.
+ */
+function messageForTooSmall(
+	issue: z.core.$ZodIssueTooSmall,
+	label: string,
+	fieldLabel: string,
+): string | undefined {
+	if (issue.origin === "string")
+		return `${fieldLabel} must be a non-empty string.`;
+	if (issue.origin !== "array") return undefined;
+
+	const lastSegment = String(issue.path.at(-1) ?? "");
+	if (lastSegment === "files")
+		return `${fieldLabel} must declare at least one file.`;
+	if (label.startsWith('Registry condition "') && issue.path.length === 1)
+		return `${label} must declare at least one value.`;
+	return undefined;
+}
+
+/**
  * Map the first Zod issue onto the registry parse error phrasing.
  * @param error - Zod validation error.
  * @param label - Base error context.
@@ -46,73 +149,27 @@ function mapZodError(error: z.ZodError, label: string): Error {
 	if (!issue) return error;
 
 	const fieldLabel = formatIssuePath(label, issue.path);
-	const lastSegment = String(issue.path.at(-1) ?? "");
 
-	// Custom schema checks encode their kind in the message prefix (see schema superRefine).
-	const prefix =
-		[
-			"duplicate_variant:",
-			"duplicate:",
-			"invalid_id:",
-			"missing_files_or_variants",
-			"missing_source_or_variants",
-			"source_with_variants",
-		].find((candidate) => issue.message.startsWith(candidate)) ?? "";
-	const customValue =
-		prefix === "missing_files_or_variants" ||
-		prefix === "missing_source_or_variants" ||
-		prefix === "source_with_variants"
-			? ""
-			: issue.message.slice(prefix.length);
+	let message: string | undefined;
+	switch (issue.code) {
+		case "custom":
+			message = messageForCustomIssue(issue, label, fieldLabel);
+			break;
+		case "unrecognized_keys":
+			message = messageForUnrecognizedKeys(issue, fieldLabel);
+			break;
+		case "invalid_type":
+			message = messageForInvalidType(issue, fieldLabel);
+			break;
+		case "too_small":
+			message = messageForTooSmall(issue, label, fieldLabel);
+			break;
+		default:
+			message = undefined;
+			break;
+	}
 
-	// Narrow issue fields up front so the lookup tables below stay flat.
-	const keys = issue.code === "unrecognized_keys" ? issue.keys : [];
-	const expected = issue.code === "invalid_type" ? issue.expected : "";
-	const origin = issue.code === "too_small" ? issue.origin : "";
-	const kind = keys.length > 1 ? "unknown keys" : "an unknown key";
-
-	const customMessages: Record<string, string> = {
-		"duplicate:": `${label} has duplicate value "${customValue}".`,
-		"duplicate_variant:": `${label} has duplicate variant id "${customValue}".`,
-		"invalid_id:": String.raw`${primaryText(fieldLabel)} must be a single path segment (no "/", "\", or "..").`,
-		missing_files_or_variants: `${label} must declare files or at least one variant.`,
-		missing_source_or_variants: `${label} must declare source or at least one variant.`,
-		source_with_variants: `${label} cannot declare source together with variants.`,
-	};
-
-	// Object and record both surface as "must be an object"; primaryText highlights field names.
-	const invalidTypeMessages: Record<string, string> = {
-		object: `${primaryText(fieldLabel)} must be an object.`,
-		array: `${fieldLabel} must be an array.`,
-		record: `${primaryText(fieldLabel)} must be an object.`,
-	};
-
-	// too_small on arrays is path-specific; the message depends on which list was empty.
-	const arrayTooSmall: Record<string, string> = {
-		files: `${fieldLabel} must declare at least one file.`,
-	};
-
-	// Condition values use the condition label, not a dotted path, when the issue is on `.values`.
-	if (label.startsWith('Registry condition "') && issue.path.length === 1)
-		arrayTooSmall.values = `${label} must declare at least one value.`;
-	const tooSmallMessages: Record<string, string | undefined> = {
-		string: `${primaryText(fieldLabel)} must be a non-empty string.`,
-		array: arrayTooSmall[lastSegment],
-	};
-
-	// Dispatch by issue code; unmapped codes fall through to the generic non-empty-string default.
-	const messages: Record<string, string | undefined> = {
-		unrecognized_keys: `${fieldLabel} has ${kind}: ${keys.join(", ")}.`,
-		custom:
-			customMessages[prefix] ?? customMessages[issue.message] ?? issue.message,
-		invalid_type: invalidTypeMessages[expected],
-		too_small: tooSmallMessages[origin],
-	};
-
-	return new Error(
-		messages[issue.code] ??
-			`${primaryText(fieldLabel)} must be a non-empty string.`,
-	);
+	return new Error(message ?? `${fieldLabel}: ${issue.message}`);
 }
 
 /**
@@ -137,32 +194,73 @@ export function parseWithSchema<T>(
 }
 
 /**
- * Parse shared condition definitions from a registry document.
- * @param raw - Raw conditions object.
- * @returns Normalized conditions map, or undefined when absent/empty.
- * @throws Error when a condition entry is malformed.
+ * Parse a string-keyed record of entries with a labeled schema per key.
+ * @param schema - Schema applied to each entry value.
+ * @param raw - Raw record value.
+ * @param recordLabel - Error context for the record itself.
+ * @param entryLabel - Builds the error label for one key.
+ * @param required - When set, absent or empty records throw these messages.
+ * @returns Parsed map, or undefined when the record is absent/empty and `required` is omitted.
+ * @throws Error when `required` is set and the record is absent or empty, or an entry fails validation.
  */
-export function parseRegistryConditions(
+export function parseKeyedRecord<T>(
+	schema: ZodType<T>,
 	raw: unknown,
-): Record<string, RegistryCondition> | undefined {
-	if (raw === undefined || raw === null) return undefined;
+	recordLabel: string,
+	entryLabel: (key: string) => string,
+	required?: { absent: string; empty: string },
+): Record<string, T> | undefined {
+	if (raw === undefined || raw === null) {
+		if (!required) return undefined;
+		throw new Error(required.absent);
+	}
 
 	const source = parseWithSchema(
 		z.record(z.string(), z.unknown()),
 		raw,
-		"Registry conditions",
+		recordLabel,
 	);
-	const conditions: Record<string, RegistryCondition> = {};
-
-	for (const [key, rawCondition] of Object.entries(source)) {
-		conditions[key] = parseWithSchema(
-			registryConditionSchema,
-			rawCondition,
-			`Registry condition "${key}"`,
-		);
+	const parsed: Record<string, T> = {};
+	for (const [key, rawEntry] of Object.entries(source)) {
+		parsed[key] = parseWithSchema(schema, rawEntry, entryLabel(key));
 	}
 
-	return Object.keys(conditions).length > 0 ? conditions : undefined;
+	if (Object.keys(parsed).length === 0) {
+		if (!required) return undefined;
+		throw new Error(required.empty);
+	}
+
+	return parsed;
+}
+
+/**
+ * Remap a condition-policy assertion failure into a registry-facing error.
+ * @param error - Error thrown by `assertWhenValue`.
+ * @param subject - Item/variant label for the message.
+ * @param key - Condition key from the `when` map.
+ * @param value - Condition value from the `when` map.
+ * @throws Error with a user-facing message, or rethrows unrecognized errors.
+ */
+function remapWhenAssertionError(
+	error: unknown,
+	subject: string,
+	key: string,
+	value: string,
+): never {
+	const code = error instanceof Error ? error.message : String(error);
+	if (code === "text_in_when")
+		throw new Error(
+			`${subject} references text condition "${key}" in when (text conditions cannot be used in when).`,
+		);
+	if (code.startsWith("boolean:"))
+		throw new Error(
+			`${subject} uses invalid when value "${value}" for boolean key "${key}" (expected "true" or "false").`,
+		);
+	if (code.startsWith("undeclared:"))
+		throw new Error(
+			`${subject} uses undeclared when value "${value}" for key "${key}".`,
+		);
+	throw error;
 }
 
 /**
@@ -170,80 +268,55 @@ export function parseRegistryConditions(
  * @param itemId - Registry item id for error messages.
  * @param when - Condition matcher to validate.
  * @param conditions - Shared condition definitions.
- * @param variantId - Variant id when validating a variant; omit for item-level `when`.
+ * @param variantId - Variant id being validated.
  * @throws Error when a condition key or value is undeclared.
  */
 function validateWhenEntries(
 	itemId: string,
 	when: Record<string, string> | undefined,
 	conditions: Record<string, RegistryCondition> | undefined,
-	variantId?: string,
+	variantId: string,
 ): void {
-	const subject =
-		variantId === undefined
-			? `Registry item "${itemId}"`
-			: `Registry item "${itemId}" variant "${variantId}"`;
+	const subject = `Registry item "${itemId}" variant "${variantId}"`;
 
 	for (const [key, value] of Object.entries(when ?? {})) {
 		const condition = conditions?.[key];
 		if (!condition)
 			throw new Error(`${subject} references unknown when key "${key}".`);
-		if (!condition.values.some((entry) => entry.value === value))
-			throw new Error(
-				`${subject} uses undeclared when value "${value}" for key "${key}".`,
-			);
-	}
-}
 
-/**
- * Ensure every item and variant `when` key/value is declared in the conditions map.
- * @param items - Registry items to validate.
- * @param conditions - Shared condition definitions.
- * @throws Error when a condition key or value is undeclared.
- */
-function crossValidateWhen(
-	items: Record<string, RegistryItem>,
-	conditions: Record<string, RegistryCondition> | undefined,
-): void {
-	for (const [itemId, item] of Object.entries(items)) {
-		validateWhenEntries(itemId, item.when, conditions);
-		for (const variant of item.variants ?? []) {
-			validateWhenEntries(itemId, variant.when, conditions, variant.id);
+		try {
+			policyForConditionKind(condition.kind).assertWhenValue(
+				value,
+				condition.values,
+			);
+		} catch (error) {
+			remapWhenAssertionError(error, subject, key, value);
 		}
 	}
 }
 
 /**
- * Parse item type display metadata from a registry document.
- * @param raw - Raw types object.
- * @returns Normalized types map.
- * @throws Error when types are absent, empty, or a type entry is malformed.
+ * Ensure every variant `when` key/value is declared in the conditions map,
+ * and that item-level `uses` keys exist.
+ * @param items - Registry items to validate.
+ * @param conditions - Shared condition definitions.
+ * @throws Error when a condition key or value is undeclared.
  */
-export function parseRegistryItemTypes(
-	raw: unknown,
-): Record<string, RegistryItemTypeDefinition> {
-	if (raw === undefined || raw === null)
-		throw new Error("Registry types must be declared.");
-
-	const source = parseWithSchema(
-		z.record(z.string(), z.unknown()),
-		raw,
-		"Registry types",
-	);
-	const types: Record<string, RegistryItemTypeDefinition> = {};
-
-	for (const [key, rawType] of Object.entries(source)) {
-		types[key] = parseWithSchema(
-			registryItemTypeSchema,
-			rawType,
-			`Registry type "${key}"`,
-		);
+function crossValidateWhen(
+	items: Record<string, CatalogItem>,
+	conditions: Record<string, RegistryCondition> | undefined,
+): void {
+	for (const [itemId, item] of Object.entries(items)) {
+		for (const variant of item.variants ?? []) {
+			validateWhenEntries(itemId, variant.when, conditions, variant.id);
+		}
+		for (const key of item.uses ?? []) {
+			if (!conditions?.[key])
+				throw new Error(
+					`Registry item "${itemId}" uses unknown condition "${key}".`,
+				);
+		}
 	}
-
-	if (Object.keys(types).length === 0)
-		throw new Error("Registry types must declare at least one type.");
-
-	return types;
 }
 
 /**
@@ -253,7 +326,7 @@ export function parseRegistryItemTypes(
  * @throws Error when an item type is undeclared.
  */
 function crossValidateItemTypes(
-	items: Record<string, RegistryItem>,
+	items: Record<string, CatalogItem>,
 	types: Record<string, RegistryItemTypeDefinition>,
 ): void {
 	for (const [itemId, item] of Object.entries(items)) {
@@ -273,7 +346,7 @@ function crossValidateItemTypes(
 export function parseRegistryDocument(raw: unknown): Registry {
 	const source = parseWithSchema(registryDocumentFieldsSchema, raw, "Registry");
 
-	const items: Record<string, RegistryItem> = {};
+	const items: Record<string, CatalogItem> = {};
 	for (const [key, item] of Object.entries(source.items)) {
 		items[key] = parseWithSchema(
 			catalogItemSchema,
@@ -282,10 +355,24 @@ export function parseRegistryDocument(raw: unknown): Registry {
 		);
 	}
 
-	const conditions = parseRegistryConditions(source.conditions);
+	const conditions = parseKeyedRecord(
+		registryConditionSchema,
+		source.conditions,
+		"Registry conditions",
+		(key) => `Registry condition "${key}"`,
+	);
 	crossValidateWhen(items, conditions);
 
-	const types = parseRegistryItemTypes(source.types);
+	const types = parseKeyedRecord(
+		registryItemTypeSchema,
+		source.types,
+		"Registry types",
+		(key) => `Registry type "${key}"`,
+		{
+			absent: "Registry types must be declared.",
+			empty: "Registry types must declare at least one type.",
+		},
+	) as Record<string, RegistryItemTypeDefinition>;
 	crossValidateItemTypes(items, types);
 
 	return {

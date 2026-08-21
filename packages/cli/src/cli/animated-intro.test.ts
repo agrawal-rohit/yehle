@@ -1,6 +1,8 @@
+import { stripVTControlCharacters } from "node:util";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { animatedIntro, createFixedHeightRenderer } from "./animated-intro";
+import { InterruptError } from "./errors";
 
-// Mock readline before imports
 vi.mock("node:readline", () => ({
 	default: {
 		createInterface: vi.fn(() => ({ close: vi.fn() })),
@@ -10,26 +12,14 @@ vi.mock("node:readline", () => ({
 	emitKeypressEvents: vi.fn(),
 }));
 
-// Mock chalk
 vi.mock("chalk", () => ({
 	default: {
-		bold: vi.fn((text) => text),
-		magentaBright: vi.fn((text) => text),
-		cyan: vi.fn((text) => text),
-		red: vi.fn((text) => text),
-		yellow: vi.fn((text) => text),
-		green: vi.fn((text) => text),
-		blue: vi.fn((text) => text),
-		cyanBright: vi.fn((text) => text),
-		redBright: vi.fn((text) => text),
-		yellowBright: vi.fn((text) => text),
-		greenBright: vi.fn((text) => text),
-		hex: vi.fn(() => vi.fn((text) => text)),
+		bold: vi.fn((text: string) => text),
+		hex: vi.fn(() => vi.fn((text: string) => text)),
 	},
 }));
 
 import readline from "node:readline";
-import animatedIntro from "./animated-intro";
 
 describe("cli/animated-intro", () => {
 	type MockStdout = {
@@ -47,561 +37,371 @@ describe("cli/animated-intro", () => {
 
 	let mockStdout: MockStdout;
 	let mockStdin: MockStdin;
-	let processExitSpy: ReturnType<typeof vi.fn>;
-	let stdoutWriteSpy: ReturnType<typeof vi.fn>;
-	let stdinOnSpy: ReturnType<typeof vi.fn>;
-	let stdinOffSpy: ReturnType<typeof vi.fn>;
-	let stdinSetRawModeSpy: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
-
-		// Mock stdout
-		stdoutWriteSpy = vi.fn();
 		mockStdout = {
-			write: stdoutWriteSpy,
+			write: vi.fn(),
 			columns: 80,
 			isTTY: true,
 		};
-
-		// Mock stdin
-		stdinOnSpy = vi.fn();
-		stdinOffSpy = vi.fn();
-		stdinSetRawModeSpy = vi.fn();
 		mockStdin = {
-			on: stdinOnSpy,
-			off: stdinOffSpy,
-			setRawMode: stdinSetRawModeSpy,
+			on: vi.fn(),
+			off: vi.fn(),
+			setRawMode: vi.fn(),
 			isTTY: true,
 		};
-
-		// Mock process.stdout and process.stdin
-		Object.defineProperty(process, "stdout", {
-			configurable: true,
-			get: () => mockStdout,
-		});
-		Object.defineProperty(process, "stdin", {
-			configurable: true,
-			get: () => mockStdin,
-		});
-
-		// Mock process.exit
-		processExitSpy = vi.fn();
-		const originalExit = process.exit;
-		Object.defineProperty(process, "exit", {
-			configurable: true,
-			value: ((code?: string | number | null) => {
-				processExitSpy(code);
-				const normalized = code ?? undefined;
-				throw new Error(`process.exit called with code ${normalized}`);
-			}) as typeof originalExit,
-		});
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	describe("basic functionality", () => {
-		test("should animate with a single string message", async () => {
-			await animatedIntro("Hello World");
-
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-			expect(readline.createInterface).toHaveBeenCalled();
+	test("animates a string message on a TTY stdout", async () => {
+		await animatedIntro("Hello World", {
+			stdout: mockStdout as unknown as NodeJS.WriteStream,
+			stdin: mockStdin as unknown as NodeJS.ReadStream,
+			frameDelayMs: 1,
 		});
 
-		test("should animate with an array of messages", async () => {
-			await animatedIntro(["Message 1", "Message 2"]);
-
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-		});
-
-		test("should handle promise messages", async () => {
-			const promiseMsg = Promise.resolve("Async message");
-
-			await animatedIntro(promiseMsg);
-
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-		});
-
-		test("should handle array of promise messages", async () => {
-			const messages = [Promise.resolve("First"), Promise.resolve("Second")];
-
-			await animatedIntro(messages);
-
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-		});
-
-		test("should handle empty message array", async () => {
-			await animatedIntro([]);
-
-			// Empty array doesn't write to stdout
-			expect(readline.createInterface).toHaveBeenCalled();
-		});
+		expect(mockStdout.write).toHaveBeenCalled();
+		expect(readline.createInterface).toHaveBeenCalled();
+		const output = mockStdout.write.mock.calls.map((call) => call[0]).join("");
+		expect(output).toContain("◔");
+		expect((output.match(/●/g) ?? []).length).toBeGreaterThan(1);
+		expect((output.match(/[●◔◕◑◒◓◐○]/g) ?? []).length).toBeGreaterThan(1);
+		expect(stripVTControlCharacters(output)).toContain("Hello World");
+		expect(stripVTControlCharacters(output)).not.toContain("HelloWorld");
+		expect(output).not.toContain("Stryker was here!");
+		expect(
+			mockStdout.write.mock.calls.some((call) => call[0] === "Hello"),
+		).toBe(true);
 	});
 
-	describe("options", () => {
-		test('should use default title "tuckshop"', async () => {
-			await animatedIntro("Test message");
+	test("prints once without escape codes when stdout is not a TTY", async () => {
+		mockStdout.isTTY = false;
 
-			expect(stdoutWriteSpy).toHaveBeenCalled();
+		await animatedIntro("hello world", {
+			stdout: mockStdout as unknown as NodeJS.WriteStream,
+			stdin: mockStdin as unknown as NodeJS.ReadStream,
 		});
 
-		test("should accept custom title", async () => {
-			await animatedIntro("Test message", { title: "Custom Title" });
+		expect(readline.createInterface).not.toHaveBeenCalled();
+		const output = mockStdout.write.mock.calls.map((call) => call[0]).join("");
+		expect(output.includes("\u001b")).toBe(false);
+		expect(output).toContain("tuckshop");
+		expect(output).toContain("hello world");
+		expect(output).not.toContain("hello  world");
+	});
 
-			expect(stdoutWriteSpy).toHaveBeenCalled();
+	test("collapses consecutive spaces in non-TTY output", async () => {
+		mockStdout.isTTY = false;
+
+		await animatedIntro("hello  world", {
+			stdout: mockStdout as unknown as NodeJS.WriteStream,
 		});
 
-		test("should use custom stdout when provided", async () => {
-			const customStdout: MockStdout = {
-				write: vi.fn(),
-				columns: 100,
-			};
+		const output = mockStdout.write.mock.calls.map((call) => call[0]).join("");
+		expect(output).toContain("hello world");
+		expect(output).not.toContain("hello  world");
+	});
 
-			await animatedIntro("Test", {
-				stdout: customStdout as unknown as NodeJS.WriteStream,
+	test("keeps messages that fill the column width", async () => {
+		mockStdout.isTTY = false;
+		mockStdout.columns = 50;
+		const message = "a".repeat(50);
+
+		await animatedIntro(message, {
+			stdout: mockStdout as unknown as NodeJS.WriteStream,
+		});
+
+		const output = mockStdout.write.mock.calls.map((call) => call[0]).join("");
+		const msgLine = stripVTControlCharacters(output).split("\n")[2];
+		expect(msgLine).toBe(message);
+		expect(msgLine).not.toContain("...");
+	});
+
+	test("truncates long messages in non-TTY output", async () => {
+		mockStdout.isTTY = false;
+		mockStdout.columns = 50;
+		const message = "a".repeat(51);
+
+		await animatedIntro(message, {
+			stdout: mockStdout as unknown as NodeJS.WriteStream,
+		});
+
+		const output = mockStdout.write.mock.calls.map((call) => call[0]).join("");
+		const msgLine = stripVTControlCharacters(output).split("\n")[2];
+		expect(msgLine).toBe(`${"a".repeat(47)}...`);
+	});
+
+	test("uses a custom title when provided", async () => {
+		mockStdout.isTTY = false;
+
+		await animatedIntro("Test", {
+			title: "Custom Title",
+			stdout: mockStdout as unknown as NodeJS.WriteStream,
+		});
+
+		const output = mockStdout.write.mock.calls.map((call) => call[0]).join("");
+		expect(output).toContain("Custom Title");
+	});
+
+	test("restores raw mode and closes readline after animation", async () => {
+		await animatedIntro("Test", {
+			stdout: mockStdout as unknown as NodeJS.WriteStream,
+			stdin: mockStdin as unknown as NodeJS.ReadStream,
+			frameDelayMs: 1,
+		});
+
+		expect(mockStdin.setRawMode).toHaveBeenCalledWith(true);
+		expect(mockStdin.setRawMode).toHaveBeenCalledWith(false);
+		expect(mockStdin.off).toHaveBeenCalledWith(
+			"keypress",
+			expect.any(Function),
+		);
+		const rlInterface = vi.mocked(readline.createInterface).mock.results[0]
+			?.value as { close: ReturnType<typeof vi.fn> };
+		expect(rlInterface.close).toHaveBeenCalled();
+	});
+
+	test("does not enable raw mode when stdin is not a TTY", async () => {
+		mockStdin.isTTY = false;
+
+		await animatedIntro("Test", {
+			stdout: mockStdout as unknown as NodeJS.WriteStream,
+			stdin: mockStdin as unknown as NodeJS.ReadStream,
+			frameDelayMs: 1,
+		});
+
+		expect(mockStdin.setRawMode).not.toHaveBeenCalled();
+	});
+
+	test("Escape aborts the animation without throwing", async () => {
+		vi.useFakeTimers();
+		let keypressHandler:
+			| ((str: string, key: { ctrl?: boolean; name?: string }) => void)
+			| undefined;
+		mockStdin.on.mockImplementation(
+			(
+				event: string,
+				handler: (str: string, key: { ctrl?: boolean; name?: string }) => void,
+			) => {
+				if (event === "keypress") keypressHandler = handler;
+			},
+		);
+
+		try {
+			const pending = animatedIntro("one two three four five", {
+				stdout: mockStdout as unknown as NodeJS.WriteStream,
+				stdin: mockStdin as unknown as NodeJS.ReadStream,
+				frameDelayMs: 10,
 			});
 
-			expect(customStdout.write).toHaveBeenCalled();
-			expect(stdoutWriteSpy).not.toHaveBeenCalled();
-		});
-
-		test("should respect custom frameDelayMs", async () => {
-			await animatedIntro("Test", { frameDelayMs: 50 });
-
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-		});
-
-		test("should use default frameDelayMs of 150ms", async () => {
-			await animatedIntro("Test");
-
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-		});
-	});
-
-	describe("readline setup", () => {
-		test("should create readline interface", async () => {
-			await animatedIntro("Test");
-
-			expect(readline.createInterface).toHaveBeenCalledWith(
-				expect.objectContaining({
-					input: expect.anything(),
-					escapeCodeTimeout: 50,
-				}),
-			);
-		});
-
-		test("should emit keypress events", async () => {
-			await animatedIntro("Test");
-
-			expect(readline.emitKeypressEvents).toHaveBeenCalled();
-		});
-
-		test("should set raw mode when stdin is TTY", async () => {
-			mockStdin.isTTY = true;
-
-			await animatedIntro("Test");
-
-			expect(stdinSetRawModeSpy).toHaveBeenCalledWith(true);
-		});
-
-		test("should not set raw mode when stdin is not TTY", async () => {
-			mockStdin.isTTY = false;
-
-			await animatedIntro("Test");
-
-			// Should still work, just not set raw mode initially
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-		});
-
-		test("should register keypress listener", async () => {
-			await animatedIntro("Test");
-
-			expect(stdinOnSpy).toHaveBeenCalledWith("keypress", expect.any(Function));
-		});
-	});
-
-	describe("cleanup", () => {
-		test("should close readline interface on completion", async () => {
-			await animatedIntro("Test");
-
-			const rlInterface = vi.mocked(readline.createInterface).mock.results[0]
-				?.value;
-			expect(rlInterface?.close).toHaveBeenCalled();
-		});
-
-		test("should restore raw mode on cleanup", async () => {
-			mockStdin.isTTY = true;
-
-			await animatedIntro("Test");
-
-			expect(stdinSetRawModeSpy).toHaveBeenCalledWith(true);
-			expect(stdinSetRawModeSpy).toHaveBeenCalledWith(false);
-		});
-
-		test("should remove keypress listener on cleanup", async () => {
-			await animatedIntro("Test");
-
-			expect(stdinOffSpy).toHaveBeenCalledWith(
-				"keypress",
-				expect.any(Function),
-			);
-		});
-	});
-
-	describe("rendering", () => {
-		test("should write to stdout during animation", async () => {
-			await animatedIntro("Hello World");
-
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-			// Should have written multiple frames
-			expect(stdoutWriteSpy.mock.calls.length).toBeGreaterThan(1);
-		});
-
-		test("should handle stdout with different column widths", async () => {
-			mockStdout.columns = 40;
-
-			await animatedIntro("Test");
-
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-		});
-
-		test("should handle stdout with undefined columns", async () => {
-			mockStdout.columns = undefined;
-
-			await animatedIntro("Test");
-
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-		});
-
-		test("truncates long messages in non-TTY output", async () => {
-			const customStdout: MockStdout = {
-				write: vi.fn(),
-				columns: 80,
-				isTTY: false,
-			};
-			const longMessage = "word ".repeat(30).trim();
-
-			await animatedIntro(longMessage, {
-				stdout: customStdout as unknown as NodeJS.WriteStream,
-			});
-
-			const output = customStdout.write.mock.calls
-				.map((call) => call[0])
-				.join("");
-			expect(output).toContain("...");
-		});
-
-		test("should paint final frame with longer delay", async () => {
-			await animatedIntro("Test", { frameDelayMs: 100 });
-
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-		});
-	});
-
-	describe("keyboard interaction", () => {
-		test("should handle Ctrl+C to exit", async () => {
-			let keypressHandler:
-				| ((str: string, key: { ctrl?: boolean; name?: string }) => void)
-				| undefined;
-
-			stdinOnSpy.mockImplementation(
-				(
-					event: string,
-					handler: (
-						str: string,
-						key: { ctrl?: boolean; name?: string },
-					) => void,
-				) => {
-					if (event === "keypress") {
-						keypressHandler = handler;
-					}
-				},
-			);
-
-			animatedIntro("Test");
-
-			// Simulate Ctrl+C - this will throw because process.exit is mocked
-			expect(() => {
-				keypressHandler?.("", { ctrl: true, name: "c" });
-			}).toThrow("process.exit called with code 0");
-		});
-
-		test("should handle ESC key for early cleanup", async () => {
-			let keypressHandler:
-				| ((str: string, key: { ctrl?: boolean; name?: string }) => void)
-				| undefined;
-
-			stdinOnSpy.mockImplementation(
-				(
-					event: string,
-					handler: (
-						str: string,
-						key: { ctrl?: boolean; name?: string },
-					) => void,
-				) => {
-					if (event === "keypress") {
-						keypressHandler = handler;
-					}
-				},
-			);
-
-			animatedIntro("Test");
-
-			// Simulate ESC - should trigger cleanup but not exit
 			keypressHandler?.("", { name: "escape" });
+			await vi.advanceTimersByTimeAsync(500);
+			await expect(pending).resolves.toBeUndefined();
 
-			expect(stdinSetRawModeSpy).toHaveBeenCalledWith(false);
-		});
-
-		test("should not exit on Ctrl with non-C key", async () => {
-			let keypressHandler:
-				| ((str: string, key: { ctrl?: boolean; name?: string }) => void)
-				| undefined;
-
-			stdinOnSpy.mockImplementation(
-				(
-					event: string,
-					handler: (
-						str: string,
-						key: { ctrl?: boolean; name?: string },
-					) => void,
-				) => {
-					if (event === "keypress") {
-						keypressHandler = handler;
-					}
-				},
-			);
-
-			animatedIntro("Test");
-
-			// Simulate Ctrl+D - ctrl true but name !== 'c'
-			keypressHandler?.("", { ctrl: true, name: "d" });
-
-			// Should not call exit or cleanup
-			expect(processExitSpy).not.toHaveBeenCalled();
-			expect(stdinSetRawModeSpy).not.toHaveBeenCalledWith(false);
-		});
-
-		test("should handle other keypresses without cleanup or exit", async () => {
-			let keypressHandler:
-				| ((str: string, key: { ctrl?: boolean; name?: string }) => void)
-				| undefined;
-
-			stdinOnSpy.mockImplementation(
-				(
-					event: string,
-					handler: (
-						str: string,
-						key: { ctrl?: boolean; name?: string },
-					) => void,
-				) => {
-					if (event === "keypress") {
-						keypressHandler = handler;
-					}
-				},
-			);
-
-			animatedIntro("Test");
-
-			// Simulate a key that doesn't match Ctrl+C or ESC
-			keypressHandler?.("", { name: "a" });
-
-			// Should not call cleanup or exit
-			expect(stdinSetRawModeSpy).not.toHaveBeenCalledWith(false);
-			expect(processExitSpy).not.toHaveBeenCalled();
-		});
+			const output = mockStdout.write.mock.calls
+				.map((call) => String(call[0]))
+				.join("");
+			expect(output).not.toContain("five");
+			expect(output.split("\x1b[2F")).toHaveLength(1);
+			expect(mockStdin.setRawMode).toHaveBeenCalledWith(false);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
-	describe("edge cases", () => {
-		test.each([
-			["single word message", "Hello"],
-			["message with multiple spaces", "Hello   World   Test"],
-			["empty string message", ""],
-			["numeric message converted to string", 123 as unknown as string],
-		])("should handle %s", async (_description, message) => {
-			await animatedIntro(message);
+	test("Ctrl+C restores stdin then throws InterruptError", async () => {
+		vi.useFakeTimers();
+		let keypressHandler:
+			| ((str: string, key: { ctrl?: boolean; name?: string }) => void)
+			| undefined;
+		mockStdin.on.mockImplementation(
+			(
+				event: string,
+				handler: (str: string, key: { ctrl?: boolean; name?: string }) => void,
+			) => {
+				if (event === "keypress") keypressHandler = handler;
+			},
+		);
 
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-		});
-	});
-
-	describe("message format handling", () => {
-		test("should handle message that is already an array of words", async () => {
-			// This tests the Array.isArray branch on line 113
-			const messageArray = ["Hello", "World", "Test"];
-
-			await animatedIntro(messageArray, { frameDelayMs: 10 });
-
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-		});
-
-		test("should handle mixed string and array messages", async () => {
-			const messages: (string | string[])[] = [
-				"String message",
-				["array", "message"],
-			];
-
-			await animatedIntro(messages as unknown as string, { frameDelayMs: 10 });
-
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-		});
-	});
-
-	describe("renderer edge cases", () => {
-		test("should handle fewer lines than renderer height", async () => {
-			// This will test the lines.length < height branch on line 166
-			await animatedIntro("A", { frameDelayMs: 10 });
-
-			expect(stdoutWriteSpy).toHaveBeenCalled();
-		});
-	});
-
-	describe("renderer line handling edge cases", () => {
-		test("should handle renderer with varying line counts", async () => {
-			// The lines array now returns 4 lines with top padding, but the renderer's paint
-			// function has logic to handle < height and > height scenarios
-			// These are defensive branches that protect against edge cases
-			const customStdout: MockStdout = {
-				write: vi.fn(),
-				columns: 80,
-			};
-
-			await animatedIntro("Test message", {
-				stdout: customStdout as unknown as NodeJS.WriteStream,
+		try {
+			const pending = animatedIntro("one two three four five", {
+				stdout: mockStdout as unknown as NodeJS.WriteStream,
+				stdin: mockStdin as unknown as NodeJS.ReadStream,
 				frameDelayMs: 10,
 			});
 
-			expect(customStdout.write).toHaveBeenCalled();
-		});
+			keypressHandler?.("", { ctrl: true, name: "c" });
+			const assertion = expect(pending).rejects.toBeInstanceOf(InterruptError);
+			await vi.advanceTimersByTimeAsync(500);
+			await assertion;
 
-		test("should handle renderer initialization and multiple paints", async () => {
-			// Ensure both initialized and non-initialized paths are tested
-			const testStdout: MockStdout = {
-				write: vi.fn(),
-				columns: 80,
-			};
-
-			await animatedIntro(["First", "Second"], {
-				stdout: testStdout as unknown as NodeJS.WriteStream,
-				frameDelayMs: 10,
-			});
-
-			// Multiple messages mean multiple paint calls
-			expect(testStdout.write).toHaveBeenCalled();
-		});
-
-		test("should handle finish when renderer is initialized", async () => {
-			// Tests that finish() writes newline when initialized
-			const testStdout: MockStdout = {
-				write: vi.fn(),
-				columns: 80,
-			};
-
-			await animatedIntro("A", {
-				stdout: testStdout as unknown as NodeJS.WriteStream,
-				frameDelayMs: 10,
-			});
-
-			// Check that cleanup was called (which calls finish)
-			expect(testStdout.write).toHaveBeenCalled();
-		});
+			const output = mockStdout.write.mock.calls
+				.map((call) => String(call[0]))
+				.join("");
+			expect(output).not.toContain("five");
+			expect(mockStdin.setRawMode).toHaveBeenCalledWith(false);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
-	describe("non-TTY output", () => {
-		test("prints title and message once without escape codes", async () => {
-			const customStdout: MockStdout = {
-				write: vi.fn(),
-				columns: 80,
-				isTTY: false,
-			};
+	test("ignores keypresses that are not Escape or Ctrl+C", async () => {
+		vi.useFakeTimers();
+		let keypressHandler:
+			| ((str: string, key?: { ctrl?: boolean; name?: string }) => void)
+			| undefined;
+		mockStdin.on.mockImplementation(
+			(
+				event: string,
+				handler: (str: string, key?: { ctrl?: boolean; name?: string }) => void,
+			) => {
+				if (event === "keypress") keypressHandler = handler;
+			},
+		);
 
-			await animatedIntro("hello world", {
-				stdout: customStdout as unknown as NodeJS.WriteStream,
+		try {
+			const pending = animatedIntro("one two", {
+				stdout: mockStdout as unknown as NodeJS.WriteStream,
+				stdin: mockStdin as unknown as NodeJS.ReadStream,
+				frameDelayMs: 10,
 			});
 
-			expect(readline.createInterface).not.toHaveBeenCalled();
-			const output = customStdout.write.mock.calls
-				.map((call) => call[0])
+			expect(() => keypressHandler?.("", undefined)).not.toThrow();
+			keypressHandler?.("", { name: "c" });
+			keypressHandler?.("", { ctrl: true, name: "a" });
+			await vi.advanceTimersByTimeAsync(500);
+			await expect(pending).resolves.toBeUndefined();
+
+			const output = mockStdout.write.mock.calls
+				.map((call) => String(call[0]))
 				.join("");
-			expect(output.includes("\u001b")).toBe(false);
-			expect(output).toContain("tuckshop");
-			expect(output).toContain("hello world");
+			expect(output).toContain("one two");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	test("falls back to 80 columns when stdout.columns is unset", async () => {
+		mockStdout.isTTY = false;
+		mockStdout.columns = undefined;
+		const message = "a".repeat(50);
+
+		await animatedIntro(message, {
+			stdout: mockStdout as unknown as NodeJS.WriteStream,
 		});
 
-		test("falls back to 80 columns when stdout.columns is unset", async () => {
-			const customStdout: MockStdout = {
-				write: vi.fn(),
-				isTTY: false,
-			};
+		const output = mockStdout.write.mock.calls.map((call) => call[0]).join("");
+		expect(stripVTControlCharacters(output)).toContain(message);
+		expect(output).not.toContain("...");
+	});
 
-			await animatedIntro("hello world", {
-				stdout: customStdout as unknown as NodeJS.WriteStream,
-			});
+	test("treats a zero column width as unset and uses the 80-column fallback", async () => {
+		mockStdout.isTTY = false;
+		mockStdout.columns = 0;
+		const message = "a".repeat(50);
 
-			expect(customStdout.write).toHaveBeenCalled();
-			const output = customStdout.write.mock.calls
-				.map((call) => call[0])
-				.join("");
-			expect(output).toContain("hello world");
+		await animatedIntro(message, {
+			stdout: mockStdout as unknown as NodeJS.WriteStream,
 		});
 
-		test("prints messages that are already arrays of words", async () => {
-			const customStdout: MockStdout = {
-				write: vi.fn(),
-				columns: 80,
-				isTTY: false,
-			};
+		const output = mockStdout.write.mock.calls.map((call) => call[0]).join("");
+		expect(stripVTControlCharacters(output)).toContain(message);
+		expect(output).not.toContain("...");
+	});
 
-			// Nested array hits Promise.all + pre-split words in printIntroPlain.
-			await animatedIntro([["hello", "world"]] as unknown as string[], {
-				stdout: customStdout as unknown as NodeJS.WriteStream,
-			});
+	test("uses at least 40 columns when stdout.columns is set", async () => {
+		mockStdout.isTTY = false;
+		mockStdout.columns = 80;
+		const message = "a".repeat(50);
 
-			expect(readline.createInterface).not.toHaveBeenCalled();
-			const output = customStdout.write.mock.calls
-				.map((call) => call[0])
-				.join("");
-			expect(output).toContain("hello world");
+		await animatedIntro(message, {
+			stdout: mockStdout as unknown as NodeJS.WriteStream,
 		});
 
-		test("prints messages that are arrays of promises", async () => {
-			const customStdout: MockStdout = {
-				write: vi.fn(),
-				columns: 80,
-				isTTY: false,
-			};
+		const output = mockStdout.write.mock.calls.map((call) => call[0]).join("");
+		expect(stripVTControlCharacters(output)).toContain(message);
+		expect(output).not.toContain("...");
+	});
 
-			await animatedIntro(
-				[
-					[Promise.resolve("async"), Promise.resolve("words")],
-				] as unknown as string[],
-				{
-					stdout: customStdout as unknown as NodeJS.WriteStream,
-				},
+	test("falls back to 80 columns on a TTY when stdout.columns is unset", async () => {
+		mockStdout.columns = undefined;
+		const message = "a".repeat(50);
+
+		await animatedIntro(message, {
+			stdout: mockStdout as unknown as NodeJS.WriteStream,
+			stdin: mockStdin as unknown as NodeJS.ReadStream,
+			frameDelayMs: 1,
+		});
+
+		const output = mockStdout.write.mock.calls.map((call) => call[0]).join("");
+		expect(stripVTControlCharacters(output)).toContain(message);
+		expect(output).not.toContain("...");
+	});
+
+	describe("createFixedHeightRenderer", () => {
+		test("pads missing lines with empty strings on first paint", () => {
+			const renderer = createFixedHeightRenderer(
+				mockStdout as unknown as NodeJS.WriteStream,
+				3,
 			);
 
-			const output = customStdout.write.mock.calls
-				.map((call) => call[0])
-				.join("");
-			expect(output).toContain("async words");
+			renderer.paint(["only-one"]);
+
+			expect(mockStdout.write.mock.calls.map((call) => call[0])).toEqual([
+				"only-one",
+				"\n",
+				"",
+				"\n",
+				"",
+			]);
 		});
-	});
 
-	describe("logo animation", () => {
-		test("renders candy logo frames on the title line when TTY", async () => {
-			await animatedIntro("Hi", { frameDelayMs: 10 });
+		test("repaints in place with clear-line sequences between rows", () => {
+			const renderer = createFixedHeightRenderer(
+				mockStdout as unknown as NodeJS.WriteStream,
+				3,
+			);
 
-			const output = stdoutWriteSpy.mock.calls.map((call) => call[0]).join("");
-			expect(output).toMatch(/[●◔◕◑◒◓◐○]/);
+			renderer.paint(["a", "b", "c"]);
+			mockStdout.write.mockClear();
+			renderer.paint(["x", "y", "z"]);
+
+			expect(mockStdout.write.mock.calls.map((call) => call[0])).toEqual([
+				"\x1b[2F",
+				"\x1b[2K",
+				"x",
+				"\n",
+				"\x1b[2K",
+				"y",
+				"\n",
+				"\x1b[2K",
+				"z",
+			]);
 		});
-	});
 
-	describe("default export", () => {
-		test("should export animatedIntro as default", () => {
-			expect(animatedIntro).toBeDefined();
-			expect(typeof animatedIntro).toBe("function");
+		test("finish writes a trailing newline only after a paint", () => {
+			const renderer = createFixedHeightRenderer(
+				mockStdout as unknown as NodeJS.WriteStream,
+				3,
+			);
+
+			renderer.finish();
+			expect(mockStdout.write).not.toHaveBeenCalled();
+
+			renderer.paint(["a", "b", "c"]);
+			mockStdout.write.mockClear();
+			renderer.finish();
+			expect(mockStdout.write.mock.calls.map((call) => call[0])).toEqual([
+				"\n",
+			]);
+
+			mockStdout.write.mockClear();
+			renderer.finish();
+			expect(mockStdout.write).not.toHaveBeenCalled();
 		});
 	});
 });

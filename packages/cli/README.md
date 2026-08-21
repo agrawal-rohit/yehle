@@ -14,7 +14,7 @@ npx tuckshop add testing-configuration --overwrite
 npx tuckshop add
 ```
 
-When item ids are omitted, `add` prompts with a multiselect. Shared registry conditions are inferred from marker files when possible, then prompted. Payload files are fetched from the catalog location, written relative to the project root, and packages are installed per ecosystem after confirming or selecting a package manager.
+When item ids are omitted, `add` prompts with a multiselect. Shared registry conditions use local condition handlers for prompt defaults when available, then prompt for the rest. Payload files are fetched from the catalog location, item handlers may generate or transform files, and packages are installed per ecosystem after confirming or selecting a package manager.
 
 ### `list`
 

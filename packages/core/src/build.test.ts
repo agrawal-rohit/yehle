@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildRegistry } from "./build";
 import type { Registry, RegistryPayload } from "./schema";
 
@@ -33,9 +33,9 @@ function writeItem(
 }
 
 /**
- * Write a JSON file under registry/ (conditions.json, types.json, etc.).
+ * Write a JSON file under registry/ (conditions/conditions.json, types.json, etc.).
  * @param packageRoot - Absolute temp package root.
- * @param fileName - File name under registry/.
+ * @param fileName - File name under registry/ (may include subdirectories).
  * @param data - Object written as JSON.
  */
 function writeRegistryJson(
@@ -43,13 +43,9 @@ function writeRegistryJson(
 	fileName: string,
 	data: Record<string, unknown>,
 ): void {
-	const registryDir = path.join(packageRoot, "registry");
-	fs.mkdirSync(registryDir, { recursive: true });
-	fs.writeFileSync(
-		path.join(registryDir, fileName),
-		`${JSON.stringify(data, null, 2)}\n`,
-		"utf8",
-	);
+	const absolutePath = path.join(packageRoot, "registry", fileName);
+	fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+	fs.writeFileSync(absolutePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
 describe("buildRegistry", () => {
@@ -194,7 +190,6 @@ describe("buildRegistry", () => {
 				title: "Git Hooks",
 				description: "Hooks",
 				type: "configuration",
-				when: { language: "typescript" },
 				files: [
 					{ source: "commitlint.config.js", target: "commitlint.config.js" },
 				],
@@ -218,7 +213,7 @@ describe("buildRegistry", () => {
 				"typescript/lint-staged.config.js": "module.exports = {};\n",
 			},
 		);
-		writeRegistryJson(tempDir, "conditions.json", {
+		writeRegistryJson(tempDir, "conditions/conditions.json", {
 			language: {
 				label: "Language",
 				values: [{ value: "typescript", label: "TypeScript" }],
@@ -228,9 +223,7 @@ describe("buildRegistry", () => {
 		const document = await runBuild();
 		expect(document.items["git-hooks"]).not.toHaveProperty("id");
 		expect(document.items["git-hooks"]).not.toHaveProperty("files");
-		expect(document.items["git-hooks"].when).toEqual({
-			language: "typescript",
-		});
+		expect(document.items["git-hooks"]).not.toHaveProperty("when");
 		expect(document.items["git-hooks"].variants?.[0]).toEqual({
 			id: "typescript",
 			title: "TypeScript",
@@ -262,7 +255,6 @@ describe("buildRegistry", () => {
 				title: "Assign Owner",
 				description: "Assigns the repository owner",
 				type: "configuration",
-				when: { language: "typescript" },
 				registryDependencies: ["setup-workspace"],
 				files: [
 					{
@@ -294,12 +286,6 @@ describe("buildRegistry", () => {
 				".github/pull_request_template.md": "## Summary\n",
 			},
 		);
-		writeRegistryJson(tempDir, "conditions.json", {
-			language: {
-				label: "Language",
-				values: [{ value: "typescript", label: "TypeScript" }],
-			},
-		});
 
 		const document = await runBuild();
 		expect(document.items["assign-owner"]).toEqual({
@@ -307,7 +293,6 @@ describe("buildRegistry", () => {
 			description: "Assigns the repository owner",
 			type: "configuration",
 			source: "r/assign-owner.json",
-			when: { language: "typescript" },
 			registryDependencies: ["setup-workspace"],
 		});
 		expect(document.items["assign-owner"]).not.toHaveProperty("variants");
@@ -444,21 +429,100 @@ describe("buildRegistry", () => {
 		fs.rmSync(path.join(tempDir, "registry", "types.json"));
 		fs.mkdirSync(path.join(tempDir, "registry"), { recursive: true });
 
-		await expect(runBuild()).rejects.toThrow("Registry types not found");
+		await expect(runBuild()).rejects.toThrow(
+			"Registry types not found at types.json.",
+		);
 	});
 
-	it("falls back to types.json in the missing-types error when relative is empty", async () => {
+	it("does not wipe r/ when types.json is missing", async () => {
+		const stale = path.join(tempDir, "r", "stale", "old.json");
+		fs.mkdirSync(path.dirname(stale), { recursive: true });
+		fs.writeFileSync(stale, "{}\n", "utf8");
 		fs.rmSync(path.join(tempDir, "registry", "types.json"));
 		fs.mkdirSync(path.join(tempDir, "registry"), { recursive: true });
-		const relativeSpy = vi.spyOn(path, "relative").mockReturnValueOnce("");
 
-		try {
-			await expect(runBuild()).rejects.toThrow(
-				"Registry types not found at types.json.",
-			);
-		} finally {
-			relativeSpy.mockRestore();
-		}
+		await expect(runBuild()).rejects.toThrow(
+			"Registry types not found at types.json.",
+		);
+		expect(fs.existsSync(stale)).toBe(true);
+	});
+
+	it("throws when registry-item.json is not valid JSON", async () => {
+		const itemDir = path.join(tempDir, "registry", "component", "broken");
+		fs.mkdirSync(itemDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(itemDir, "registry-item.json"),
+			"{ not json\n",
+			"utf8",
+		);
+
+		await expect(runBuild()).rejects.toThrow("is not valid JSON");
+	});
+
+	it("throws when a file source escapes the item folder", async () => {
+		writeItem(
+			tempDir,
+			"component/button",
+			{
+				id: "button",
+				title: "Button",
+				description: "A button",
+				type: "component",
+				files: [{ source: "../outside.txt", target: "button.tsx" }],
+			},
+			{ "button.tsx": "export {};\n" },
+		);
+
+		await expect(runBuild()).rejects.toThrow(
+			"must be a relative path under the item folder",
+		);
+	});
+
+	it("throws when an item file and a variant file share a target", async () => {
+		writeItem(
+			tempDir,
+			"configuration/git-hooks",
+			{
+				id: "git-hooks",
+				title: "Git Hooks",
+				description: "Hooks",
+				type: "configuration",
+				files: [{ source: "shared.js", target: "config.js" }],
+				variants: [
+					{
+						id: "typescript",
+						title: "TypeScript",
+						description: "TS hooks",
+						files: [{ source: "typescript/override.js", target: "config.js" }],
+					},
+				],
+			},
+			{
+				"shared.js": "module.exports = {};\n",
+				"typescript/override.js": "module.exports = { ts: true };\n",
+			},
+		);
+
+		await expect(runBuild()).rejects.toThrow(
+			'Registry item "git-hooks" variant "typescript" declares duplicate file target "config.js".',
+		);
+	});
+
+	it("throws when an inlined source file is empty", async () => {
+		writeItem(
+			tempDir,
+			"component/button",
+			{
+				id: "button",
+				title: "Button",
+				description: "A button",
+				type: "component",
+				files: [{ source: "empty.txt", target: "empty.txt" }],
+			},
+			{ "empty.txt": "" },
+		);
+
+		await expect(runBuild()).rejects.toThrow('Registry payload for "button"');
 	});
 
 	it("throws when a when key is not declared in conditions", async () => {
@@ -568,7 +632,7 @@ describe("buildRegistry", () => {
 			},
 			{ "vitest.config.ts": "export default {};\n" },
 		);
-		writeRegistryJson(tempDir, "conditions.json", {
+		writeRegistryJson(tempDir, "conditions/conditions.json", {
 			language: {
 				label: "Language",
 				values: [{ value: "typescript", label: "TypeScript" }],
@@ -605,5 +669,223 @@ describe("buildRegistry", () => {
 		expect(payload).not.toHaveProperty("id");
 		expect(payload).not.toHaveProperty("variantId");
 		expect(payload).not.toHaveProperty("registryDependencies");
+	});
+
+	it("bundles item and condition handlers into r/", async () => {
+		writeItem(
+			tempDir,
+			"configuration/license",
+			{
+				id: "license",
+				title: "License",
+				description: "SPDX license",
+				type: "configuration",
+				handler: "handler.ts",
+			},
+			{
+				"handler.ts": `
+export default {
+  async files() {
+    return [{ target: "LICENSE", content: "MIT" }];
+  },
+};
+`,
+			},
+		);
+		fs.mkdirSync(path.join(tempDir, "registry/conditions"), {
+			recursive: true,
+		});
+		fs.writeFileSync(
+			path.join(tempDir, "registry/conditions/language.ts"),
+			`
+export default {
+  async infer() {
+    return "typescript";
+  },
+};
+`,
+			"utf8",
+		);
+		writeRegistryJson(tempDir, "conditions/conditions.json", {
+			language: {
+				label: "Language",
+				handler: "conditions/language.ts",
+				values: [{ value: "typescript", label: "TypeScript" }],
+			},
+		});
+
+		const document = await runBuild();
+		expect(document.items.license).toEqual({
+			title: "License",
+			description: "SPDX license",
+			type: "configuration",
+			handler: "r/license.handler.js",
+		});
+		expect(document.items.license).not.toHaveProperty("source");
+		expect(document.conditions?.language.handler).toBe(
+			"r/_handlers/language.handler.js",
+		);
+		expect(fs.existsSync(path.join(tempDir, "r/license.handler.js"))).toBe(
+			true,
+		);
+		expect(
+			fs.existsSync(path.join(tempDir, "r/_handlers/language.handler.js")),
+		).toBe(true);
+		expect(fs.existsSync(path.join(tempDir, "r/license.json"))).toBe(false);
+	});
+
+	it("writes a payload for a handler-only item that declares packages", async () => {
+		writeItem(
+			tempDir,
+			"configuration/with-pkgs",
+			{
+				id: "with-pkgs",
+				title: "With packages",
+				description: "Handler plus packages",
+				type: "configuration",
+				handler: "handler.ts",
+				packages: {
+					npm: {
+						dependencies: ["left-pad"],
+					},
+				},
+			},
+			{
+				"handler.ts": `
+export default {
+  async files() {
+    return [{ target: "X", content: "x" }];
+  },
+};
+`,
+			},
+		);
+
+		const document = await runBuild();
+		expect(document.items["with-pkgs"]).toEqual({
+			title: "With packages",
+			description: "Handler plus packages",
+			type: "configuration",
+			source: "r/with-pkgs.json",
+			handler: "r/with-pkgs.handler.js",
+		});
+
+		const payload = JSON.parse(
+			fs.readFileSync(path.join(tempDir, "r/with-pkgs.json"), "utf8"),
+		) as RegistryPayload;
+		expect(payload).toEqual({
+			files: [],
+			packages: {
+				npm: {
+					dependencies: ["left-pad"],
+				},
+			},
+		});
+		expect(fs.existsSync(path.join(tempDir, "r/with-pkgs.handler.js"))).toBe(
+			true,
+		);
+	});
+
+	it("rejects handlers that runtime-import @tuckshop/core", async () => {
+		writeItem(
+			tempDir,
+			"configuration/bad",
+			{
+				id: "bad",
+				title: "Bad",
+				description: "Imports core at runtime",
+				type: "configuration",
+				handler: "handler.ts",
+			},
+			{
+				"handler.ts": `
+import { parseWithSchema } from "@tuckshop/core";
+export default {
+  async files() {
+    void parseWithSchema;
+    return [{ target: "X", content: "x" }];
+  },
+};
+`,
+			},
+		);
+
+		await expect(runBuild()).rejects.toThrow("@tuckshop/core");
+	});
+
+	it("rejects a declared handler file that is missing", async () => {
+		writeItem(
+			tempDir,
+			"configuration/missing-handler",
+			{
+				id: "missing-handler",
+				title: "Missing handler",
+				description: "Points at a missing handler",
+				type: "configuration",
+				handler: "handler.ts",
+				files: [{ source: "a.txt", target: "a.txt" }],
+			},
+			{
+				"a.txt": "hello\n",
+			},
+		);
+
+		await expect(runBuild()).rejects.toThrow("missing handler");
+	});
+
+	it("rejects a handler that fails to bundle", async () => {
+		writeItem(
+			tempDir,
+			"configuration/syntax-error",
+			{
+				id: "syntax-error",
+				title: "Syntax error",
+				description: "Invalid TypeScript handler",
+				type: "configuration",
+				handler: "handler.ts",
+			},
+			{
+				"handler.ts": "export default { async files() { return [[[; } };\n",
+			},
+		);
+
+		await expect(runBuild()).rejects.toThrow("Failed to bundle");
+	});
+
+	it("preserves item uses in the catalog", async () => {
+		writeRegistryJson(tempDir, "conditions/conditions.json", {
+			language: {
+				label: "Language",
+				values: [{ value: "typescript", label: "TypeScript" }],
+			},
+		});
+		writeItem(
+			tempDir,
+			"configuration/uses-lang",
+			{
+				id: "uses-lang",
+				title: "Uses language",
+				description: "Declares uses",
+				type: "configuration",
+				uses: ["language"],
+				files: [{ source: "a.txt", target: "a.txt" }],
+			},
+			{ "a.txt": "hello\n" },
+		);
+
+		const document = await runBuild();
+		expect(document.items["uses-lang"].uses).toEqual(["language"]);
+	});
+
+	it("rethrows non-ENOENT errors while walking the authoring tree", async () => {
+		const blocked = path.join(tempDir, "registry", "blocked");
+		fs.mkdirSync(blocked, { recursive: true });
+		fs.chmodSync(blocked, 0);
+
+		try {
+			await expect(runBuild()).rejects.toThrow();
+		} finally {
+			fs.chmodSync(blocked, 0o755);
+		}
 	});
 });

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isErrnoCode } from "./errors";
 
 /** Persisted tuckshop CLI settings. */
 export interface TuckshopConfig {
@@ -45,7 +46,7 @@ export async function readConfig(
 	try {
 		raw = await fs.promises.readFile(filePath, "utf8");
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+		if (isErrnoCode(error, "ENOENT")) return {};
 		throw error;
 	}
 
@@ -62,6 +63,9 @@ export async function readConfig(
 			throw new Error(
 				'"registry" must be a non-empty string URL or file path.',
 			);
+
+		if (typeof registry === "string")
+			return { ...(parsed as TuckshopConfig), registry: registry.trim() };
 
 		return parsed as TuckshopConfig;
 	} catch (error) {

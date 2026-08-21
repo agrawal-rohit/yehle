@@ -5,11 +5,12 @@
 	"license": "MIT",
 	"private": true,
 	"scripts": {
-		"build": "pnpm --filter @tuckshop/core run build && tsx ./src/index.ts .",
+		"build": "pnpm --filter @tuckshop/core run build && tsx ./scripts/build-registry.ts .",
 		"typecheck": "pnpm --filter @tuckshop/core run build && tsc -p tsconfig.json --noEmit",
 		"test": "vitest run --passWithNoTests"
 	},
 	"dependencies": {
-		"@tuckshop/core": "workspace:*"
+		"@tuckshop/core": "workspace:*",
+		"spdx-license-list": "^6.12.0"
 	}
 }

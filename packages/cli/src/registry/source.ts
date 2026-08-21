@@ -1,5 +1,21 @@
 import path from "node:path";
-import { isFileAsync } from "@tuckshop/core";
+import {
+	assertSafeRemoteUrl,
+	isAbsoluteHttpUrl,
+	isFileAsync,
+} from "@tuckshop/core";
+
+/** Absolute path to the packaged default registry.json (present after prepack / install). */
+const defaultBundledRegistryPath = path.resolve(
+	__dirname,
+	"../../",
+	"registry.json",
+);
+
+/** Workspace development fallback: packages/registry/registry.json relative to the CLI package. */
+const defaultFallbackRegistryPaths = [
+	path.resolve(__dirname, "../../../registry/registry.json"),
+];
 
 export interface ResolveRegistrySourceOptions {
 	/** Explicit registry flag value from the CLI. */
@@ -13,52 +29,20 @@ export interface ResolveRegistrySourceOptions {
 }
 
 /**
- * Check whether a registry source string should be treated as a URL.
- * @param value - Candidate registry source.
- * @returns True when the source is an absolute HTTP(S) URL.
- */
-function isUrlSource(value: string): boolean {
-	return /^https?:\/\//i.test(value);
-}
-
-/**
- * Resolve the path to the built registry.json.
- * @returns Absolute path to registry.json, or null when not found.
- */
-async function resolveBuiltRegistryPath(
-	cwd: string,
-	bundledRegistryPath: string,
-	fallbackRegistryPaths: string[],
-): Promise<string | null> {
-	const registryFilename = "registry.json";
-	const candidates = [
-		// Prefer an explicit registry.json in the caller's working directory.
-		path.resolve(cwd, registryFilename),
-		// Workspace / local development (e.g. packages/registry)
-		...fallbackRegistryPaths,
-		// Packaged default (present after CLI prepack / install).
-		bundledRegistryPath,
-	];
-
-	for (const candidate of candidates)
-		if (await isFileAsync(candidate)) return candidate;
-
-	return null;
-}
-
-/**
  * Resolve which registry source the CLI should use.
+ * Precedence for an explicit source: CLI flag > `TUCKSHOP_REGISTRY` env > saved config.
+ * When none is set, probe: cwd `registry.json` > fallback paths > bundled default.
  * @param options - Resolution inputs from CLI flags, env, and package defaults.
- * @returns Absolute local path or HTTP(S) URL to the catalog.
- * @throws Error when no local or bundled registry can be found.
+ * @returns Absolute local path or HTTPS URL to the catalog.
+ * @throws Error when no local or bundled registry can be found, or an explicit URL is unsafe.
  */
 export async function resolveRegistrySource(
 	options: ResolveRegistrySourceOptions = {},
 ): Promise<string> {
 	const bundledRegistryPath =
-		options.bundledRegistryPath ??
-		path.resolve(__dirname, "../../", "registry.json");
-	const fallbackRegistryPaths = options.fallbackRegistryPaths ?? [];
+		options.bundledRegistryPath ?? defaultBundledRegistryPath;
+	const fallbackRegistryPaths =
+		options.fallbackRegistryPaths ?? defaultFallbackRegistryPaths;
 
 	// Source reading order: CLI flag > env > saved config > bundled.
 	const source =
@@ -66,20 +50,23 @@ export async function resolveRegistrySource(
 
 	// If a source is explicitly provided, use it.
 	if (source) {
-		if (isUrlSource(source)) return source;
+		if (isAbsoluteHttpUrl(source)) {
+			assertSafeRemoteUrl(new URL(source));
+			return source;
+		}
 		return path.resolve(process.cwd(), source);
 	}
 
-	// If no source is explicitly provided, resolve the built registry path.
-	const builtRegistryPath = await resolveBuiltRegistryPath(
-		process.cwd(),
+	const candidates = [
+		path.resolve(process.cwd(), "registry.json"),
+		...fallbackRegistryPaths,
 		bundledRegistryPath,
-		fallbackRegistryPaths,
-	);
-	if (!builtRegistryPath)
-		throw new Error(
-			"Registry not found (registry.json). Run `pnpm run build:registry` before using tuckshop.",
-		);
+	];
 
-	return builtRegistryPath;
+	for (const candidate of candidates)
+		if (await isFileAsync(candidate)) return candidate;
+
+	throw new Error(
+		"Registry not found (registry.json). Run `pnpm run build:registry` before using tuckshop.",
+	);
 }

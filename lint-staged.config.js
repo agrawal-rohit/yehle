@@ -18,6 +18,6 @@ export default {
 		"pnpm exec biome check --write --no-errors-on-unmatched",
 	// Rebuild compiled artefacts whenever registry content or the compiler changes.
 	"packages/registry/registry/**/*": () => rebuildRegistryCommands(),
-	"packages/registry/src/index.ts": () => rebuildRegistryCommands(),
+	"packages/registry/scripts/build-registry.ts": () => rebuildRegistryCommands(),
 	"packages/core/src/{build,schema,parse}.ts": () => rebuildRegistryCommands(),
 };

@@ -1,18 +1,17 @@
-import {
-	defaultText,
-	primaryText,
-	type Registry,
-	type RegistryItem,
-	type RegistryItemTypeDefinition,
+import type {
+	CatalogItem,
+	Registry,
+	RegistryItemTypeDefinition,
 } from "@tuckshop/core";
 import chalk from "chalk";
+import { defaultText, primaryText } from "../cli/labels";
 import { parseMultiValueOption } from "../cli/options";
 
 /** Options accepted by the list command. */
-type ListCommandOptions = {
+interface ListCommandOptions {
 	/** Comma-separated registry item types, or `all`. */
 	type?: string;
-};
+}
 
 /**
  * Resolve which item types to include from `--type`.
@@ -61,11 +60,11 @@ function resolveFilterTypes(
  * @param typeMeta - Display metadata keyed by type value.
  */
 function printItemsByType(
-	matches: RegistryItem[],
+	matches: CatalogItem[],
 	typeOrder: string[],
 	typeMeta: Record<string, RegistryItemTypeDefinition>,
 ): void {
-	const byType = new Map<string, RegistryItem[]>();
+	const byType = new Map<string, CatalogItem[]>();
 
 	for (const item of matches) {
 		const group = byType.get(item.type) ?? [];
@@ -78,8 +77,8 @@ function printItemsByType(
 		if (!group) continue;
 
 		const meta = typeMeta[type];
-		console.log(primaryText(meta?.label ?? type));
-		if (meta?.description) console.log(meta.description);
+		console.log(primaryText(meta.label ?? type));
+		if (meta.description) console.log(meta.description);
 		console.log();
 
 		const sorted = [...group].sort((a, b) => a.title.localeCompare(b.title));
@@ -105,16 +104,15 @@ function printItemsByType(
 }
 
 /**
- * List registry items.
+ * List registry items, optionally filtered by `--type`.
  * @param registry - Registry loaded at CLI registration time.
- * @param itemTypes - Item types present in the registry.
  * @param options - Optional list command options.
  */
-async function listCommand(
+export function listCommand(
 	registry: Registry,
-	itemTypes: string[],
 	options: ListCommandOptions = {},
-): Promise<void> {
+): void {
+	const itemTypes = Object.keys(registry.types);
 	const allowedTypes = resolveFilterTypes(options.type, itemTypes);
 	const matches = Object.values(registry.items).filter((item) =>
 		allowedTypes.has(item.type),
@@ -132,10 +130,7 @@ async function listCommand(
 	console.log();
 	console.log(defaultText("─".repeat(40)));
 	console.log();
-	const typeOrder = itemTypes.filter((type) => allowedTypes.has(type));
-	printItemsByType(matches, typeOrder, registry.types);
+	printItemsByType(matches, itemTypes, registry.types);
 	console.log(defaultText(`${matches.length} item(s)`));
 	console.log();
 }
-
-export default listCommand;

@@ -26,8 +26,10 @@ describe("cli/options", () => {
 		});
 
 		it("ignores missing, blank, or non-string values", () => {
-			expect(pickStringOptions({}, ["type"])).toEqual({});
-			expect(pickStringOptions({ type: "   " }, ["type"])).toEqual({});
+			expect(Object.keys(pickStringOptions({}, ["type"]))).toEqual([]);
+			expect(
+				Object.hasOwn(pickStringOptions({ type: "   " }, ["type"]), "type"),
+			).toBe(false);
 			expect(pickStringOptions({ type: 1 }, ["type"])).toEqual({});
 		});
 	});

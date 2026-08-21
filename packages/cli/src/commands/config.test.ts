@@ -2,6 +2,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const mockTextInput = vi.fn();
+
+vi.mock("../cli/prompts", () => ({
+	textInput: (...args: unknown[]) => mockTextInput(...args),
+}));
+
 import {
 	configGetCommand,
 	configSetCommand,
@@ -13,6 +20,7 @@ describe("commands/config", () => {
 
 	afterEach(async () => {
 		vi.restoreAllMocks();
+		mockTextInput.mockReset();
 		await Promise.all(
 			tempRoots.splice(0).map(async (root) => {
 				await fs.promises.rm(root, { recursive: true, force: true });
@@ -43,6 +51,7 @@ describe("commands/config", () => {
 			await configGetCommand(options);
 
 			const output = logSpy.mock.calls.map((call) => call.join(" ")).join("\n");
+			expect(output).toContain("Configuration");
 			expect(output).toContain("https://example.com/registry.json");
 			expect(output).toContain(path.join(root, "tuckshop", "config.json"));
 
@@ -50,15 +59,104 @@ describe("commands/config", () => {
 			await expect(configUnsetCommand(options)).resolves.toBe(false);
 		});
 
-		it("rejects invalid sources without writing config", async () => {
+		it("persists a local path as absolute from the set-time cwd", async () => {
+			const root = await makeTempRoot();
+			const options = { env: { XDG_CONFIG_HOME: root } };
+			const registryFile = path.join(root, "registry.json");
+			await fs.promises.writeFile(registryFile, "{}\n");
+			const workDir = path.join(root, "workdir");
+			await fs.promises.mkdir(workDir);
+			vi.spyOn(process, "cwd").mockReturnValue(workDir);
+			vi.spyOn(console, "log").mockImplementation(() => {});
+
+			const relative = path.relative(workDir, registryFile);
+			await configSetCommand(relative, options);
+
+			const saved = JSON.parse(
+				await fs.promises.readFile(
+					path.join(root, "tuckshop", "config.json"),
+					"utf8",
+				),
+			) as { registry: string };
+			expect(saved.registry).toBe(registryFile);
+			expect(path.isAbsolute(saved.registry)).toBe(true);
+		});
+
+		it("rejects HTTP URLs", async () => {
 			const root = await makeTempRoot();
 			const options = { env: { XDG_CONFIG_HOME: root } };
 			vi.spyOn(console, "log").mockImplementation(() => {});
 
-			await expect(configSetCommand("", options)).rejects.toThrow(
-				"Registry source must not be empty.",
+			await expect(
+				configSetCommand("http://example.com/registry.json", options),
+			).rejects.toThrow("Remote registries must use HTTPS");
+		});
+
+		it("rejects localhost registry URLs", async () => {
+			const root = await makeTempRoot();
+			const options = { env: { XDG_CONFIG_HOME: root } };
+			vi.spyOn(console, "log").mockImplementation(() => {});
+
+			await expect(
+				configSetCommand("https://localhost/registry.json", options),
+			).rejects.toThrow("Remote registries cannot target localhost.");
+		});
+
+		it("rejects registry URLs with credentials", async () => {
+			const root = await makeTempRoot();
+			const options = { env: { XDG_CONFIG_HOME: root } };
+			vi.spyOn(console, "log").mockImplementation(() => {});
+
+			await expect(
+				configSetCommand(
+					"https://user:secret@example.com/registry.json",
+					options,
+				),
+			).rejects.toThrow("Remote registries must not include credentials.");
+		});
+
+		it("prompts for a source when omitted", async () => {
+			const root = await makeTempRoot();
+			const options = { env: { XDG_CONFIG_HOME: root } };
+			vi.spyOn(console, "log").mockImplementation(() => {});
+			mockTextInput.mockResolvedValue("https://example.com/prompted.json");
+
+			await configSetCommand(undefined, options);
+
+			expect(mockTextInput).toHaveBeenCalledWith(
+				"Registry URL or local path",
+				expect.objectContaining({
+					placeholder: "https://example.com/registry.json",
+					required: true,
+				}),
 			);
-			await expect(configSetCommand("   ", options)).rejects.toThrow(
+			const saved = JSON.parse(
+				await fs.promises.readFile(
+					path.join(root, "tuckshop", "config.json"),
+					"utf8",
+				),
+			) as { registry: string };
+			expect(saved.registry).toBe("https://example.com/prompted.json");
+		});
+
+		it("prompts for a source when the provided value is whitespace", async () => {
+			const root = await makeTempRoot();
+			const options = { env: { XDG_CONFIG_HOME: root } };
+			vi.spyOn(console, "log").mockImplementation(() => {});
+			mockTextInput.mockResolvedValue("https://example.com/prompted.json");
+
+			await configSetCommand("   ", options);
+
+			expect(mockTextInput).toHaveBeenCalled();
+		});
+
+		it("rejects invalid sources without writing config", async () => {
+			const root = await makeTempRoot();
+			const options = { env: { XDG_CONFIG_HOME: root } };
+			vi.spyOn(console, "log").mockImplementation(() => {});
+			mockTextInput.mockResolvedValue("");
+
+			await expect(configSetCommand(undefined, options)).rejects.toThrow(
 				"Registry source must not be empty.",
 			);
 

@@ -1,6 +1,6 @@
 ---
 title: Registry Authoring
-description: Validating registry documents with @tuckshop/core.
+description: Compiling and validating tuckshop registries with @tuckshop/core.
 ---
 
 ## Installing the core package
@@ -13,10 +13,66 @@ pnpm add @tuckshop/core
 
 - registry schema types
 - `parseRegistryDocument()` and `parseWithSchema()` for runtime validation (unknown keys are rejected)
+- `buildRegistry()` to compile an authoring tree into `registry.json` plus payloads and handlers under `r/`
+- handler contracts (`ItemHandler`, `ConditionHandler`) and local-only loader APIs
 
-Compiling a `registry/` directory into `registry.json` is an internal `@tuckshop/registry` concern (`pnpm build:registry`).
+## Compiling a registry
 
-## Example
+```ts
+import path from "node:path";
+import { buildRegistry } from "@tuckshop/core";
+
+await buildRegistry({
+	sourceDir: path.join(packageRoot, "registry"),
+	outDir: packageRoot,
+});
+```
+
+That writes:
+
+- `registry.json` — catalog index (items may declare `source`, `variants`, and/or `handler`)
+- `r/{itemId}.json` or `r/{itemId}/{variantId}.json` — install payloads
+- `r/{itemId}.handler.js` / `r/_handlers/{key}.handler.js` — bundled item and condition handlers
+
+## Handlers (local catalogs only)
+
+Items and shared conditions may declare a colocated TypeScript handler. Handlers are bundled at compile time and executed only when the catalog is a **local path**. Remote HTTPS registries that declare `handler` are rejected so network JS is never executed.
+
+Use `import type` from `@tuckshop/core` (do not runtime-import the package):
+
+```ts
+import type { ItemHandler } from "@tuckshop/core";
+
+const handler: ItemHandler = {
+	async prompts(ctx) {
+		const licenseId = await ctx.prompts.select("License", {
+			options: [{ label: "MIT", value: "MIT" }],
+		});
+		return { licenseId };
+	},
+	async files(ctx) {
+		return [{ target: "LICENSE", content: ctx.variables.licenseId }];
+	},
+	async transform(ctx) {
+		return ctx.files;
+	},
+};
+
+export default handler;
+```
+
+Condition handlers expose `infer` to suggest a prompt default (for example from marker files or `ctx.run("git config --get user.name")`). Items consume those values with `"uses": ["authorName"]`; the resolved value is then `ctx.conditions.authorName` in the handler.
+
+Shared conditions declare a `kind`:
+
+- `select` (default) — single choice from `values`
+- `multiselect` — multiple choices from `values` (`ctx.conditions` stores `string[]`)
+- `text` — free-form string
+- `boolean` — yes/no (`ctx.conditions` stores `boolean`)
+
+Variant `when` may reference `select`, `multiselect`, and `boolean` keys (`"true"` / `"false"` for booleans). Text conditions are for prompts/`uses` only.
+
+## Validating artefacts
 
 ```ts
 import { parseRegistryDocument } from "@tuckshop/core";

@@ -162,6 +162,13 @@ describe("core/schema", () => {
 			});
 		});
 
+		it("accepts a payload with an empty files list", () => {
+			expect(registryPayloadSchema.parse({ files: [] })).toEqual({
+				files: [],
+			});
+			expect(registryPayloadSchema.parse({})).toEqual({ files: [] });
+		});
+
 		it("rejects leftover identity fields", () => {
 			expect(
 				registryPayloadSchema.safeParse({
@@ -192,6 +199,40 @@ describe("core/schema", () => {
 				packages: {
 					npm: {
 						dependencies: ["react"],
+						devDependencies: ["typescript"],
+					},
+				},
+			});
+
+			expect(
+				registryPayloadSchema.parse({
+					files: [{ target: "a.txt", content: "x" }],
+					packages: {
+						npm: {
+							dependencies: ["react"],
+						},
+					},
+				}),
+			).toMatchObject({
+				packages: {
+					npm: {
+						dependencies: ["react"],
+					},
+				},
+			});
+
+			expect(
+				registryPayloadSchema.parse({
+					files: [{ target: "a.txt", content: "x" }],
+					packages: {
+						npm: {
+							devDependencies: ["typescript"],
+						},
+					},
+				}),
+			).toMatchObject({
+				packages: {
+					npm: {
 						devDependencies: ["typescript"],
 					},
 				},
@@ -300,6 +341,69 @@ describe("core/schema", () => {
 				registryConditionSchema.safeParse(validCondition({ values: [] }))
 					.success,
 			).toBe(false);
+		});
+
+		it("accepts a text condition without values", () => {
+			expect(
+				registryConditionSchema.parse({
+					label: "Author",
+					kind: "text",
+					handler: "conditions/author.ts",
+				}),
+			).toEqual({
+				label: "Author",
+				kind: "text",
+				handler: "conditions/author.ts",
+			});
+		});
+
+		it("rejects a text condition that declares values", () => {
+			expect(
+				rejectMessage(
+					registryConditionSchema,
+					validCondition({ kind: "text" }),
+				),
+			).toBe("text_with_values");
+		});
+
+		it("accepts a multiselect condition with values", () => {
+			expect(
+				registryConditionSchema.parse(validCondition({ kind: "multiselect" })),
+			).toEqual({
+				label: "Language",
+				kind: "multiselect",
+				values: [{ value: "typescript", label: "TypeScript" }],
+			});
+		});
+
+		it("rejects a multiselect condition without values", () => {
+			expect(
+				rejectMessage(registryConditionSchema, {
+					label: "Language",
+					kind: "multiselect",
+				}),
+			).toBe("select_requires_values");
+		});
+
+		it("accepts a boolean condition without values", () => {
+			expect(
+				registryConditionSchema.parse({
+					label: "Enable CI",
+					kind: "boolean",
+				}),
+			).toEqual({
+				label: "Enable CI",
+				kind: "boolean",
+			});
+		});
+
+		it("rejects a boolean condition that declares values", () => {
+			expect(
+				rejectMessage(
+					registryConditionSchema,
+					validCondition({ kind: "boolean" }),
+				),
+			).toBe("boolean_with_values");
 		});
 
 		it("rejects unknown keys", () => {
@@ -509,7 +613,6 @@ describe("core/schema", () => {
 				registryItemSchema.parse({
 					...withoutVariants,
 					files: [validFile()],
-					when: { language: "typescript" },
 				}),
 			).toEqual({
 				id: "button",
@@ -517,8 +620,18 @@ describe("core/schema", () => {
 				description: "A button",
 				type: "component",
 				files: [validFile()],
-				when: { language: "typescript" },
 			});
+		});
+
+		it("rejects item-level when", () => {
+			const { variants: _variants, ...withoutVariants } = validItem();
+			expect(
+				registryItemSchema.safeParse({
+					...withoutVariants,
+					files: [validFile()],
+					when: { language: "typescript" },
+				}).success,
+			).toBe(false);
 		});
 
 		it("omits an empty variants list when files are present", () => {
@@ -530,10 +643,65 @@ describe("core/schema", () => {
 			expect(parsed.files).toEqual([validFile()]);
 		});
 
-		it("rejects an item with neither files nor variants", () => {
+		it("rejects an item with neither files, variants, nor a handler", () => {
 			expect(
 				rejectMessage(registryItemSchema, validItem({ variants: [] })),
 			).toBe("missing_files_or_variants");
+		});
+
+		it("accepts a handler-only item without files or variants", () => {
+			const { variants: _variants, ...withoutVariants } = validItem();
+			expect(
+				registryItemSchema.parse({
+					...withoutVariants,
+					handler: "handler.ts",
+				}),
+			).toEqual({
+				id: "button",
+				title: "Button",
+				description: "A button",
+				type: "component",
+				handler: "handler.ts",
+			});
+		});
+
+		it("rejects absolute, URL, and parent-escape handler paths", () => {
+			const { variants: _variants, ...withoutVariants } = validItem();
+			for (const handler of [
+				"/abs/handler.ts",
+				"https://evil.example/h.js",
+				"../evil.ts",
+				"r\\x.ts",
+			]) {
+				expect(
+					rejectMessage(registryItemSchema, { ...withoutVariants, handler }),
+				).toBe(`invalid_handler:${handler}`);
+			}
+		});
+
+		it("keeps uses and rejects the old item-level conditions field", () => {
+			const { variants: _variants, ...withoutVariants } = validItem();
+			expect(
+				registryItemSchema.parse({
+					...withoutVariants,
+					handler: "handler.ts",
+					uses: ["authorName"],
+				}),
+			).toEqual({
+				id: "button",
+				title: "Button",
+				description: "A button",
+				type: "component",
+				handler: "handler.ts",
+				uses: ["authorName"],
+			});
+			expect(
+				registryItemSchema.safeParse({
+					...withoutVariants,
+					handler: "handler.ts",
+					conditions: ["authorName"],
+				}).success,
+			).toBe(false);
 		});
 
 		it("rejects an empty files list when files are declared", () => {
@@ -637,7 +805,7 @@ describe("core/schema", () => {
 			});
 		});
 
-		it("rejects an item with neither source nor variants", () => {
+		it("rejects an item with neither source, variants, nor a handler", () => {
 			expect(
 				rejectMessage(catalogItemSchema, {
 					title: "Button",
@@ -645,6 +813,24 @@ describe("core/schema", () => {
 					type: "component",
 				}),
 			).toBe("missing_source_or_variants");
+		});
+
+		it("accepts a handler-only catalog item", () => {
+			expect(
+				catalogItemSchema.parse({
+					title: "License",
+					description: "SPDX license",
+					type: "configuration",
+					handler: "r/license-configuration.handler.js",
+					uses: ["authorName"],
+				}),
+			).toEqual({
+				title: "License",
+				description: "SPDX license",
+				type: "configuration",
+				handler: "r/license-configuration.handler.js",
+				uses: ["authorName"],
+			});
 		});
 
 		it("rejects an item that declares source together with variants", () => {

@@ -6,7 +6,7 @@ import {
 	select,
 	text,
 } from "@clack/prompts";
-import logger from "./logger";
+import { OperationCanceledError } from "./errors";
 
 /** One option in a select/multiselect prompt (matches Clack’s unexported `Option<string>`). */
 type SelectOption = NonNullable<
@@ -19,11 +19,21 @@ type GroupedSelectOption = NonNullable<
 >[string][number];
 
 /**
+ * Throw {@link OperationCanceledError} when Clack reports a cancel symbol.
+ * @param value - Prompt result that may be a cancel symbol.
+ * @throws {OperationCanceledError} When the user canceled.
+ */
+function throwIfCanceled<T>(value: T): asserts value is Exclude<T, symbol> {
+	if (isCancel(value)) throw new OperationCanceledError();
+}
+
+/**
  * Prompt for a text input with optional validation and default.
  * @param message - Prompt message to display.
  * @param opts - Optional prompt configuration, including `required`.
  * @param defaultValue - Optional default value.
  * @returns Trimmed user input.
+ * @throws {OperationCanceledError} When the user cancels.
  */
 export async function textInput(
 	message: string,
@@ -46,8 +56,7 @@ export async function textInput(
 			: {}),
 	});
 
-	if (isCancel(raw)) logger.end("Operation canceled");
-
+	throwIfCanceled(raw);
 	return String(raw).trim();
 }
 
@@ -57,6 +66,7 @@ export async function textInput(
  * @param opts - Optional select prompt configuration.
  * @param defaultValue - Optional default selected value.
  * @returns Selected value.
+ * @throws {OperationCanceledError} When the user cancels.
  */
 export async function selectInput<Value extends string>(
 	message: string,
@@ -69,8 +79,7 @@ export async function selectInput<Value extends string>(
 		...(defaultValue !== undefined ? { initialValue: defaultValue } : {}),
 	});
 
-	if (isCancel(value)) logger.end("Operation canceled");
-
+	throwIfCanceled(value);
 	return value as Value;
 }
 
@@ -80,6 +89,7 @@ export async function selectInput<Value extends string>(
  * @param opts - Optional multiselect prompt configuration.
  * @param defaultValues - Optional default selected values.
  * @returns Selected values.
+ * @throws {OperationCanceledError} When the user cancels.
  */
 export async function multiselectInput(
 	message: string,
@@ -92,8 +102,7 @@ export async function multiselectInput(
 		...(defaultValues !== undefined ? { initialValues: defaultValues } : {}),
 	});
 
-	if (isCancel(values)) logger.end("Operation canceled");
-
+	throwIfCanceled(values);
 	return values as string[];
 }
 
@@ -102,6 +111,7 @@ export async function multiselectInput(
  * @param message - Prompt message to display.
  * @param options - Options keyed by group label.
  * @returns Selected values.
+ * @throws {OperationCanceledError} When the user cancels.
  */
 export async function groupedMultiselectInput(
 	message: string,
@@ -112,8 +122,7 @@ export async function groupedMultiselectInput(
 		options,
 	});
 
-	if (isCancel(values)) logger.end("Operation canceled");
-
+	throwIfCanceled(values);
 	return values as string[];
 }
 
@@ -123,6 +132,7 @@ export async function groupedMultiselectInput(
  * @param opts - Optional confirm prompt configuration.
  * @param defaultValue - Optional default boolean value.
  * @returns User confirmation result.
+ * @throws {OperationCanceledError} When the user cancels.
  */
 export async function confirmInput(
 	message: string,
@@ -135,17 +145,6 @@ export async function confirmInput(
 		...(defaultValue !== undefined ? { initialValue: defaultValue } : {}),
 	});
 
-	if (isCancel(res)) logger.end("Operation canceled");
-
+	throwIfCanceled(res);
 	return res as boolean;
 }
-
-const prompts = {
-	textInput,
-	selectInput,
-	multiselectInput,
-	groupedMultiselectInput,
-	confirmInput,
-};
-
-export default prompts;

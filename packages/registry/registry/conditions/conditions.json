@@ -1,0 +1,20 @@
+{
+	"language": {
+		"kind": "select",
+		"label": "Language",
+		"description": "Which language are you planning to use?",
+		"handler": "conditions/language.ts",
+		"values": [
+			{
+				"value": "typescript",
+				"label": "TypeScript"
+			}
+		]
+	},
+	"authorName": {
+		"kind": "text",
+		"label": "Author name",
+		"description": "Who should be credited as the author?",
+		"handler": "conditions/author-name.ts"
+	}
+}

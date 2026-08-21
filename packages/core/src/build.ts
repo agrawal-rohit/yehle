@@ -1,26 +1,39 @@
 import type { Dirent } from "node:fs";
 import path from "node:path";
+import * as esbuild from "esbuild";
 import {
 	isFileAsync,
+	isMissingPathError,
 	readDirectoryAsync,
 	readFileAsync,
+	readJsonFileAsync,
 	removeAsync,
 	writeFileAsync,
 } from "./fs";
 import { mergeRegistryPackages } from "./packages";
-import { parseRegistryDocument, parseWithSchema } from "./parse";
+import {
+	parseKeyedRecord,
+	parseRegistryDocument,
+	parseWithSchema,
+} from "./parse";
 import {
 	type AuthoredRegistryItem,
 	type AuthoredRegistryVariant,
+	type CatalogItem,
 	type Registry,
+	type RegistryCondition,
 	type RegistryFile,
-	type RegistryPayload,
+	type RegistryItemTypeDefinition,
 	type RegistryPayloadFile,
+	registryConditionSchema,
 	registryItemSchema,
+	registryItemTypeSchema,
+	registryPayloadSchema,
 } from "./schema";
+import { joinRelativePathUnderRoot } from "./urls";
 
 export interface BuildRegistryOptions {
-	/** Absolute path to the authoring tree: item folders, `types.json`, and optional `conditions.json`. */
+	/** Absolute path to the authoring tree: item folders, `types.json`, and optional `conditions/conditions.json`. */
 	sourceDir: string;
 	/** Absolute path where compiled artefacts are written: `registry.json` and `r/{itemId}.json` or `r/{itemId}/{variantId}.json`. */
 	outDir: string;
@@ -32,27 +45,43 @@ interface AuthoredItemEntry {
 	item: AuthoredRegistryItem;
 }
 
-/** Planned payload write location for one item or variant. */
-interface PlannedPayload {
-	itemDir: string;
-	item: AuthoredRegistryItem;
-	variant?: AuthoredRegistryVariant;
-	absoluteFile: string;
+/**
+ * Catalog-relative payload URI for an item or variant.
+ * @param itemId - Registry item id.
+ * @param variantId - Variant id when the payload is per-variant.
+ * @returns URI under `r/`.
+ */
+function payloadUri(itemId: string, variantId?: string): string {
+	return variantId === undefined
+		? `r/${itemId}.json`
+		: `r/${itemId}/${variantId}.json`;
+}
+
+/**
+ * Catalog-relative URI for a compiled item handler.
+ * @param itemId - Registry item id.
+ * @returns URI under `r/`.
+ */
+function itemHandlerUri(itemId: string): string {
+	return `r/${itemId}.handler.js`;
 }
 
 /**
  * Recursively collect the folder of every registry-item.json under a source tree.
  * @param dir - Directory to walk.
  * @returns Absolute paths to item folders (each containing a registry-item.json).
+ * @throws Error on filesystem failures other than a missing directory.
  */
 async function collectItemDirs(dir: string): Promise<string[]> {
 	const results: string[] = [];
-	let entries: Dirent[] = [];
+	let entries: Dirent[];
 
 	try {
 		entries = await readDirectoryAsync(dir);
-	} catch {
-		return results;
+	} catch (error) {
+		// Missing authoring root is treated as an empty item tree; other errors fail fast.
+		if (isMissingPathError(error)) return results;
+		throw error;
 	}
 
 	for (const entry of entries) {
@@ -74,17 +103,22 @@ async function collectItemDirs(dir: string): Promise<string[]> {
  * @param sourceDir - Absolute authoring root (for relative error paths).
  * @param files - Authoring file entries.
  * @returns Payload file entries with inlined content.
- * @throws Error when a source is missing on disk.
+ * @throws Error when a source escapes the item folder or is missing on disk.
  */
 async function materializePayloadFiles(
 	itemDir: string,
 	itemId: string,
 	sourceDir: string,
-	files: RegistryFile[] = [],
+	files: RegistryFile[],
 ): Promise<RegistryPayloadFile[]> {
 	return Promise.all(
 		files.map(async (file) => {
-			const absolutePath = path.join(itemDir, file.source);
+			const absolutePath = joinRelativePathUnderRoot(
+				itemDir,
+				file.source,
+				`Registry item "${itemId}" file source`,
+				"item folder",
+			);
 			if (await isFileAsync(absolutePath)) {
 				const content = await readFileAsync(absolutePath);
 				return { target: file.target, content };
@@ -110,12 +144,13 @@ async function loadAuthoredItems(
 	const seenItemIds = new Set<string>();
 	for (const itemDir of await collectItemDirs(sourceDir)) {
 		const manifestPath = path.join(itemDir, "registry-item.json");
-		const raw = JSON.parse(await readFileAsync(manifestPath));
+		const raw = await readJsonFileAsync(
+			manifestPath,
+			`Registry item at ${path.relative(sourceDir, manifestPath)}`,
+		);
 
-		// Validate the registry item
 		const item = parseWithSchema(registryItemSchema, raw, "Registry item");
 
-		// Check for duplicate item ids
 		if (seenItemIds.has(item.id))
 			throw new Error(`Duplicate registry item id: "${item.id}".`);
 
@@ -127,93 +162,208 @@ async function loadAuthoredItems(
 }
 
 /**
- * Plan payload output paths: one per variant, or a single item-level payload.
- * @param authoredItems - Loaded authored items.
- * @param outDir - Absolute compiled output root.
- * @returns Planned payload writes.
+ * Whether a variant-less item needs a compiled payload (static files and/or packages).
+ * @param item - Authored registry item without variants.
+ * @returns True when a payload document should be written.
  */
-function planPayloadWrites(
-	authoredItems: AuthoredItemEntry[],
-	outDir: string,
-): PlannedPayload[] {
-	const planned: PlannedPayload[] = [];
-
-	for (const { itemDir, item } of authoredItems) {
-		if (item.variants?.length) {
-			for (const variant of item.variants) {
-				const relativeFile = `r/${item.id}/${variant.id}.json`;
-				planned.push({
-					itemDir,
-					item,
-					variant,
-					absoluteFile: path.join(outDir, relativeFile),
-				});
-			}
-			continue;
-		}
-
-		planned.push({
-			itemDir,
-			item,
-			absoluteFile: path.join(outDir, `r/${item.id}.json`),
-		});
-	}
-
-	return planned;
+function variantLessNeedsPayload(item: AuthoredRegistryItem): boolean {
+	return (item.files?.length ?? 0) > 0 || item.packages !== undefined;
 }
 
 /**
- * Materialize and write every planned payload under `r/`.
- * @param plannedPayloads - Planned payload writes.
- * @param sourceDir - Absolute authoring root.
- * @param payloadsDir - Absolute `r/` directory to wipe and rebuild.
+ * Human-readable subject for payload validation errors.
+ * @param itemId - Registry item id.
+ * @param variant - Variant being compiled, if any.
+ * @returns Label naming the item and optional variant.
  */
-async function writePlannedPayloads(
-	plannedPayloads: PlannedPayload[],
-	sourceDir: string,
-	payloadsDir: string,
-): Promise<void> {
-	await removeAsync(payloadsDir);
+function payloadSubject(
+	itemId: string,
+	variant: AuthoredRegistryVariant | undefined,
+): string {
+	if (variant === undefined) return `Registry item "${itemId}"`;
+	return `Registry item "${itemId}" variant "${variant.id}"`;
+}
 
-	// Write one payload per variant, or a single item-level payload.
-	for (const { itemDir, item, variant, absoluteFile } of plannedPayloads) {
-		const packages = mergeRegistryPackages(item.packages, variant?.packages);
-		const payload: RegistryPayload = {
-			files: [
-				...(await materializePayloadFiles(
-					itemDir,
-					item.id,
-					sourceDir,
-					item.files,
-				)),
-				...(await materializePayloadFiles(
-					itemDir,
-					item.id,
-					sourceDir,
-					variant?.files,
-				)),
-			],
-			...(packages ? { packages } : {}),
-		};
-
-		await writeFileAsync(absoluteFile, `${JSON.stringify(payload)}\n`);
+/**
+ * Fail when two payload files share the same install target path.
+ * @param subject - Error label naming the item/variant.
+ * @param files - Materialized payload files.
+ * @throws Error when a target path appears more than once.
+ */
+function assertUniquePayloadTargets(
+	subject: string,
+	files: RegistryPayloadFile[],
+): void {
+	const seenTargets = new Set<string>();
+	for (const file of files) {
+		if (seenTargets.has(file.target))
+			throw new Error(
+				`${subject} declares duplicate file target "${file.target}".`,
+			);
+		seenTargets.add(file.target);
 	}
+}
+
+/**
+ * Write one install payload under `r/`.
+ * @param entry - Authored item with its source folder.
+ * @param variant - Variant being compiled; omit for an item-level payload.
+ * @param sourceDir - Absolute authoring root.
+ * @param outDir - Absolute compiled output root.
+ * @throws Error when a file source is missing, escapes the item folder, or two files share a target.
+ */
+async function writePayload(
+	entry: AuthoredItemEntry,
+	variant: AuthoredRegistryVariant | undefined,
+	sourceDir: string,
+	outDir: string,
+): Promise<void> {
+	const { itemDir, item } = entry;
+	const subject = payloadSubject(item.id, variant);
+	const files = await materializePayloadFiles(itemDir, item.id, sourceDir, [
+		...(item.files ?? []),
+		...(variant?.files ?? []),
+	]);
+
+	// Item-level and variant files share one destination namespace
+	assertUniquePayloadTargets(subject, files);
+
+	const packages = mergeRegistryPackages(item.packages, variant?.packages);
+	const payload = parseWithSchema(
+		registryPayloadSchema,
+		{ files, ...(packages ? { packages } : {}) },
+		`Registry payload for "${item.id}"`,
+	);
+
+	await writeFileAsync(
+		path.join(outDir, payloadUri(item.id, variant?.id)),
+		`${JSON.stringify(payload)}\n`,
+	);
+}
+
+/**
+ * Wipe `r/` and write every item/variant payload from the authored tree.
+ * @param authoredItems - Loaded authored items.
+ * @param sourceDir - Absolute authoring root.
+ * @param outDir - Absolute compiled output root.
+ */
+async function writeItemPayloads(
+	authoredItems: AuthoredItemEntry[],
+	sourceDir: string,
+	outDir: string,
+): Promise<void> {
+	await removeAsync(path.join(outDir, "r"));
+
+	const writes: Promise<void>[] = [];
+	for (const entry of authoredItems) {
+		const { item } = entry;
+		if (item.variants?.length)
+			for (const variant of item.variants)
+				writes.push(writePayload(entry, variant, sourceDir, outDir));
+		else if (variantLessNeedsPayload(item))
+			writes.push(writePayload(entry, undefined, sourceDir, outDir));
+	}
+
+	await Promise.all(writes);
+}
+
+/**
+ * Bundle a TypeScript/JavaScript handler into a self-contained CommonJS module.
+ * Marks `@tuckshop/core` as external and fails if the bundle still requires it.
+ * @param entryPath - Absolute path to the authored handler module.
+ * @param outfile - Absolute path for the compiled handler.
+ * @param label - Error context label.
+ * @throws Error when bundling fails or the handler runtime-imports `@tuckshop/core`.
+ */
+async function bundleHandler(
+	entryPath: string,
+	outfile: string,
+	label: string,
+): Promise<void> {
+	if (!(await isFileAsync(entryPath)))
+		throw new Error(`${label} references missing handler: ${entryPath}`);
+
+	try {
+		await esbuild.build({
+			entryPoints: [entryPath],
+			bundle: true,
+			platform: "node",
+			format: "cjs",
+			target: "node18",
+			outfile,
+			write: true,
+			external: ["@tuckshop/core"],
+			logLevel: "silent",
+		});
+	} catch (error) {
+		throw new Error(`Failed to bundle ${label}: ${String(error)}`);
+	}
+
+	// Reject handlers that runtime-require @tuckshop/core (types-only imports are erased).
+	const output = await readFileAsync(outfile);
+	if (/require\(["']@tuckshop\/core["']\)/.test(output))
+		throw new Error(`${label} must not runtime-import @tuckshop/core.`);
+}
+
+/**
+ * Bundle condition handlers and rewrite authored paths to catalog URIs.
+ * @param sourceDir - Absolute authoring root.
+ * @param outDir - Absolute compiled output root.
+ * @param conditions - Parsed shared conditions (handlers still authoring-relative).
+ * @returns Conditions with compiled handler URIs, or undefined when absent.
+ */
+async function compileConditionHandlers(
+	sourceDir: string,
+	outDir: string,
+	conditions: Record<string, RegistryCondition> | undefined,
+): Promise<Record<string, RegistryCondition> | undefined> {
+	if (!conditions) return undefined;
+
+	const compiled: Record<string, RegistryCondition> = {};
+	const writes: Promise<void>[] = [];
+
+	for (const [key, condition] of Object.entries(conditions)) {
+		if (!condition.handler) {
+			compiled[key] = condition;
+			continue;
+		}
+
+		const uri = `r/_handlers/${key}.handler.js`;
+		const entryPath = joinRelativePathUnderRoot(
+			sourceDir,
+			condition.handler,
+			`Registry condition "${key}" handler`,
+			"authoring root",
+		);
+		writes.push(
+			bundleHandler(
+				entryPath,
+				path.join(outDir, uri),
+				`Registry condition "${key}"`,
+			),
+		);
+		compiled[key] = { ...condition, handler: uri };
+	}
+
+	await Promise.all(writes);
+	return compiled;
 }
 
 /**
  * Build the catalog index entry for one authored item.
  * @param item - Authored registry item.
- * @returns Catalog item shape (variant list or item-level source).
+ * @returns Catalog item shape (variant list, item-level source, and/or handler).
  */
-function catalogEntryForItem(item: AuthoredRegistryItem): unknown {
+function catalogEntryForItem(item: AuthoredRegistryItem): CatalogItem {
 	const shared = {
 		title: item.title,
 		description: item.description,
 		type: item.type,
-		...(item.when ? { when: item.when } : {}),
+		...(item.uses ? { uses: item.uses } : {}),
 		...(item.registryDependencies
 			? { registryDependencies: item.registryDependencies }
 			: {}),
+		...(item.handler ? { handler: itemHandlerUri(item.id) } : {}),
 	};
 
 	if (item.variants?.length) {
@@ -222,7 +372,7 @@ function catalogEntryForItem(item: AuthoredRegistryItem): unknown {
 			variants: item.variants.map((variant) => ({
 				id: variant.id,
 				title: variant.title,
-				source: `r/${item.id}/${variant.id}.json`,
+				source: payloadUri(item.id, variant.id),
 				...(variant.when ? { when: variant.when } : {}),
 				...(variant.registryDependencies
 					? { registryDependencies: variant.registryDependencies }
@@ -233,7 +383,7 @@ function catalogEntryForItem(item: AuthoredRegistryItem): unknown {
 
 	return {
 		...shared,
-		source: `r/${item.id}.json`,
+		...(variantLessNeedsPayload(item) ? { source: payloadUri(item.id) } : {}),
 	};
 }
 
@@ -244,8 +394,8 @@ function catalogEntryForItem(item: AuthoredRegistryItem): unknown {
  */
 function buildCatalogItems(
 	authoredItems: AuthoredItemEntry[],
-): Record<string, unknown> {
-	const catalogItems: Record<string, unknown> = {};
+): Record<string, CatalogItem> {
+	const catalogItems: Record<string, CatalogItem> = {};
 	for (const { item } of authoredItems)
 		catalogItems[item.id] = catalogEntryForItem(item);
 
@@ -255,28 +405,43 @@ function buildCatalogItems(
 }
 
 /**
- * Read optional conditions and required types sidecars from the authoring root.
+ * Read optional conditions and required types from the authoring root.
  * @param sourceDir - Absolute authoring root.
- * @returns Raw JSON values for document assembly.
- * @throws Error when `types.json` is missing.
+ * @returns Parsed conditions (optional) and types (required).
+ * @throws Error when `types.json` is missing or either file is invalid.
  */
-async function readRegistrySidecars(
-	sourceDir: string,
-): Promise<{ rawConditions: unknown; rawTypes: unknown }> {
-	const conditionsPath = path.join(sourceDir, "conditions.json");
-	let rawConditions: unknown;
-	if (await isFileAsync(conditionsPath))
-		rawConditions = JSON.parse(await readFileAsync(conditionsPath));
+async function readTypesAndConditions(sourceDir: string): Promise<{
+	conditions: Record<string, RegistryCondition> | undefined;
+	types: Record<string, RegistryItemTypeDefinition>;
+}> {
+	const conditionsPath = path.join(sourceDir, "conditions/conditions.json");
+	const rawConditions = (await isFileAsync(conditionsPath))
+		? await readJsonFileAsync(conditionsPath, "Registry conditions")
+		: undefined;
 
 	const typesPath = path.join(sourceDir, "types.json");
 	if (!(await isFileAsync(typesPath)))
-		throw new Error(
-			`Registry types not found at ${path.relative(sourceDir, typesPath) || "types.json"}.`,
-		);
+		throw new Error("Registry types not found at types.json.");
+
+	const types = parseKeyedRecord(
+		registryItemTypeSchema,
+		await readJsonFileAsync(typesPath, "Registry types"),
+		"Registry types",
+		(key) => `Registry type "${key}"`,
+		{
+			absent: "Registry types must be declared.",
+			empty: "Registry types must declare at least one type.",
+		},
+	) as Record<string, RegistryItemTypeDefinition>;
 
 	return {
-		rawConditions,
-		rawTypes: JSON.parse(await readFileAsync(typesPath)),
+		conditions: parseKeyedRecord(
+			registryConditionSchema,
+			rawConditions,
+			"Registry conditions",
+			(key) => `Registry condition "${key}"`,
+		),
+		types,
 	};
 }
 
@@ -293,21 +458,33 @@ export async function buildRegistry(
 	const outDir = path.resolve(options.outDir);
 	const registryPath = path.join(outDir, "registry.json");
 
+	// Validate authoring inputs before mutating the output tree.
 	const authoredItems = await loadAuthoredItems(sourceDir);
-	await writePlannedPayloads(
-		planPayloadWrites(authoredItems, outDir),
-		sourceDir,
-		path.join(outDir, "r"),
+	const { conditions, types } = await readTypesAndConditions(sourceDir);
+
+	await writeItemPayloads(authoredItems, sourceDir, outDir);
+	await Promise.all(
+		authoredItems.map(async ({ itemDir, item }) => {
+			if (!item.handler) return;
+			await bundleHandler(
+				path.join(itemDir, item.handler),
+				path.join(outDir, itemHandlerUri(item.id)),
+				`Registry item "${item.id}"`,
+			);
+		}),
 	);
 
-	const { rawConditions, rawTypes } = await readRegistrySidecars(sourceDir);
+	const compiledConditions = await compileConditionHandlers(
+		sourceDir,
+		outDir,
+		conditions,
+	);
 	const document = parseRegistryDocument({
-		conditions: rawConditions,
-		types: rawTypes,
+		...(compiledConditions ? { conditions: compiledConditions } : {}),
+		types,
 		items: buildCatalogItems(authoredItems),
 	});
 
-	// Write the compiled registry document to disk
 	await writeFileAsync(registryPath, `${JSON.stringify(document)}\n`);
 	return document;
 }

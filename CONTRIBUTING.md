@@ -172,7 +172,7 @@ when you are ready to publish the next version.
 
 `tuckshop` uses a JSON registry inspired by [shadcn](https://ui.shadcn.com/docs/registry) to distribute all registry items _(e.g. project templates, UI components, configurations, and agent instructions)_. Each unit is a self-contained folder holding its manifest and its source files. A unit can be wired to other items through the `registryDependencies` property to make composable units.
 
-The default registry content lives under `packages/registry/registry/`. Shared registry conditions are centralized in `packages/registry/registry/conditions.json`. Item type display metadata is centralized in `packages/registry/registry/types.json`. Compilation is provided by `@tuckshop/core` (`buildRegistry`); `@tuckshop/registry` is content plus a thin CLI wrapper.
+The default registry content lives under `packages/registry/registry/`. Shared registry conditions are centralized in `packages/registry/registry/conditions/conditions.json` (handlers colocated under `conditions/`). Item type display metadata is centralized in `packages/registry/registry/types.json`. Compilation is provided by `@tuckshop/core` (`buildRegistry`); `@tuckshop/registry` is content plus a short build script.
 
 ### Registry Layout
 
@@ -180,7 +180,9 @@ Every item is a folder under `packages/registry/registry/` containing a `registr
 
 ```text
 packages/registry/registry/
-├── conditions.json
+├── conditions/
+│   ├── conditions.json
+│   └── language.ts
 ├── types.json
 ├── configuration/dependency-updater/  # id: dependency-updater
 ├── configuration/build/               # id: build
@@ -198,9 +200,36 @@ The compiled artefacts are written next to the package root by `pnpm run build:r
 
 `registry.json` is regenerated and staged automatically by the pre-commit hook whenever anything under `packages/registry/registry/` or the core compiler changes. Payload files under `r/` are build output only — not committed — and ship with the published `tuckshop` package.
 
-`registry.json` only holds index metadata for individual items, so the catalog stays lean as the registry grows. Authoring manifests keep item-relative file `source` paths, ecosystem-tagged `packages`, and variant descriptions. The build inlines those files into compact payloads under `r/` and writes a compact catalog entry keyed by item id with a single payload URI (`source`: `r/{itemId}.json` for variant-less items, or `r/{itemId}/{variantId}.json` on each variant). Payloads keep `target`, inlined `content`, and `packages` keyed by ecosystem — no item or variant identity fields. Consumers resolve catalog `source` against the catalog location (`resolveRegistryPayload`). Third-party registries that host remotely should keep `registry.json` and `r/` side by side (GitHub raw, S3, or a CDN). The default registry ships payloads inside the CLI package instead.
+`registry.json` only holds index metadata for individual items, so the catalog stays lean as the registry grows. Authoring manifests keep item-relative file `source` paths, ecosystem-tagged `packages`, optional `handler` modules, and variant descriptions. The build inlines those files into compact payloads under `r/`, bundles handlers to `r/{itemId}.handler.js` (and condition handlers to `r/_handlers/{key}.handler.js`), and writes a compact catalog entry keyed by item id. Payloads keep `target`, inlined `content`, and `packages` keyed by ecosystem — no item or variant identity fields. Consumers resolve catalog `source` / `handler` against the catalog location. Third-party registries that host remotely should keep `registry.json` and `r/` side by side (GitHub raw, S3, or a CDN). The default registry ships payloads inside the CLI package instead.
 
-Payload `content` is the authored template text. Conditions and any future mustache rendering run on the client after the payload is loaded — not at compile time.
+Payload `content` is the authored template text. Condition defaults and item handler hooks (`prompts` → `files` → `transform`) run on the client after the payload is loaded — not at compile time. **Handlers execute only for local catalogs** (bundled CLI registry, a local `--registry` path, or a third-party package). Remote HTTPS catalogs that declare `handler` fail with a clear error so untrusted network JS is never executed.
+
+### Item and condition handlers
+
+Colocate a TypeScript handler next to the manifest (or under `registry/conditions/` for shared conditions). Use `import type` from `@tuckshop/core` — do not runtime-import the package (the build rejects it).
+
+```ts
+import type { ItemHandler } from "@tuckshop/core";
+
+const handler: ItemHandler = {
+ async prompts(ctx) {
+  const name = await ctx.prompts.text("Project name", { required: true });
+  return { name };
+ },
+ async files(ctx) {
+  return [{ target: "HELLO.md", content: `# ${ctx.variables.name}` }];
+ },
+ async transform(ctx) {
+  return ctx.files; // rewrite or drop files based on conditions/variables
+ },
+};
+
+export default handler;
+```
+
+Point the manifest at it with `"handler": "handler.ts"`. Handler-only items may omit `files`. Shared conditions can declare `"handler": "conditions/language.ts"` with an `infer` hook that returns a prompt default (for example from marker files or `ctx.run("git config --get user.name")`). Condition `kind` may be `select` (default), `multiselect`, `text`, or `boolean`. Items consume those values with `"uses": ["authorName"]`; the resolved value is then `ctx.conditions.authorName` in the handler.
+
+See `packages/registry/registry/configurations/license/` for an SPDX license picker that generates and transforms a `LICENSE` file.
 
 Third-party registries compile the same way — pass the authoring tree and output directory explicitly:
 
@@ -208,8 +237,8 @@ Third-party registries compile the same way — pass the authoring tree and outp
 import { buildRegistry } from "@tuckshop/core";
 
 await buildRegistry({
-	sourceDir: path.join(packageRoot, "registry"),
-	outDir: packageRoot,
+ sourceDir: path.join(packageRoot, "registry"),
+ outDir: packageRoot,
 });
 ```
 
@@ -223,7 +252,7 @@ await buildRegistry({
 
 When proposing a new registry item:
 
-1. Add a new folder under `packages/registry/registry/` with a `registry-item.json` (`id`, `title`, `description`, `type`, plus either top-level `files` or `variants`) and its files
+1. Add a new folder under `packages/registry/registry/` with a `registry-item.json` (`id`, `title`, `description`, `type`, plus `files`, `variants`, and/or `handler`) and its files
 2. Declare the item `type` in `packages/registry/registry/types.json` with a `label` and optional `description` _(required for every registry)_
 3. Include everything needed for a complete working setup; depend on existing concern items instead of copying files
 4. Run `pnpm run build:registry`, `pnpm cov`, and `pnpm --filter tuckshop pack`

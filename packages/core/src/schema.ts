@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+	policyForConditionKind,
+	RegistryConditionKind,
+} from "./condition-kind";
 
 /** Non-empty string field. */
 const nonEmptyString = z.string().min(1);
@@ -49,10 +53,10 @@ function optionalNonEmptyStringArray() {
 }
 
 /**
- * Optional description that drops blank strings from the parsed object.
- * @returns Zod schema for optional description fields.
+ * Optional string that drops blank strings from the parsed object.
+ * @returns Zod schema for optional non-empty string fields.
  */
-function optionalDescription() {
+function optionalNonEmptyString() {
 	return z
 		.string()
 		.optional()
@@ -131,8 +135,8 @@ export type RegistryPackages = NonNullable<
 /** Install payload for one item or variant (templates, not rendered output). */
 export const registryPayloadSchema = z
 	.strictObject({
-		/** Files to install (item-level files first when folded into a variant). */
-		files: z.array(registryPayloadFileSchema).min(1),
+		/** Files to install (item-level files first when folded into a variant). May be empty when an item handler generates every file at install time. */
+		files: z.array(registryPayloadFileSchema).default([]),
 		/** Packages to install, keyed by ecosystem. */
 		packages: registryPackagesSchema.optional(),
 	})
@@ -147,6 +151,22 @@ const registryWhenSchema = z
 		if (!value || Object.keys(value).length === 0) return undefined;
 		return value;
 	});
+
+/** Relative path to a colocated handler module (authoring) or compiled handler URI (catalog). */
+const registryHandlerPathSchema = nonEmptyString.superRefine(
+	(value, context) => {
+		if (
+			value.startsWith("/") ||
+			value.includes("\\") ||
+			value.split("/").includes("..") ||
+			/^https?:\/\//i.test(value)
+		)
+			context.addIssue({
+				code: "custom",
+				message: `invalid_handler:${value}`,
+			});
+	},
+);
 
 /** A labelled value for a shared condition. */
 export const registryConditionValueSchema = z
@@ -167,26 +187,54 @@ export const registryConditionSchema = z
 		/** Display label for this condition. */
 		label: nonEmptyString,
 		/** Optional longer description shown in the CLI. */
-		description: optionalDescription(),
-		/** Allowed labelled values for this condition. */
-		values: z.array(registryConditionValueSchema).min(1),
+		description: optionalNonEmptyString(),
+		/** Type of condition to prompt for. */
+		kind: z.enum(RegistryConditionKind).optional(),
+		/** Handler path: authoring-relative for conditions/conditions.json, or compiled `r/_handlers/{key}.handler.js` URI in the catalog. */
+		handler: registryHandlerPathSchema.optional(),
+		/** Allowed labelled values for select and multiselect conditions. */
+		values: z.array(registryConditionValueSchema).min(1).optional(),
 	})
 	.superRefine((data, context) => {
-		const seenValues = new Set<string>();
-		for (const entry of data.values) {
-			if (seenValues.has(entry.value)) {
+		const { kind, requiresValues } = policyForConditionKind(data.kind);
+		if (requiresValues) {
+			if (!data.values || data.values.length === 0) {
 				context.addIssue({
 					code: "custom",
-					message: `duplicate:${entry.value}`,
+					message: "select_requires_values",
 				});
 				return;
 			}
-			seenValues.add(entry.value);
+
+			const seenValues = new Set<string>();
+			for (const entry of data.values) {
+				if (seenValues.has(entry.value)) {
+					context.addIssue({
+						code: "custom",
+						message: `duplicate:${entry.value}`,
+					});
+					return;
+				}
+				seenValues.add(entry.value);
+			}
+			return;
 		}
+
+		// Free-form and yes/no conditions must not declare select values.
+		if (data.values && data.values.length > 0)
+			context.addIssue({
+				code: "custom",
+				message:
+					kind === RegistryConditionKind.TEXT
+						? "text_with_values"
+						: "boolean_with_values",
+			});
 	})
 	.transform((condition) =>
 		omitUndefined({
 			label: condition.label,
+			kind: condition.kind,
+			handler: condition.handler,
 			values: condition.values,
 			description: condition.description,
 		}),
@@ -199,7 +247,7 @@ export const registryItemTypeSchema = z
 		/** Display label for this item type. */
 		label: nonEmptyString,
 		/** Optional longer description shown in the CLI. */
-		description: optionalDescription(),
+		description: optionalNonEmptyString(),
 	})
 	.transform(omitUndefined);
 export type RegistryItemTypeDefinition = z.infer<typeof registryItemTypeSchema>;
@@ -226,128 +274,141 @@ function rejectDuplicateVariantIds(
 	}
 }
 
+/** Shared fields for authored and catalog variants. */
+const variantSharedFields = {
+	/** Unique variant id within the item. */
+	id: safePathSegment,
+	/** Display title. */
+	title: nonEmptyString,
+	/** Condition matcher that selects this variant. */
+	when: registryWhenSchema,
+	/** Other registry items this variant depends on. */
+	registryDependencies: optionalNonEmptyStringArray(),
+};
+
 /** Variant from an authoring `registry-item.json`. */
 export const registryVariantSchema = z
 	.strictObject({
-		/** Unique variant id within the item. */
-		id: safePathSegment,
-		/** Display title. */
-		title: nonEmptyString,
+		...variantSharedFields,
 		/** Short description of this installable slice. */
 		description: nonEmptyString,
 		/** Files copied when this variant is selected. */
 		files: z.array(registryFileSchema).min(1),
-		/** Condition matcher that selects this variant. */
-		when: registryWhenSchema,
 		/** Packages added with this variant, keyed by ecosystem. */
 		packages: registryPackagesSchema.optional(),
-		/** Other registry items this variant depends on. */
-		registryDependencies: optionalNonEmptyStringArray(),
 	})
 	.transform(omitUndefined);
 export type AuthoredRegistryVariant = z.infer<typeof registryVariantSchema>;
 
+/** Variant index entry in compiled `registry.json`. */
+export const catalogVariantSchema = z
+	.strictObject({
+		...variantSharedFields,
+		/** Payload URI resolved against the catalog location. */
+		source: nonEmptyString,
+	})
+	.transform(omitUndefined);
+export type CatalogVariant = z.infer<typeof catalogVariantSchema>;
+
+/** Optional variants list that collapses empty arrays to undefined. */
+const optionalVariants = <T extends z.ZodType>(variantSchema: T) =>
+	z
+		.array(variantSchema)
+		.optional()
+		.transform((value) => (value && value.length > 0 ? value : undefined));
+
+/** Shared fields for authored and catalog items (excluding id / install source). */
+const itemSharedFields = {
+	/** Display title. */
+	title: nonEmptyString,
+	/** Short description of the item. */
+	description: nonEmptyString,
+	/** Item type key declared in `types`. */
+	type: nonEmptyString,
+	/** Item-relative path to a TypeScript/JavaScript handler module. Compiled to `r/{itemId}.handler.js` at build time. */
+	handler: registryHandlerPathSchema.optional(),
+	/** Shared condition keys this item consumes. */
+	uses: optionalNonEmptyStringArray(),
+	/** Other registry items this item depends on. */
+	registryDependencies: optionalNonEmptyStringArray(),
+};
+
+/**
+ * Shared item refinements: require an installable shape and unique variant ids.
+ * @param item - Parsed item candidate.
+ * @param context - Zod refinement context.
+ * @param options - Whether the item uses authored files or catalog source.
+ */
+function refineRegistryItem(
+	item: {
+		variants?: Array<{ id: string }>;
+		handler?: string;
+		files?: unknown[];
+		source?: string;
+	},
+	context: z.RefinementCtx,
+	options: { authored: boolean },
+): void {
+	const hasVariants = (item.variants?.length ?? 0) > 0;
+	const hasHandler = Boolean(item.handler);
+	const hasInstallSource = options.authored
+		? (item.files?.length ?? 0) > 0
+		: Boolean(item.source);
+
+	if (!hasVariants && !hasInstallSource && !hasHandler) {
+		context.addIssue({
+			code: "custom",
+			message: options.authored
+				? "missing_files_or_variants"
+				: "missing_source_or_variants",
+		});
+		return;
+	}
+
+	if (!options.authored && hasVariants && item.source) {
+		context.addIssue({
+			code: "custom",
+			message: "source_with_variants",
+		});
+		return;
+	}
+
+	rejectDuplicateVariantIds(item.variants, context);
+}
+
 /** Item from an authoring `registry-item.json`. */
 export const registryItemSchema = z
 	.strictObject({
+		...itemSharedFields,
 		/** Unique item id. */
 		id: safePathSegment,
-		/** Display title. */
-		title: nonEmptyString,
-		/** Short description of the item. */
-		description: nonEmptyString,
-		/** Item type key declared in `types`. */
-		type: nonEmptyString,
 		/** Install files for a variant-less item, or files shared by every variant. */
 		files: z.array(registryFileSchema).min(1).optional(),
-		/** Condition matcher for a variant-less item. */
-		when: registryWhenSchema,
 		/** Packages added with this item, keyed by ecosystem. */
 		packages: registryPackagesSchema.optional(),
-		/** Other registry items this item depends on. */
-		registryDependencies: optionalNonEmptyStringArray(),
 		/** Installable slices of this item; omit for a single top-level configuration. */
-		variants: z
-			.array(registryVariantSchema)
-			.optional()
-			.transform((value) => (value && value.length > 0 ? value : undefined)),
+		variants: optionalVariants(registryVariantSchema),
 	})
 	.superRefine((item, context) => {
-		const hasVariants = (item.variants?.length ?? 0) > 0;
-		const hasFiles = (item.files?.length ?? 0) > 0;
-		if (!hasVariants && !hasFiles) {
-			context.addIssue({
-				code: "custom",
-				message: "missing_files_or_variants",
-			});
-			return;
-		}
-
-		rejectDuplicateVariantIds(item.variants, context);
+		refineRegistryItem(item, context, { authored: true });
 	})
 	.transform(omitUndefined);
 export type AuthoredRegistryItem = z.infer<typeof registryItemSchema>;
 
-/** Variant index entry in compiled `registry.json`. */
-export const catalogVariantSchema = z
-	.strictObject({
-		/** Unique variant id within the item. */
-		id: safePathSegment,
-		/** Display title. */
-		title: nonEmptyString,
-		/** Payload URI resolved against the catalog location. */
-		source: nonEmptyString,
-		/** Condition matcher that selects this variant. */
-		when: registryWhenSchema,
-		/** Other registry items this variant depends on. */
-		registryDependencies: optionalNonEmptyStringArray(),
-	})
-	.transform(omitUndefined);
-export type RegistryVariant = z.infer<typeof catalogVariantSchema>;
-
 /** Item index entry in compiled `registry.json`. Identity is the `items` map key. */
 export const catalogItemSchema = z
 	.strictObject({
-		/** Display title. */
-		title: nonEmptyString,
-		/** Short description of the item. */
-		description: nonEmptyString,
-		/** Item type key declared in `types`. */
-		type: nonEmptyString,
+		...itemSharedFields,
 		/** Payload URI for a variant-less item, resolved against the catalog location. */
 		source: nonEmptyString.optional(),
-		/** Condition matcher for a variant-less item. */
-		when: registryWhenSchema,
-		/** Other registry items this item depends on. */
-		registryDependencies: optionalNonEmptyStringArray(),
 		/** Installable slices of this item; omit for a single top-level configuration. */
-		variants: z
-			.array(catalogVariantSchema)
-			.optional()
-			.transform((value) => (value && value.length > 0 ? value : undefined)),
+		variants: optionalVariants(catalogVariantSchema),
 	})
 	.superRefine((item, context) => {
-		const hasVariants = (item.variants?.length ?? 0) > 0;
-		const hasSource = Boolean(item.source);
-		if (!hasVariants && !hasSource) {
-			context.addIssue({
-				code: "custom",
-				message: "missing_source_or_variants",
-			});
-			return;
-		}
-		if (hasVariants && hasSource) {
-			context.addIssue({
-				code: "custom",
-				message: "source_with_variants",
-			});
-			return;
-		}
-
-		rejectDuplicateVariantIds(item.variants, context);
+		refineRegistryItem(item, context, { authored: false });
 	})
 	.transform(omitUndefined);
-export type RegistryItem = z.infer<typeof catalogItemSchema>;
+export type CatalogItem = z.infer<typeof catalogItemSchema>;
 
 /**
  * Top-level registry document fields validated before nested parsing.
@@ -369,5 +430,5 @@ export interface Registry {
 	/** Item type display metadata keyed by type value. */
 	types: Record<string, RegistryItemTypeDefinition>;
 	/** Registry items keyed by id. */
-	items: Record<string, RegistryItem>;
+	items: Record<string, CatalogItem>;
 }

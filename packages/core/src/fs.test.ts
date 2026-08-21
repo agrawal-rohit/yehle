@@ -2,12 +2,17 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+	InvalidJsonError,
 	isFileAsync,
+	isMissingPathError,
+	PathKind,
+	pathKindAsync,
 	readDirectoryAsync,
 	readFileAsync,
+	readJsonFileAsync,
 	removeAsync,
 	writeFileAsync,
 } from "./fs";
@@ -18,6 +23,40 @@ function makeTempDir(prefix = "fs-test-"): string {
 }
 
 describe("core/fs", () => {
+	describe("isMissingPathError", () => {
+		it("detects ENOENT and rejects other errors", () => {
+			expect(isMissingPathError({ code: "ENOENT" })).toBe(true);
+			expect(isMissingPathError({ code: "EACCES" })).toBe(false);
+			expect(isMissingPathError(null)).toBe(false);
+			expect(isMissingPathError("ENOENT")).toBe(false);
+		});
+	});
+
+	describe("pathKindAsync", () => {
+		it("classifies files, directories, and missing paths", async () => {
+			const root = makeTempDir();
+			const file = path.join(root, "file.txt");
+			fs.writeFileSync(file, "content", "utf8");
+
+			await expect(pathKindAsync(file)).resolves.toBe(PathKind.FILE);
+			await expect(pathKindAsync(root)).resolves.toBe(PathKind.DIRECTORY);
+			await expect(pathKindAsync(path.join(root, "missing.txt"))).resolves.toBe(
+				PathKind.ABSENT,
+			);
+		});
+
+		it("rejects special filesystem nodes that are neither files nor directories", async () => {
+			vi.spyOn(fs.promises, "stat").mockResolvedValueOnce({
+				isDirectory: () => false,
+				isFile: () => false,
+			} as fs.Stats);
+
+			await expect(pathKindAsync("/tmp/special-node")).rejects.toThrow(
+				"neither a file nor a directory",
+			);
+		});
+	});
+
 	describe("isFileAsync", () => {
 		it("returns true when path is a file", async () => {
 			const root = makeTempDir();
@@ -55,6 +94,56 @@ describe("core/fs", () => {
 
 			await expect(
 				readFileAsync(path.join(root, "missing.txt")),
+			).rejects.toThrow();
+		});
+	});
+
+	describe("readJsonFileAsync", () => {
+		it("parses a JSON object from disk", async () => {
+			const root = makeTempDir();
+			const file = path.join(root, "data.json");
+			fs.writeFileSync(file, '{"version":"1.0.0"}\n', "utf8");
+
+			await expect(readJsonFileAsync(file, "Package")).resolves.toEqual({
+				version: "1.0.0",
+			});
+		});
+
+		it("rejects with a labeled InvalidJsonError when JSON is invalid", async () => {
+			const root = makeTempDir();
+			const file = path.join(root, "bad.json");
+			fs.writeFileSync(file, "{ not json\n", "utf8");
+
+			await expect(readJsonFileAsync(file, "Package")).rejects.toThrow(
+				InvalidJsonError,
+			);
+			await expect(readJsonFileAsync(file, "Package")).rejects.toThrow(
+				"Package is not valid JSON:",
+			);
+		});
+
+		it("stringifies non-Error parse failures", async () => {
+			const root = makeTempDir();
+			const file = path.join(root, "data.json");
+			fs.writeFileSync(file, "{}\n", "utf8");
+			const parseSpy = vi.spyOn(JSON, "parse").mockImplementationOnce(() => {
+				throw "not-an-error";
+			});
+
+			try {
+				await expect(readJsonFileAsync(file, "Package")).rejects.toThrow(
+					"Package is not valid JSON: not-an-error",
+				);
+			} finally {
+				parseSpy.mockRestore();
+			}
+		});
+
+		it("rejects when the file does not exist", async () => {
+			const root = makeTempDir();
+
+			await expect(
+				readJsonFileAsync(path.join(root, "missing.json"), "Package"),
 			).rejects.toThrow();
 		});
 	});

@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import path from "node:path";
 
 /**
@@ -10,14 +11,29 @@ export function isAbsoluteHttpUrl(value: string): boolean {
 }
 
 /**
- * Strip trailing slashes from a compile-time origin URL.
- * @param origin - Absolute HTTP(S) origin.
- * @returns Origin with no trailing slash.
+ * Reject remote registry URLs that are not HTTPS hostnames.
+ * @param url - Parsed remote URL.
+ * @throws Error when the URL uses a disallowed protocol, credentials, localhost, or IP host.
  */
-export function normalizeOrigin(origin: string): string {
-	let normalized = origin;
-	while (normalized.endsWith("/")) normalized = normalized.slice(0, -1);
-	return normalized;
+export function assertSafeRemoteUrl(url: URL): void {
+	if (url.protocol !== "https:")
+		throw new Error("Remote registries must use HTTPS.");
+	if (url.username || url.password)
+		throw new Error("Remote registries must not include credentials.");
+
+	const host = url.hostname.replace(/\.$/, "").toLowerCase();
+	if (host === "localhost" || host.endsWith(".localhost"))
+		throw new Error("Remote registries cannot target localhost.");
+
+	// WHATWG URL.hostname keeps brackets on IPv6 literals (e.g. "[::1]").
+	const literal =
+		url.hostname.startsWith("[") && url.hostname.endsWith("]")
+			? url.hostname.slice(1, -1)
+			: url.hostname;
+	if (isIP(literal))
+		throw new Error(
+			"Remote registries must use a hostname, not an IP address.",
+		);
 }
 
 /**
@@ -27,6 +43,41 @@ export function normalizeOrigin(origin: string): string {
  */
 export function publishedRegistryUrl(version: string): string {
 	return `https://raw.githubusercontent.com/agrawal-rohit/tuckshop/tuckshop@${version}/packages/registry/registry.json`;
+}
+
+/**
+ * Join a relative path under a root directory, rejecting escapes and absolute inputs.
+ * @param rootDir - Absolute directory the result must stay under.
+ * @param relativePath - Candidate relative path (may include surrounding whitespace).
+ * @param label - Noun phrase used in error messages (e.g. `"Payload file target"`).
+ * @param rootLabel - Human label for the root (e.g. `"project directory"`).
+ * @returns Absolute path under `rootDir`.
+ * @throws Error when the path is empty, absolute, uses `..`, or escapes `rootDir`.
+ */
+export function joinRelativePathUnderRoot(
+	rootDir: string,
+	relativePath: string,
+	label: string,
+	rootLabel: string,
+): string {
+	const trimmed = relativePath.trim();
+	if (!trimmed) throw new Error(`${label} must not be empty.`);
+
+	if (
+		path.isAbsolute(trimmed) ||
+		trimmed.includes("\\") ||
+		trimmed.split("/").includes("..")
+	)
+		throw new Error(
+			`${label} "${relativePath}" must be a relative path under the ${rootLabel}.`,
+		);
+
+	const absolutePath = path.resolve(rootDir, trimmed);
+	const relative = path.relative(rootDir, absolutePath);
+	if (relative.startsWith("..") || path.isAbsolute(relative))
+		throw new Error(`${label} "${relativePath}" escapes the ${rootLabel}.`);
+
+	return absolutePath;
 }
 
 /**
@@ -58,23 +109,11 @@ export function resolveRegistryPayload(
 	if (isAbsoluteHttpUrl(trimmedCatalog))
 		return new URL(trimmedSource, trimmedCatalog).href;
 
-	// If the source is a relative path, we need to resolve it against the catalog directory
-	if (
-		path.isAbsolute(trimmedSource) ||
-		trimmedSource.includes("\\") ||
-		trimmedSource.split("/").includes("..")
-	)
-		throw new Error(
-			`Registry file source "${trimmedSource}" must be a relative path under the catalog directory.`,
-		);
-
 	const catalogDir = path.dirname(path.resolve(trimmedCatalog));
-	const resolved = path.resolve(catalogDir, trimmedSource);
-	const relative = path.relative(catalogDir, resolved);
-	if (relative.startsWith("..") || path.isAbsolute(relative))
-		throw new Error(
-			`Registry file source "${trimmedSource}" escapes the catalog directory.`,
-		);
-
-	return resolved;
+	return joinRelativePathUnderRoot(
+		catalogDir,
+		trimmedSource,
+		"Registry file source",
+		"catalog directory",
+	);
 }

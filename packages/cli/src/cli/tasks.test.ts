@@ -1,37 +1,22 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-// Mock listr2 before imports - create mock functions inside factory
 vi.mock("listr2", () => ({
-	Listr: vi.fn((tasks) => {
-		// Store tasks for inspection
-		return {
-			run: vi.fn(async () => {
-				// Execute the task function to improve coverage
-				const firstTask = Array.isArray(tasks) ? tasks[0] : undefined;
-				if (firstTask?.task) {
-					const mockTask = {
-						newListr: vi.fn(() => ({})),
-					};
-					await firstTask.task({}, mockTask);
-				}
-			}),
-			_tasks: tasks,
-		};
-	}),
+	Listr: vi.fn((tasks) => ({
+		run: vi.fn(async () => {
+			const firstTask = Array.isArray(tasks) ? tasks[0] : undefined;
+			if (firstTask?.task) {
+				const mockTask = {
+					newListr: vi.fn(() => ({})),
+				};
+				await firstTask.task({}, mockTask);
+			}
+		}),
+		_tasks: tasks,
+	})),
 }));
 
-vi.mock("@tuckshop/core", async () => {
-	const actual =
-		await vi.importActual<typeof import("@tuckshop/core")>("@tuckshop/core");
-	return {
-		...actual,
-		primaryText: (message: string) => `primary:${message}`,
-		defaultText: (message: string) => `default:${message}`,
-	};
-});
-
 import { Listr } from "listr2";
-import tasks, { conditionalTask, runWithTasks, task } from "./tasks";
+import { conditionalTask, runWithTasks, task } from "./tasks";
 
 describe("cli/tasks", () => {
 	beforeEach(() => {
@@ -43,55 +28,46 @@ describe("cli/tasks", () => {
 	});
 
 	describe("task", () => {
-		test("should create a subtask with title and task function", () => {
+		test("creates a subtask with title and task function", () => {
 			const title = "Test Task";
 			const taskFn = vi.fn(async () => {});
 
-			const result = task(title, taskFn);
-
-			expect(result).toEqual({ title, task: taskFn });
+			expect(task(title, taskFn)).toEqual({ title, task: taskFn });
 		});
 	});
 
 	describe("conditionalTask", () => {
-		test("should return array with subtask when condition is true", () => {
-			const title = "Test Task";
-			const taskFn = vi.fn(async () => {});
-			const subtask = task(title, taskFn);
+		test("returns the subtask when the condition is true", () => {
+			const subtask = task(
+				"Test Task",
+				vi.fn(async () => {}),
+			);
 
-			const result = conditionalTask(true, subtask);
-
-			expect(result).toHaveLength(1);
-			expect(result[0]).toEqual(subtask);
+			expect(conditionalTask(true, subtask)).toEqual([subtask]);
 		});
 
-		test("should return empty array when condition is false", () => {
-			const title = "Test Task";
-			const taskFn = vi.fn(async () => {});
-			const subtask = task(title, taskFn);
+		test("returns an empty array when the condition is false", () => {
+			const subtask = task(
+				"Test Task",
+				vi.fn(async () => {}),
+			);
 
-			const result = conditionalTask(false, subtask);
-
-			expect(result).toHaveLength(0);
-			expect(result).toEqual([]);
+			expect(conditionalTask(false, subtask)).toEqual([]);
 		});
 
-		test("should preserve subtask reference when condition is true", () => {
-			const mockTask = vi.fn(async () => {});
-			const subtask = task("Title", mockTask);
-
-			const result = conditionalTask(true, subtask);
-
-			expect(result[0]).toBe(subtask);
-		});
-
-		test("should handle multiple conditional subtasks together", () => {
-			const task1 = vi.fn(async () => {});
-			const task2 = vi.fn(async () => {});
-			const task3 = vi.fn(async () => {});
-			const subtask1 = task("Task 1", task1);
-			const subtask2 = task("Task 2", task2);
-			const subtask3 = task("Task 3", task3);
+		test("can be spread to build a filtered subtask list", () => {
+			const subtask1 = task(
+				"Task 1",
+				vi.fn(async () => {}),
+			);
+			const subtask2 = task(
+				"Task 2",
+				vi.fn(async () => {}),
+			);
+			const subtask3 = task(
+				"Task 3",
+				vi.fn(async () => {}),
+			);
 
 			const allTasks = [
 				...conditionalTask(true, subtask1),
@@ -99,60 +75,34 @@ describe("cli/tasks", () => {
 				...conditionalTask(true, subtask3),
 			];
 
-			expect(allTasks).toHaveLength(2);
-			expect(allTasks[0]).toBe(subtask1);
-			expect(allTasks[1]).toBe(subtask3);
+			expect(allTasks).toEqual([subtask1, subtask3]);
 		});
 	});
 
 	describe("runWithTasks", () => {
-		test("should create Listr instance and run it", async () => {
-			const goalTitle = "Installing packages";
+		test("creates a Listr instance and runs the work function", async () => {
+			const work = vi.fn(async () => {});
 
-			await runWithTasks(goalTitle);
+			await runWithTasks("Installing packages", work);
 
 			expect(Listr).toHaveBeenCalled();
+			expect(work).toHaveBeenCalled();
 			const listrInstance = vi.mocked(Listr).mock.results[0].value;
 			expect(listrInstance.run).toHaveBeenCalled();
 		});
 
-		test("should format goal title with primaryText", async () => {
-			const goalTitle = "Beautiful Goal";
+		test("passes the title through without restyling", async () => {
+			const title = `Fetching ${"payloads"}`;
 
-			await runWithTasks(goalTitle);
+			await runWithTasks(title, async () => {});
 
 			const listrArgs = vi.mocked(Listr).mock.calls[0];
 			const taskConfigs = listrArgs[0] as Array<{ title: string }>;
-			expect(taskConfigs[0]?.title).toBe(`primary:${goalTitle}`);
+			expect(taskConfigs[0]?.title).toBe(title);
 		});
 
-		test("should execute single task when task function is provided", async () => {
-			const mockTask = vi.fn(async () => {});
-
-			await runWithTasks("Test Goal", mockTask);
-
-			expect(mockTask).toHaveBeenCalled();
-			const listrInstance = vi.mocked(Listr).mock.results[0].value;
-			expect(listrInstance.run).toHaveBeenCalled();
-		});
-
-		test("should handle subtasks when provided", async () => {
-			const subtask1 = vi.fn(async () => {});
-			const subtask2 = vi.fn(async () => {});
-
-			const subtasks = [
-				{ title: "Subtask 1", task: subtask1 },
-				{ title: "Subtask 2", task: subtask2 },
-			];
-
-			await runWithTasks("Test Goal", undefined, subtasks);
-
-			const listrInstance = vi.mocked(Listr).mock.results[0].value;
-			expect(listrInstance.run).toHaveBeenCalled();
-		});
-
-		test("should use default collapseErrors option as true", async () => {
-			await runWithTasks("Test Goal");
+		test("defaults collapseErrors to true", async () => {
+			await runWithTasks("Test Goal", async () => {});
 
 			const listrArgs = vi.mocked(Listr).mock.calls[0];
 			expect(listrArgs[1]).toEqual({
@@ -162,8 +112,10 @@ describe("cli/tasks", () => {
 			});
 		});
 
-		test("should respect custom collapseErrors option", async () => {
-			await runWithTasks("Test Goal", undefined, [], { collapseErrors: false });
+		test("respects custom collapseErrors", async () => {
+			await runWithTasks("Test Goal", undefined, [], {
+				collapseErrors: false,
+			});
 
 			const listrArgs = vi.mocked(Listr).mock.calls[0];
 			expect(listrArgs[1]).toEqual({
@@ -173,42 +125,12 @@ describe("cli/tasks", () => {
 			});
 		});
 
-		test("should handle empty subtasks array", async () => {
-			await runWithTasks("Test Goal", undefined, []);
-
-			const listrInstance = vi.mocked(Listr).mock.results[0].value;
-			expect(listrInstance.run).toHaveBeenCalled();
-		});
-
-		test("should handle task execution errors", async () => {
-			const error = new Error("Task failed");
-			vi.mocked(Listr).mockImplementationOnce(
-				() =>
-					({
-						run: vi.fn(() => Promise.reject(error)),
-					}) as unknown as InstanceType<typeof Listr>,
-			);
-
-			await expect(runWithTasks("Test Goal")).rejects.toThrow("Task failed");
-		});
-
-		test("should pass goal title to Listr task configuration", async () => {
-			const goalTitle = "Setup Project";
-
-			await runWithTasks(goalTitle);
-
-			const listrArgs = vi.mocked(Listr).mock.calls[0];
-			const taskConfigs = listrArgs[0] as Array<{ title: string }>;
-			expect(taskConfigs[0]?.title).toBe(`primary:${goalTitle}`);
-		});
-
-		test("should map subtasks and format titles with defaultText", async () => {
+		test("nests subtasks when no work function is provided", async () => {
 			const subtask1 = vi.fn(async () => {});
 			const subtask2 = vi.fn(async () => {});
-
 			const subtasks = [
-				{ title: "Subtask 1", task: subtask1 },
-				{ title: "Subtask 2", task: subtask2 },
+				task("Subtask 1", subtask1),
+				task("Subtask 2", subtask2),
 			];
 
 			await runWithTasks("Test Goal", undefined, subtasks);
@@ -224,22 +146,19 @@ describe("cli/tasks", () => {
 
 			expect(mockTaskWrapper.newListr).toHaveBeenCalledWith(
 				expect.arrayContaining([
-					expect.objectContaining({ title: "default:Subtask 1" }),
-					expect.objectContaining({ title: "default:Subtask 2" }),
+					expect.objectContaining({ title: "Subtask 1" }),
+					expect.objectContaining({ title: "Subtask 2" }),
 				]),
-				expect.any(Object),
+				expect.objectContaining({
+					rendererOptions: { collapseErrors: true },
+				}),
 			);
 		});
 
-		test("should execute subtasks when newListr is called", async () => {
+		test("executes nested subtask runners", async () => {
 			const subtask1 = vi.fn(async () => {});
 			const subtask2 = vi.fn(async () => {});
-			const subtasks = [
-				{ title: "Subtask 1", task: subtask1 },
-				{ title: "Subtask 2", task: subtask2 },
-			];
 
-			// Mock Listr to actually execute subtasks
 			vi.mocked(Listr).mockImplementationOnce((tasksArg) => {
 				const run = vi.fn(async () => {
 					type TaskFn = (ctx: unknown, wrapper: unknown) => Promise<void>;
@@ -250,13 +169,10 @@ describe("cli/tasks", () => {
 					if (firstTask?.task) {
 						const mockTaskWrapper = {
 							newListr: vi.fn(
-								(subTasks: Array<{ task?: () => Promise<void> }>) => {
-									// Execute each subtask to cover lines 63-64
-									subTasks.forEach(async (subTask) => {
-										if (subTask.task) {
-											await subTask.task();
-										}
-									});
+								async (nested: Array<{ task?: () => Promise<void> }>) => {
+									for (const nestedTask of nested) {
+										if (nestedTask.task) await nestedTask.task();
+									}
 									return {};
 								},
 							),
@@ -267,99 +183,27 @@ describe("cli/tasks", () => {
 				return { run } as unknown as InstanceType<typeof Listr>;
 			});
 
-			await runWithTasks("Test Goal", undefined, subtasks);
+			await runWithTasks("Test Goal", undefined, [
+				task("Subtask 1", subtask1),
+				task("Subtask 2", subtask2),
+			]);
 
-			// Verify subtasks were executed
 			expect(subtask1).toHaveBeenCalled();
 			expect(subtask2).toHaveBeenCalled();
 		});
 
-		test("should call newListr with subtasks and rendererOptions", async () => {
-			const subtask = vi.fn(async () => {});
-			const subtasks = [{ title: "Test", task: subtask }];
-
-			await runWithTasks("Goal", undefined, subtasks, {
-				collapseErrors: false,
-			});
-
-			// Get the task function that was passed to Listr
-			const listrArgs = vi.mocked(Listr).mock.calls[0];
-			const taskConfig = (
-				listrArgs[0] as Array<{
-					task: (ctx: unknown, wrapper: unknown) => Promise<void>;
-				}>
-			)[0];
-
-			// Execute the task function to trigger newListr
-			const mockTaskWrapper = {
-				newListr: vi.fn(),
-			};
-			await taskConfig.task({}, mockTaskWrapper);
-
-			// Verify newListr was called with correct options
-			expect(mockTaskWrapper.newListr).toHaveBeenCalledWith(
-				expect.arrayContaining([
-					expect.objectContaining({
-						title: "default:Test",
-					}),
-				]),
-				expect.objectContaining({
-					rendererOptions: {
-						collapseErrors: false,
-					},
-				}),
+		test("propagates task execution errors", async () => {
+			const error = new Error("Task failed");
+			vi.mocked(Listr).mockImplementationOnce(
+				() =>
+					({
+						run: vi.fn(() => Promise.reject(error)),
+					}) as unknown as InstanceType<typeof Listr>,
 			);
-		});
-	});
 
-	describe("integration tests", () => {
-		test("should run conditional tasks with runWithTasks", async () => {
-			const task1 = vi.fn(async () => {});
-			const task2 = vi.fn(async () => {});
-
-			const subtasks = [
-				...conditionalTask(true, task("Task 1", task1)),
-				...conditionalTask(false, task("Task 2", task2)),
-			];
-
-			await runWithTasks("Complete Setup", undefined, subtasks);
-
-			const listrInstance = vi.mocked(Listr).mock.results[0].value;
-			expect(listrInstance.run).toHaveBeenCalled();
-			expect(subtasks).toHaveLength(1);
-		});
-
-		test("should handle mixed task scenarios", async () => {
-			const directTask = vi.fn(async () => {});
-
-			await runWithTasks("Mixed Goal", directTask, []);
-
-			const listrInstance = vi.mocked(Listr).mock.results[0].value;
-			expect(listrInstance.run).toHaveBeenCalled();
-		});
-	});
-
-	describe("default export", () => {
-		test("should export an object with all task utilities", () => {
-			expect(tasks).toBeDefined();
-			expect(tasks.task).toBe(task);
-			expect(tasks.runWithTasks).toBe(runWithTasks);
-			expect(tasks.conditionalTask).toBe(conditionalTask);
-		});
-
-		test("should have runWithTasks method", () => {
-			expect(tasks.runWithTasks).toBeDefined();
-			expect(typeof tasks.runWithTasks).toBe("function");
-		});
-
-		test("should have task method", () => {
-			expect(tasks.task).toBeDefined();
-			expect(typeof tasks.task).toBe("function");
-		});
-
-		test("should have conditionalTask method", () => {
-			expect(tasks.conditionalTask).toBeDefined();
-			expect(typeof tasks.conditionalTask).toBe("function");
+			await expect(runWithTasks("Test Goal", async () => {})).rejects.toThrow(
+				"Task failed",
+			);
 		});
 	});
 });

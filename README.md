@@ -82,7 +82,7 @@ docs/           # documentation site
 
 ## Building a custom registry
 
-`@tuckshop/core` compiles, validates, and parses registry documents. Call `buildRegistry` with an authoring `sourceDir` (items, `types.json`, optional `conditions.json`) and an `outDir` for compiled artefacts:
+`@tuckshop/core` compiles, validates, and parses registry documents. Call `buildRegistry` with an authoring `sourceDir` (items, `types.json`, optional `conditions/conditions.json`) and an `outDir` for compiled artefacts:
 
 ```ts
 import { buildRegistry, parseRegistryDocument } from "@tuckshop/core";
@@ -100,7 +100,7 @@ That emits a compact `registry.json` catalog plus compact install payloads at `r
 - `parseRegistryDocument()` and `parseWithSchema()` for runtime validation (unknown keys are rejected; use `registryPayloadSchema` for payload documents)
 - `resolveRegistryPayload()` for storage-agnostic catalog `source` resolution
 
-The private `@tuckshop/registry` package holds the default opinionated content and a thin CLI wrapper around `buildRegistry` (`pnpm build:registry`).
+The private `@tuckshop/registry` package holds the default opinionated content and a short build script around `buildRegistry` (`pnpm build:registry`).
 
 ## Development
 

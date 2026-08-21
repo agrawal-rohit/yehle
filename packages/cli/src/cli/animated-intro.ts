@@ -1,28 +1,24 @@
 import readline from "node:readline";
 import { stripVTControlCharacters } from "node:util";
-import { primaryText } from "@tuckshop/core";
 import chalk from "chalk";
-
-type Message = string | Promise<string>;
+import { InterruptError } from "./errors";
+import { primaryText } from "./labels";
 
 /** Frame-cycled candy glyph shown beside the title during the intro. */
 const LOGO_FRAMES = ["●", "◔", "◕", "◑", "◒", "◓", "◐", "○"] as const;
 const LOGO_REST_FRAME = LOGO_FRAMES[0];
 
-type AnimatedIntroOptions = {
+/** Options for the animated intro. */
+export interface AnimatedIntroOptions {
+	/** Intro title shown above the message. Default: `"tuckshop"`. */
 	title?: string;
+	/** Output stream. Default: `process.stdout`. */
 	stdout?: NodeJS.WriteStream;
-
-	/** Animation speed (ms per frame). Default: 150 */
-	frameDelayMs?: number;
-
-	// legacy (ignored)
-	clear?: boolean;
-	ascii?: boolean;
+	/** Input stream for Escape / Ctrl+C. Default: `process.stdin`. */
 	stdin?: NodeJS.ReadStream;
-	hat?: string;
-	ribbon?: string;
-};
+	/** Animation speed in ms per frame. Default: `150`. */
+	frameDelayMs?: number;
+}
 
 /**
  * Sleep for the specified number of milliseconds.
@@ -35,7 +31,7 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Truncate a string to a maximum visible length, respecting ANSI sequences.
- * If truncated, appends "...". ANSI styling is not preserved in the truncated section.
+ * If truncated, appends "..." to the stripped text.
  * @param s - The input string to truncate.
  * @param max - The maximum visible length.
  * @returns The truncated string (with "..." if truncated).
@@ -59,54 +55,102 @@ function formatTitleLine(logoFrame: string | undefined, title: string): string {
 }
 
 /**
+ * Split a message into words for the typewriter animation.
+ * @param message - Intro message text.
+ * @returns Word tokens (empty strings from consecutive spaces are kept out).
+ */
+function splitWords(message: string): string[] {
+	return message.split(" ").filter((word) => word.length > 0);
+}
+
+/**
  * Print the intro once without animation (CI, piped stdout).
- * @param messages - Intro messages to display.
+ * @param message - Intro message to display.
  * @param title - Intro title.
  * @param stdout - Output stream.
  */
-async function printIntroPlain(
-	messages: Message[],
+function printIntroPlain(
+	message: string,
 	title: string,
 	stdout: NodeJS.WriteStream,
-): Promise<void> {
+): void {
 	const columns = Math.max(40, stdout.columns || 80);
 	const titleLine = truncate(formatTitleLine(undefined, title), columns);
-
-	for (const message of messages) {
-		const resolvedMessage = Array.isArray(message)
-			? await Promise.all(message)
-			: await message;
-		const words = Array.isArray(resolvedMessage)
-			? resolvedMessage
-			: String(resolvedMessage).split(" ");
-		const finalMsg = truncate(words.join(" "), columns);
-		stdout.write(`\n${titleLine}\n${finalMsg}\n`);
-	}
+	const finalMsg = truncate(splitWords(message).join(" "), columns);
+	stdout.write(`\n${titleLine}\n${finalMsg}\n`);
 }
 
-async function animatedIntro(
-	msg: Message | Message[] = [],
+/**
+ * Create a fixed-height TTY renderer that repaints in place.
+ * Pads with empty strings when fewer than `height` lines are provided.
+ * @param out - Output stream.
+ * @param height - Number of lines reserved for the intro.
+ * @returns Paint and finish helpers.
+ */
+export function createFixedHeightRenderer(
+	out: NodeJS.WriteStream,
+	height: number,
+) {
+	let initialized = false;
+	return {
+		/**
+		 * Paint exactly `height` lines (pads with empty strings when short).
+		 * @param lines - Lines to display; extras beyond `height` are ignored.
+		 */
+		paint(lines: string[]) {
+			const padded = Array.from({ length: height }, (_, i) => lines[i] ?? "");
+
+			if (!initialized) {
+				for (let i = 0; i < height; i++) {
+					if (i) out.write("\n");
+					out.write(padded[i]);
+				}
+				initialized = true;
+				return;
+			}
+
+			out.write(`\x1b[${height - 1}F`);
+			for (let i = 0; i < height; i++) {
+				out.write("\x1b[2K");
+				out.write(padded[i]);
+				if (i < height - 1) out.write("\n");
+			}
+		},
+		/** Advance the cursor past the reserved block after the animation ends. */
+		finish() {
+			if (initialized) out.write("\n");
+			initialized = false;
+		},
+	};
+}
+
+/**
+ * Animate a single intro message with a typewriter effect (TTY) or print once (non-TTY).
+ * Escape aborts the animation early; Ctrl+C throws {@link InterruptError} after restoring stdin.
+ * @param message - Intro message text.
+ * @param options - Streams, title, and frame delay.
+ * @throws {InterruptError} When the user presses Ctrl+C during a TTY animation.
+ */
+export async function animatedIntro(
+	message: string,
 	{
 		title = "tuckshop",
 		stdout = process.stdout,
+		stdin = process.stdin,
 		frameDelayMs = 150,
 	}: AnimatedIntroOptions = {},
-) {
-	const messages = Array.isArray(msg) ? msg : [msg];
-
+): Promise<void> {
 	if (!stdout.isTTY) {
-		await printIntroPlain(messages, title, stdout);
+		printIntroPlain(message, title, stdout);
 		return;
 	}
 
-	// minimal TTY wiring (ESC to end, Ctrl+C to abort)
-	const rl = readline.createInterface({
-		input: process.stdin,
-		escapeCodeTimeout: 50,
-	});
-	readline.emitKeypressEvents(process.stdin, rl);
-	if (process.stdin.isTTY) process.stdin.setRawMode(true);
+	const words = splitWords(message);
+	const columns = Math.max(40, stdout.columns || 80);
+	const renderer = createFixedHeightRenderer(stdout, 3);
 
+	let aborted = false;
+	let interrupted = false;
 	let logoFrameIndex = 0;
 	const nextLogoFrame = (): string => {
 		const frame = LOGO_FRAMES[logoFrameIndex % LOGO_FRAMES.length];
@@ -114,41 +158,31 @@ async function animatedIntro(
 		return frame;
 	};
 
-	// fixed-height renderer
-	const renderer = createFixedHeightRenderer(stdout, 3);
-
-	const cleanup = () => {
-		if (process.stdin.isTTY) process.stdin.setRawMode(false);
-		process.stdin.off("keypress", onKeypress);
-		rl.close();
-		renderer.finish();
-	};
+	const rl = readline.createInterface({
+		input: stdin,
+		escapeCodeTimeout: 50,
+	});
+	readline.emitKeypressEvents(stdin, rl);
+	const hadRawMode = stdin.isTTY;
+	if (hadRawMode) stdin.setRawMode(true);
 
 	const onKeypress = (_: string, key: readline.Key) => {
-		if (key?.ctrl && key?.name === "c") {
-			cleanup();
-			process.exit(0);
+		if (key?.ctrl && key.name === "c") {
+			aborted = true;
+			interrupted = true;
+			return;
 		}
 		if (key?.name === "escape") {
-			cleanup();
+			aborted = true;
 		}
 	};
-	process.stdin.on("keypress", onKeypress);
+	stdin.on("keypress", onKeypress);
 
-	const columns = Math.max(40, stdout.columns || 80);
-
-	for (const message of messages) {
-		const resolvedMessage = Array.isArray(message)
-			? await Promise.all(message)
-			: await message;
-		const words = Array.isArray(resolvedMessage)
-			? resolvedMessage
-			: String(resolvedMessage).split(" ");
-		const finalMsg = words.join(" ");
-
+	try {
 		const spoken: string[] = [];
 
 		for (const word of ["", ...words]) {
+			if (aborted) break;
 			if (word) spoken.push(word);
 
 			const msgNow = truncate(spoken.join(" "), columns);
@@ -161,43 +195,20 @@ async function animatedIntro(
 			await sleep(frameDelayMs);
 		}
 
-		const titleLine = truncate(
-			formatTitleLine(LOGO_REST_FRAME, title),
-			columns,
-		);
-		renderer.paint(["", titleLine, truncate(finalMsg, columns)]);
-		await sleep(200);
+		if (!aborted) {
+			const titleLine = truncate(
+				formatTitleLine(LOGO_REST_FRAME, title),
+				columns,
+			);
+			renderer.paint(["", titleLine, truncate(words.join(" "), columns)]);
+			await sleep(200);
+		}
+	} finally {
+		if (hadRawMode) stdin.setRawMode(false);
+		stdin.off("keypress", onKeypress);
+		rl.close();
+		renderer.finish();
 	}
 
-	cleanup();
+	if (interrupted) throw new InterruptError();
 }
-
-/* ---------------- fixed-height renderer ---------------- */
-function createFixedHeightRenderer(out: NodeJS.WriteStream, height: number) {
-	let initialized = false;
-	return {
-		paint(lines: string[]) {
-			if (!initialized) {
-				for (let i = 0; i < height; i++) {
-					if (i) out.write("\n");
-					out.write(lines[i]);
-				}
-				initialized = true;
-				return;
-			}
-
-			out.write(`\x1b[${height - 1}F`);
-			for (let i = 0; i < height; i++) {
-				out.write("\x1b[2K");
-				out.write(lines[i]);
-				if (i < height - 1) out.write("\n");
-			}
-		},
-		finish() {
-			if (initialized) out.write("\n");
-			initialized = false;
-		},
-	};
-}
-
-export default animatedIntro;

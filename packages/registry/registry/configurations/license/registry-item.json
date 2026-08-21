@@ -1,0 +1,8 @@
+{
+	"id": "license-configuration",
+	"title": "License",
+	"description": "License file to include in the project.",
+	"type": "configuration",
+	"uses": ["authorName"],
+	"handler": "handler.ts"
+}

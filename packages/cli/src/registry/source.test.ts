@@ -35,6 +35,33 @@ describe("registry/source", () => {
 		expect(mockIsFileAsync).not.toHaveBeenCalled();
 	});
 
+	it("rejects an explicit HTTP registry override", async () => {
+		await expect(
+			resolveRegistrySource({
+				registry: "http://example.com/registry.json",
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).rejects.toThrow("Remote registries must use HTTPS.");
+	});
+
+	it("rejects an explicit localhost registry override", async () => {
+		await expect(
+			resolveRegistrySource({
+				registry: "https://localhost/registry.json",
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).rejects.toThrow("Remote registries cannot target localhost.");
+	});
+
+	it("rejects an explicit registry override with credentials", async () => {
+		await expect(
+			resolveRegistrySource({
+				registry: "https://user:secret@example.com/registry.json",
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).rejects.toThrow("Remote registries must not include credentials.");
+	});
+
 	it("resolves an explicit file override relative to cwd", async () => {
 		await expect(
 			resolveRegistrySource({
@@ -152,6 +179,22 @@ describe("registry/source", () => {
 		});
 
 		await expect(resolveRegistrySource()).resolves.toBe(defaultBundledPath);
+	});
+
+	it("defaults fallback registry paths relative to the workspace registry", async () => {
+		const defaultFallbackPath = path.resolve(
+			__dirname,
+			"../../../registry/registry.json",
+		);
+		mockIsFileAsync.mockImplementation(async (candidate: string) => {
+			return candidate === defaultFallbackPath;
+		});
+
+		await expect(
+			resolveRegistrySource({
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).resolves.toBe(defaultFallbackPath);
 	});
 
 	it("throws a clear error when no registry source can be found", async () => {

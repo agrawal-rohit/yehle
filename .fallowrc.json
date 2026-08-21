@@ -4,7 +4,7 @@
 		"packages/cli/bin/cli.mjs",
 		"packages/cli/src/index.ts",
 		"packages/core/src/index.ts",
-		"packages/registry/src/index.ts",
+		"packages/registry/scripts/build-registry.ts",
 		"docs/app/**/*.{ts,tsx}",
 		"docs/next.config.mjs",
 		"docs/source.config.ts",
@@ -24,7 +24,8 @@
 		"@stryker-mutator/api",
 		"collections",
 		"lucide-react",
-		"minimatch"
+		"minimatch",
+		"spdx-license-list"
 	],
 	"rules": {
 		"unresolved-imports": "error",

@@ -2,7 +2,7 @@
 /** @type {import('@stryker-mutator/api/core').PartialStrykerOptions} */
 const config = {
 	packageManager: "pnpm",
-	reporters: ["html", "json"],
+	reporters: ["html", "json", "clear-text", "progress"],
 	testRunner: "vitest",
 	testRunner_comment:
 		"Take a look at https://stryker-mutator.io/docs/stryker-js/vitest-runner for information about the vitest plugin.",
@@ -15,6 +15,17 @@ const config = {
 	tsconfigFile: "tsconfig.json",
 	typescriptChecker: {
 		prioritizePerformanceOverAccuracy: true,
+	},
+	ignorePatterns: ["coverage"],
+	incremental: true,
+	thresholds: {
+		high: 95,
+		low: 90,
+		break: 90,
+	},
+	vitest: {
+		configFile: "vitest.config.ts",
+		related: true,
 	},
 };
 export default config;

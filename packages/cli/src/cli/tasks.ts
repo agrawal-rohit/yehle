@@ -1,4 +1,3 @@
-import { defaultText, primaryText } from "@tuckshop/core";
 import {
 	type DefaultRenderer,
 	Listr,
@@ -7,10 +6,12 @@ import {
 } from "listr2";
 
 /** A single executable subtask. */
-export type Subtask = {
+export interface Subtask {
+	/** Subtask title shown in the nested list. */
 	title: string;
+	/** Async work for this subtask. */
 	task: () => Promise<void>;
-};
+}
 
 /**
  * Create a subtask.
@@ -36,47 +37,48 @@ export function conditionalTask(
 }
 
 /**
- * Run multiple subtasks grouped under a single goal using listr2.
- * Provides a clean, stylized task list with collapsed errors.
- * @param goalTitle - Overall goal title (e.g., "Preparing package").
- * @param subtasks - Array of subtasks to run.
+ * Run work under a Listr goal title, either as a single task or nested subtasks.
+ * @param title - Overall goal title (e.g. `"Preparing package"`).
+ * @param work - Optional single async unit of work.
+ * @param subtasks - Nested subtasks when `work` is omitted.
  * @param opts - Optional rendering behavior.
  */
 export async function runWithTasks(
-	goalTitle: string,
-	task?: () => Promise<void>,
+	title: string,
+	work?: () => Promise<void>,
 	subtasks: Subtask[] = [],
 	opts: { collapseErrors?: boolean } = {},
 ): Promise<void> {
 	const tasks = new Listr(
 		[
 			{
-				title: primaryText(goalTitle),
+				title,
 				task: async (
 					_ctx: unknown,
-					_task: ListrTaskWrapper<
+					parent: ListrTaskWrapper<
 						unknown,
 						typeof DefaultRenderer,
 						typeof SimpleRenderer
 					>,
 				) => {
-					if (task) {
-						await task();
+					if (work) {
+						await work();
 						return;
 					}
 
-					const subTasks = subtasks.map(({ title, task: run }) => ({
-						title: defaultText(title),
-						task: async () => {
-							await run();
+					return parent.newListr(
+						subtasks.map(({ title: subtaskTitle, task: run }) => ({
+							title: subtaskTitle,
+							task: async () => {
+								await run();
+							},
+						})),
+						{
+							rendererOptions: {
+								collapseErrors: opts.collapseErrors ?? true,
+							},
 						},
-					}));
-
-					return _task.newListr(subTasks, {
-						rendererOptions: {
-							collapseErrors: opts.collapseErrors ?? true,
-						},
-					});
+					);
 				},
 			},
 		],
@@ -89,12 +91,3 @@ export async function runWithTasks(
 
 	await tasks.run();
 }
-
-/** Convenience default export for straightforward importing. */
-const tasks = {
-	runWithTasks,
-	task,
-	conditionalTask,
-};
-
-export default tasks;

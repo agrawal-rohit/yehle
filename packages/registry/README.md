@@ -2,4 +2,4 @@
 
 Private package that holds the default opinionated registry **content** for the `tuckshop` CLI.
 
-Compilation lives in [`@tuckshop/core`](../core) (`buildRegistry`). This package’s `src/index.ts` is a thin CLI wrapper that builds from this package root.
+Compilation lives in [`@tuckshop/core`](../core) (`buildRegistry`). This package’s `scripts/build-registry.ts` is a short build script that compiles from this package root.

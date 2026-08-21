@@ -3,6 +3,8 @@ import { readConfig } from "./cli/config";
 import { registerCommandsCli } from "./commands";
 import { loadRuntimeRegistry } from "./registry/load";
 
+export { printError } from "./cli/errors";
+
 /**
  * Read a validated `--registry` override from parsed CAC options.
  * @param value - Raw option value from CAC.
@@ -42,7 +44,7 @@ export default async function run(): Promise<void> {
 		return loadRuntimeRegistry(registryOverride, saved.registry);
 	}
 
-	await registerCommandsCli(app, loadRegistry);
+	registerCommandsCli(app, loadRegistry);
 
 	const args = process.argv.slice(2).filter(Boolean);
 	if (args.length === 0) {

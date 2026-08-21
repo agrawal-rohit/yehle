@@ -139,28 +139,27 @@ export function mergeRegistryPackages(
 }
 
 /**
- * Infer a package manager from lockfile presence when exactly one manager matches.
+ * Detect a single package manager from lockfiles in the project root.
  * @param projectDir - Absolute project root.
- * @param ecosystem - Registry ecosystem to infer for.
+ * @param ecosystem - Registry ecosystem to detect for.
  * @param pathExists - Existence checker for absolute paths. Defaults to `fs.existsSync`.
- * @returns Inferred manager, or undefined when inference is ambiguous or unavailable.
+ * @returns Matching manager and lockfile name, or undefined when none/ambiguous.
  */
-export function inferPackageManagerFromLockfile(
+export function detectPackageManagerFromLockfile(
 	projectDir: string,
 	ecosystem: RegistryEcosystem,
 	pathExists: (absolutePath: string) => boolean = (absolutePath) =>
 		fs.existsSync(absolutePath),
-): RegistryPackageManager | undefined {
-	// Only lockfiles identify a manager; package.json is shared and must not imply npm.
-	const matched = ecosystemManagers[ecosystem].filter((spec) =>
-		spec.lockfiles.some((lockfile) =>
-			pathExists(path.join(projectDir, lockfile)),
-		),
-	);
-
-	// Zero matches → nothing to confirm; several matches → too ambiguous to guess.
-	if (matched.length !== 1) return undefined;
-	return matched[0].manager;
+): { manager: RegistryPackageManager; lockfile: string } | undefined {
+	const matches: { manager: RegistryPackageManager; lockfile: string }[] = [];
+	for (const spec of ecosystemManagers[ecosystem]) {
+		const lockfile = spec.lockfiles.find((name) =>
+			pathExists(path.join(projectDir, name)),
+		);
+		if (lockfile) matches.push({ manager: spec.manager, lockfile });
+	}
+	if (matches.length !== 1) return undefined;
+	return matches[0];
 }
 
 /**
@@ -177,12 +176,8 @@ export function buildPackageInstallCommands(
 	packageSet: RegistryPackageSet,
 ): string[] {
 	// Dedupe and sort so generated command strings are stable across payloads.
-	const runtime = [...new Set(packageSet.dependencies ?? [])].sort((a, b) =>
-		a.localeCompare(b),
-	);
-	const dev = [...new Set(packageSet.devDependencies ?? [])].sort((a, b) =>
-		a.localeCompare(b),
-	);
+	const runtime = uniqueSortedNames(packageSet.dependencies ?? []);
+	const dev = uniqueSortedNames(packageSet.devDependencies ?? []);
 	if (runtime.length === 0 && dev.length === 0) return [];
 
 	const spec = ecosystemManagers[ecosystem].find(

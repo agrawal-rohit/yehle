@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { defaultText, primaryText, publishedRegistryUrl } from "@tuckshop/core";
+import {
+	assertSafeRemoteUrl,
+	isAbsoluteHttpUrl,
+	publishedRegistryUrl,
+	readJsonFileAsync,
+} from "@tuckshop/core";
 import {
 	type ConfigPathOptions,
 	configPath,
@@ -8,18 +13,18 @@ import {
 	unsetRegistryConfig,
 	writeConfig,
 } from "../cli/config";
+import { defaultText, primaryText } from "../cli/labels";
+import { textInput } from "../cli/prompts";
 
 /**
- * Resolve the published default registry URL for the current CLI version.
+ * Read the published default registry URL for the current CLI version.
  * @returns Absolute HTTPS URL to `packages/registry/registry.json`.
  */
 async function defaultRegistryUrl(): Promise<string> {
-	const pkg = JSON.parse(
-		await fs.promises.readFile(
-			path.resolve(__dirname, "../../package.json"),
-			"utf8",
-		),
-	) as { version: string };
+	const pkg = (await readJsonFileAsync(
+		path.resolve(__dirname, "../../package.json"),
+		"CLI package.json",
+	)) as { version: string };
 	return publishedRegistryUrl(pkg.version);
 }
 
@@ -37,43 +42,62 @@ function printConfiguration(registry: string, filePath: string): void {
 }
 
 /**
- * Persist a default registry source to the global config.
- * Accepts absolute HTTP(S) URLs, or local paths that resolve to an existing file.
- * @param source - Registry URL or local path.
- * @param options - Optional config path overrides for tests.
- * @returns Absolute path of the config file that was written.
- * @throws Error when the source is empty, not a URL, or not an existing file.
+ * Validate a registry source and return the value to write to the config file.
+ * @param source - Registry URL or local path (already trimmed).
+ * @returns HTTPS URL or absolute local file path ready for the config file.
+ * @throws Error when the source is empty, an unsafe remote URL, or is not an existing file.
  */
-export async function configSetCommand(
-	source: string,
-	options: ConfigPathOptions = {},
-): Promise<string> {
-	const trimmed = source.trim();
-	if (!trimmed) throw new Error("Registry source must not be empty.");
+async function toPersistedRegistrySource(source: string): Promise<string> {
+	if (!source) throw new Error("Registry source must not be empty.");
 
-	// If the source is not a URL, resolve it to a local file.
-	if (!/^https?:\/\//i.test(trimmed)) {
-		const resolved = path.resolve(process.cwd(), trimmed);
-		try {
-			const stat = await fs.promises.stat(resolved);
-			if (!stat.isFile())
-				throw new Error(
-					`Registry path "${trimmed}" resolves to ${resolved}, which is not a file.`,
-				);
-		} catch (error) {
-			// Throw our own "not a file" error if it's a file system error
-			if (error instanceof Error && error.message.includes("is not a file"))
-				throw error;
-			throw new Error(
-				`Registry path "${trimmed}" does not exist (resolved to ${resolved}). Pass an HTTPS URL or a path to an existing registry.json.`,
-			);
-		}
+	if (isAbsoluteHttpUrl(source)) {
+		assertSafeRemoteUrl(new URL(source));
+		return source;
 	}
 
+	const absolutePath = path.resolve(process.cwd(), source);
+	try {
+		const stat = await fs.promises.stat(absolutePath);
+		if (!stat.isFile())
+			throw new Error(
+				`Registry path "${source}" points to ${absolutePath}, which is not a file.`,
+			);
+	} catch (error) {
+		if (error instanceof Error && error.message.includes("is not a file"))
+			throw error;
+		throw new Error(
+			`Registry path "${source}" does not exist (looked up as ${absolutePath}). Pass an HTTPS URL or a path to an existing registry.json.`,
+		);
+	}
+
+	return absolutePath;
+}
+
+/**
+ * Persist a default registry source to the global config.
+ * Prompts for a source when omitted. Accepts HTTPS URLs, or local paths that point to an existing file.
+ * @param source - Optional registry URL or local path from the CLI.
+ * @param options - Optional config path overrides for tests.
+ * @returns Absolute path of the config file that was written.
+ * @throws Error when the source is empty, an unsafe remote URL, or not an existing file.
+ */
+export async function configSetCommand(
+	source?: string,
+	options: ConfigPathOptions = {},
+): Promise<string> {
+	let input = source?.trim() ?? "";
+	if (!input) {
+		input = await textInput("Registry URL or local path", {
+			placeholder: "https://example.com/registry.json",
+			required: true,
+		});
+	}
+
+	const toStore = await toPersistedRegistrySource(input);
 	const existing = await readConfig(options);
-	await writeConfig({ ...existing, registry: trimmed }, options);
+	await writeConfig({ ...existing, registry: toStore }, options);
 	const filePath = configPath(options);
-	printConfiguration(trimmed, filePath);
+	printConfiguration(toStore, filePath);
 
 	return filePath;
 }

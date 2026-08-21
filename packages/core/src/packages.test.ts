@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildPackageInstallCommands,
+	detectPackageManagerFromLockfile,
 	ecosystemManagers,
-	inferPackageManagerFromLockfile,
 	mergeRegistryPackages,
 	NpmPackageManager,
 } from "./packages";
@@ -73,20 +73,23 @@ describe("core/packages", () => {
 		});
 	});
 
-	describe("inferPackageManagerFromLockfile", () => {
-		it("infers bun when bun.lock is present", () => {
+	describe("detectPackageManagerFromLockfile", () => {
+		it("returns the matching manager and lockfile name", () => {
 			expect(
-				inferPackageManagerFromLockfile(
+				detectPackageManagerFromLockfile(
 					"/project",
 					RegistryEcosystem.NPM,
-					(filePath) => filePath.endsWith("bun.lock"),
+					(filePath) => filePath.endsWith("package-lock.json"),
 				),
-			).toBe(NpmPackageManager.BUN);
+			).toEqual({
+				manager: NpmPackageManager.NPM,
+				lockfile: "package-lock.json",
+			});
 		});
 
 		it("returns undefined when multiple npm lockfiles are present", () => {
 			expect(
-				inferPackageManagerFromLockfile(
+				detectPackageManagerFromLockfile(
 					"/project",
 					RegistryEcosystem.NPM,
 					(filePath) =>
@@ -96,9 +99,19 @@ describe("core/packages", () => {
 			).toBeUndefined();
 		});
 
+		it("infers bun when bun.lock is present", () => {
+			expect(
+				detectPackageManagerFromLockfile(
+					"/project",
+					RegistryEcosystem.NPM,
+					(filePath) => filePath.endsWith("bun.lock"),
+				)?.manager,
+			).toBe(NpmPackageManager.BUN);
+		});
+
 		it("returns undefined when no lockfile is present", () => {
 			expect(
-				inferPackageManagerFromLockfile(
+				detectPackageManagerFromLockfile(
 					"/project",
 					RegistryEcosystem.NPM,
 					() => false,
@@ -108,10 +121,19 @@ describe("core/packages", () => {
 
 		it("does not infer npm from package.json alone", () => {
 			expect(
-				inferPackageManagerFromLockfile(
+				detectPackageManagerFromLockfile(
 					"/project",
 					RegistryEcosystem.NPM,
 					(filePath) => filePath.endsWith("package.json"),
+				),
+			).toBeUndefined();
+		});
+
+		it("uses fs.existsSync when no path checker is provided", () => {
+			expect(
+				detectPackageManagerFromLockfile(
+					"/tmp/yehle-no-such-project-lockfiles",
+					RegistryEcosystem.NPM,
 				),
 			).toBeUndefined();
 		});
@@ -149,6 +171,36 @@ describe("core/packages", () => {
 					}),
 				).toHaveLength(1);
 			}
+		});
+
+		it("returns an empty list when both dependency lists are empty", () => {
+			expect(
+				buildPackageInstallCommands(
+					RegistryEcosystem.NPM,
+					NpmPackageManager.NPM,
+					{ dependencies: [], devDependencies: [] },
+				),
+			).toEqual([]);
+		});
+
+		it("deduplicates package names in generated commands", () => {
+			expect(
+				buildPackageInstallCommands(
+					RegistryEcosystem.NPM,
+					NpmPackageManager.NPM,
+					{ dependencies: ["react", "react", "zod"] },
+				),
+			).toEqual(["npm install react zod"]);
+		});
+
+		it("rejects a manager that is not valid for the ecosystem", () => {
+			expect(() =>
+				buildPackageInstallCommands(
+					RegistryEcosystem.NPM,
+					"cargo" as NpmPackageManager,
+					{ dependencies: ["react"] },
+				),
+			).toThrow('Package manager "cargo" is not valid for ecosystem "npm".');
 		});
 	});
 });

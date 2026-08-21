@@ -45,7 +45,7 @@ describe("index", () => {
 		vi.clearAllMocks();
 		mockApp.matchedCommandName = undefined;
 		mockApp.options = {};
-		vi.mocked(registerCommandsCli).mockResolvedValue();
+		vi.mocked(registerCommandsCli).mockReturnValue(undefined);
 		vi.mocked(readConfig).mockResolvedValue({});
 		vi.mocked(mockApp.parse).mockReturnValue(emptyParseResult());
 	});
@@ -61,6 +61,10 @@ describe("index", () => {
 			await run();
 
 			expect(cac).toHaveBeenCalledWith("tuckshop");
+			expect(mockApp.option).toHaveBeenCalledWith(
+				"--registry <source>",
+				"Use a custom registry URL",
+			);
 			expect(mockApp.parse).toHaveBeenCalledWith(["node", "tuckshop"], {
 				run: false,
 			});
@@ -80,6 +84,15 @@ describe("index", () => {
 			expect(mockApp.parse).toHaveBeenCalledWith(["node", "tuckshop"], {
 				run: false,
 			});
+		});
+
+		it("should treat blank argv tokens as no command", async () => {
+			vi.stubGlobal("process", { argv: ["node", "tuckshop", ""] });
+
+			await run();
+
+			expect(mockApp.outputHelp).toHaveBeenCalled();
+			expect(mockApp.parse).toHaveBeenCalledTimes(1);
 		});
 
 		it("should parse arguments when provided", async () => {
