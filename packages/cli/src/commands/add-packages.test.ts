@@ -1,4 +1,8 @@
-import { NpmPackageManager, type RegistryPackages } from "@tuckshop/core";
+import {
+	NpmPackageManager,
+	RegistryDependencyKind,
+	type RegistryEcosystemDependencies,
+} from "@tuckshop/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockConfirmInput = vi.fn();
@@ -7,7 +11,7 @@ const mockRunAsync = vi.fn();
 const mockRunWithTasks = vi.fn();
 const mockDetectPackageManagerFromLockfile = vi.fn();
 const mockBuildPackageInstallCommands = vi.fn();
-const mockMergeRegistryPackages = vi.fn();
+const mockMergeEcosystemDependencies = vi.fn();
 
 const FakeEcosystem = {
 	NPM: "npm",
@@ -37,24 +41,24 @@ vi.mock("@tuckshop/core", async () => {
 			mockDetectPackageManagerFromLockfile(...args),
 		buildPackageInstallCommands: (...args: unknown[]) =>
 			mockBuildPackageInstallCommands(...args),
-		mergeRegistryPackages: (...args: unknown[]) =>
-			mockMergeRegistryPackages(...args),
+		mergeEcosystemDependencies: (...args: unknown[]) =>
+			mockMergeEcosystemDependencies(...args),
 		runAsync: (...args: unknown[]) => mockRunAsync(...args),
 		ecosystemManagers: {
 			[FakeEcosystem.NPM]: [
 				{
 					manager: actual.NpmPackageManager.NPM,
 					lockfiles: ["package-lock.json"],
-					runtime: "npm install",
-					dev: "npm install -D",
+					[actual.RegistryDependencyKind.RUNTIME]: "npm install",
+					[actual.RegistryDependencyKind.DEV]: "npm install -D",
 				},
 			],
 			[FakeEcosystem.PYTHON]: [
 				{
 					manager: "pip",
 					lockfiles: ["requirements.txt"],
-					runtime: "pip install",
-					dev: "pip install",
+					[actual.RegistryDependencyKind.RUNTIME]: "pip install",
+					[actual.RegistryDependencyKind.DEV]: "pip install",
 				},
 			],
 		},
@@ -75,9 +79,9 @@ describe("commands/add-packages", () => {
 		mockBuildPackageInstallCommands.mockReturnValue([
 			"npm install -D vitest@^3",
 		]);
-		mockMergeRegistryPackages.mockReturnValue({
-			npm: { devDependencies: ["vitest@^3"] },
-		} satisfies RegistryPackages);
+		mockMergeEcosystemDependencies.mockReturnValue({
+			npm: { [RegistryDependencyKind.DEV]: ["vitest@^3"] },
+		} satisfies RegistryEcosystemDependencies);
 		mockDetectPackageManagerFromLockfile.mockReturnValue(undefined);
 		mockConfirmInput.mockResolvedValue(true);
 		mockSelectInput.mockResolvedValue(NpmPackageManager.NPM);
@@ -94,10 +98,13 @@ describe("commands/add-packages", () => {
 	});
 
 	it("returns early when merged packages are empty", async () => {
-		mockMergeRegistryPackages.mockReturnValue(undefined);
+		mockMergeEcosystemDependencies.mockReturnValue(undefined);
 
 		await expect(
-			installDeclaredPackages([{ npm: { dependencies: [] } }], "/project"),
+			installDeclaredPackages(
+				[{ npm: { [RegistryDependencyKind.RUNTIME]: [] } }],
+				"/project",
+			),
 		).resolves.toEqual([]);
 		expect(mockConfirmInput).toHaveBeenCalled();
 		expect(mockBuildPackageInstallCommands).not.toHaveBeenCalled();
@@ -106,7 +113,7 @@ describe("commands/add-packages", () => {
 	it("auto-selects the sole ecosystem manager when no lockfile is detected", async () => {
 		await expect(
 			installDeclaredPackages(
-				[{ npm: { devDependencies: ["vitest@^3"] } }],
+				[{ npm: { [RegistryDependencyKind.DEV]: ["vitest@^3"] } }],
 				"/project",
 			),
 		).resolves.toEqual([]);
@@ -115,7 +122,7 @@ describe("commands/add-packages", () => {
 		expect(mockBuildPackageInstallCommands).toHaveBeenCalledWith(
 			FakeEcosystem.NPM,
 			NpmPackageManager.NPM,
-			{ devDependencies: ["vitest@^3"] },
+			{ [RegistryDependencyKind.DEV]: ["vitest@^3"] },
 		);
 		expect(mockRunAsync).toHaveBeenCalledWith(
 			"npm install -D vitest@^3",
@@ -132,7 +139,7 @@ describe("commands/add-packages", () => {
 
 		await expect(
 			installDeclaredPackages(
-				[{ npm: { devDependencies: ["vitest@^3"] } }],
+				[{ npm: { [RegistryDependencyKind.DEV]: ["vitest@^3"] } }],
 				"/project",
 			),
 		).resolves.toEqual(["npm install -D vitest@^3"]);
@@ -143,7 +150,7 @@ describe("commands/add-packages", () => {
 
 	it("skips ecosystems that are absent from the merged package map", async () => {
 		await installDeclaredPackages(
-			[{ npm: { devDependencies: ["vitest@^3"] } }],
+			[{ npm: { dev: ["vitest@^3"] } }],
 			"/project",
 		);
 
@@ -152,7 +159,7 @@ describe("commands/add-packages", () => {
 		expect(mockBuildPackageInstallCommands).toHaveBeenCalledWith(
 			FakeEcosystem.NPM,
 			NpmPackageManager.NPM,
-			{ devDependencies: ["vitest@^3"] },
+			{ [RegistryDependencyKind.DEV]: ["vitest@^3"] },
 		);
 	});
 });

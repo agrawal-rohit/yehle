@@ -11,9 +11,9 @@
 			"when": {
 				"language": "typescript"
 			},
-			"packages": {
+			"dependencies": {
 				"npm": {
-					"devDependencies": [
+					"dev": [
 						"@stryker-mutator/core@^9",
 						"@stryker-mutator/vitest-runner@^9",
 						"@stryker-mutator/typescript-checker@^9"

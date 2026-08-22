@@ -455,8 +455,8 @@ describe("commands/add", () => {
 								content: "a",
 							},
 						],
-						packages: {
-							npm: { devDependencies: ["vitest@^3"] },
+						dependencies: {
+							npm: { dev: ["vitest@^3"] },
 						},
 					},
 				],
@@ -469,8 +469,8 @@ describe("commands/add", () => {
 								content: "b",
 							},
 						],
-						packages: {
-							npm: { devDependencies: ["vitest@^3", "zod"] },
+						dependencies: {
+							npm: { dev: ["vitest@^3", "zod"] },
 						},
 					},
 				],
@@ -863,10 +863,10 @@ module.exports = {
 								content: "# PR Template",
 							},
 						],
-						packages: {
+						dependencies: {
 							npm: {
-								dependencies: [],
-								devDependencies: [],
+								runtime: [],
+								dev: [],
 							},
 						},
 					},
@@ -900,9 +900,9 @@ module.exports = {
 								content: "# PR Template",
 							},
 						],
-						packages: {
+						dependencies: {
 							npm: {
-								devDependencies: ["vitest@^3"],
+								dev: ["vitest@^3"],
 							},
 						},
 					},
@@ -1095,9 +1095,9 @@ module.exports = {
 								content: "# PR Template",
 							},
 						],
-						packages: {
+						dependencies: {
 							npm: {
-								devDependencies: ["vitest@^3"],
+								dev: ["vitest@^3"],
 							},
 						},
 					},
@@ -1140,9 +1140,9 @@ module.exports = {
 								content: "# PR Template",
 							},
 						],
-						packages: {
+						dependencies: {
 							npm: {
-								devDependencies: ["vitest@^3"],
+								dev: ["vitest@^3"],
 							},
 						},
 					},
@@ -1191,9 +1191,9 @@ module.exports = {
 								content: "# PR Template",
 							},
 						],
-						packages: {
+						dependencies: {
 							npm: {
-								devDependencies: ["vitest@^3"],
+								dev: ["vitest@^3"],
 							},
 						},
 					},
@@ -1236,9 +1236,9 @@ module.exports = {
 								content: "# PR Template",
 							},
 						],
-						packages: {
+						dependencies: {
 							npm: {
-								devDependencies: ["vitest@^3"],
+								dev: ["vitest@^3"],
 							},
 						},
 					},

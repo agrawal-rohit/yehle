@@ -3,7 +3,7 @@ import {
 	parseWithSchema,
 	type Registry,
 	type RegistryContext,
-	type RegistryPackages,
+	type RegistryEcosystemDependencies,
 	type RegistryPayload,
 	type ResolvedRegistryItem,
 	registryPayloadSchema,
@@ -173,13 +173,13 @@ async function applyItemHandlers(
 async function writePreparedItems(
 	projectDir: string,
 	preparedItems: PreparedInstallItem[],
-): Promise<RegistryPackages[]> {
+): Promise<RegistryEcosystemDependencies[]> {
 	const writtenTargets = new Set<string>();
-	const packageDeclarations: RegistryPackages[] = [];
+	const packageDeclarations: RegistryEcosystemDependencies[] = [];
 
 	for (const { label, payload } of preparedItems) {
 		await runWithTasks(`Installing ${primaryText(label)}`, async () => {
-			if (payload.packages) packageDeclarations.push(payload.packages);
+			if (payload.dependencies) packageDeclarations.push(payload.dependencies);
 			await writePayloadFiles(projectDir, payload, writtenTargets);
 		});
 	}

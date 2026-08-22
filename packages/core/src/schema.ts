@@ -91,45 +91,52 @@ export enum RegistryEcosystem {
 	NPM = "npm",
 }
 
-/** Runtime and dev package names for one ecosystem. */
-export const registryPackageSetSchema = z
-	.strictObject({
-		/** Runtime packages to install. */
-		dependencies: optionalNonEmptyStringArray(),
-		/** Dev packages to install. */
-		devDependencies: optionalNonEmptyStringArray(),
-	})
-	.transform(omitUndefined);
-export type RegistryPackageSet = z.infer<typeof registryPackageSetSchema>;
+/** Dependency list keys on {@link RegistryDependencySet}. */
+export enum RegistryDependencyKind {
+	RUNTIME = "runtime",
+	DEV = "dev",
+}
 
-/** Ecosystem keys accepted on registry package maps. Add a key here when introducing a new ecosystem. */
-const registryPackagesShape = {
-	[RegistryEcosystem.NPM]: registryPackageSetSchema.optional(),
+const registryDependencySetShape = {
+	[RegistryDependencyKind.RUNTIME]: optionalNonEmptyStringArray(),
+	[RegistryDependencyKind.DEV]: optionalNonEmptyStringArray(),
+};
+
+/** Runtime and dev package names for one ecosystem. */
+export const registryDependencySetSchema = z
+	.strictObject(registryDependencySetShape)
+	.transform(omitUndefined);
+export type RegistryDependencySet = z.infer<typeof registryDependencySetSchema>;
+
+/** Ecosystem keys accepted on registry dependency maps. Add a key here when introducing a new ecosystem. */
+const registryEcosystemDependenciesShape = {
+	[RegistryEcosystem.NPM]: registryDependencySetSchema.optional(),
 } satisfies Record<
 	RegistryEcosystem,
-	z.ZodOptional<typeof registryPackageSetSchema>
+	z.ZodOptional<typeof registryDependencySetSchema>
 >;
 
-/** Packages keyed by ecosystem. Add a key here when introducing a new ecosystem. */
-export const registryPackagesSchema = z
-	.strictObject(registryPackagesShape)
+/** Ecosystem packages to install, keyed by ecosystem. Add a key here when introducing a new ecosystem. */
+export const registryEcosystemDependenciesSchema = z
+	.strictObject(registryEcosystemDependenciesShape)
 	.transform((value) => {
-		const merged: Partial<Record<RegistryEcosystem, RegistryPackageSet>> = {};
+		const merged: Partial<Record<RegistryEcosystem, RegistryDependencySet>> =
+			{};
 		for (const ecosystem of Object.keys(
-			registryPackagesShape,
+			registryEcosystemDependenciesShape,
 		) as RegistryEcosystem[]) {
-			const pkgSet = value[ecosystem];
+			const dependencySet = value[ecosystem];
 			if (
-				pkgSet &&
-				((pkgSet.dependencies?.length ?? 0) > 0 ||
-					(pkgSet.devDependencies?.length ?? 0) > 0)
+				dependencySet &&
+				((dependencySet[RegistryDependencyKind.RUNTIME]?.length ?? 0) > 0 ||
+					(dependencySet[RegistryDependencyKind.DEV]?.length ?? 0) > 0)
 			)
-				merged[ecosystem] = pkgSet;
+				merged[ecosystem] = dependencySet;
 		}
 		return Object.keys(merged).length > 0 ? merged : undefined;
 	});
-export type RegistryPackages = NonNullable<
-	z.infer<typeof registryPackagesSchema>
+export type RegistryEcosystemDependencies = NonNullable<
+	z.infer<typeof registryEcosystemDependenciesSchema>
 >;
 
 /** Install payload for one item or variant (templates, not rendered output). */
@@ -137,8 +144,8 @@ export const registryPayloadSchema = z
 	.strictObject({
 		/** Files to install (item-level files first when folded into a variant). May be empty when an item handler generates every file at install time. */
 		files: z.array(registryPayloadFileSchema).default([]),
-		/** Packages to install, keyed by ecosystem. */
-		packages: registryPackagesSchema.optional(),
+		/** Ecosystem packages to install, keyed by ecosystem. */
+		dependencies: registryEcosystemDependenciesSchema.optional(),
 	})
 	.transform(omitUndefined);
 export type RegistryPayload = z.infer<typeof registryPayloadSchema>;
@@ -294,8 +301,8 @@ export const registryVariantSchema = z
 		description: nonEmptyString,
 		/** Files copied when this variant is selected. */
 		files: z.array(registryFileSchema).min(1),
-		/** Packages added with this variant, keyed by ecosystem. */
-		packages: registryPackagesSchema.optional(),
+		/** Ecosystem packages added with this variant, keyed by ecosystem. */
+		dependencies: registryEcosystemDependenciesSchema.optional(),
 	})
 	.transform(omitUndefined);
 export type AuthoredRegistryVariant = z.infer<typeof registryVariantSchema>;
@@ -384,8 +391,8 @@ export const registryItemSchema = z
 		id: safePathSegment,
 		/** Install files for a variant-less item, or files shared by every variant. */
 		files: z.array(registryFileSchema).min(1).optional(),
-		/** Packages added with this item, keyed by ecosystem. */
-		packages: registryPackagesSchema.optional(),
+		/** Ecosystem packages added with this item, keyed by ecosystem. */
+		dependencies: registryEcosystemDependenciesSchema.optional(),
 		/** Installable slices of this item; omit for a single top-level configuration. */
 		variants: optionalVariants(registryVariantSchema),
 	})

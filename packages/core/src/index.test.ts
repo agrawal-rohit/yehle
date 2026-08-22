@@ -20,7 +20,7 @@ describe("package entry", () => {
 		expect(typeof core.buildRegistry).toBe("function");
 		expect(typeof core.resolveInstallPlan).toBe("function");
 		expect(typeof core.runAsync).toBe("function");
-		expect(typeof core.mergeRegistryPackages).toBe("function");
+		expect(typeof core.mergeEcosystemDependencies).toBe("function");
 		expect(typeof core.buildPackageInstallCommands).toBe("function");
 		expect(typeof core.joinRelativePathUnderRoot).toBe("function");
 		expect(typeof core.detectPackageManagerFromLockfile).toBe("function");

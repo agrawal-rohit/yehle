@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+	RegistryDependencyKind,
+	type RegistryDependencySet,
 	RegistryEcosystem,
-	type RegistryPackageSet,
-	type RegistryPackages,
+	type RegistryEcosystemDependencies,
 } from "./schema";
 
 /** JavaScript package managers supported for the npm ecosystem. */
@@ -18,16 +19,12 @@ export enum NpmPackageManager {
 export type RegistryPackageManager = NpmPackageManager;
 
 /** Detection and install metadata for one package manager. */
-export interface PackageManagerSpec {
+export type PackageManagerSpec = {
 	/** Manager id selected by the user or inferred from lockfiles. */
 	manager: RegistryPackageManager;
 	/** Lockfiles that identify this manager when present in the project root. */
 	lockfiles: readonly string[];
-	/** Shell prefix used to install runtime dependencies. */
-	runtime: string;
-	/** Shell prefix used to install dev dependencies. */
-	dev: string;
-}
+} & Record<RegistryDependencyKind, string>;
 
 /** Package managers keyed by ecosystem. */
 export const ecosystemManagers = {
@@ -36,27 +33,27 @@ export const ecosystemManagers = {
 		{
 			manager: NpmPackageManager.NPM,
 			lockfiles: ["package-lock.json"],
-			runtime: "npm install",
-			dev: "npm install -D",
+			[RegistryDependencyKind.RUNTIME]: "npm install",
+			[RegistryDependencyKind.DEV]: "npm install -D",
 		},
 		{
 			manager: NpmPackageManager.PNPM,
 			lockfiles: ["pnpm-lock.yaml"],
-			runtime: "pnpm add",
-			dev: "pnpm add -D",
+			[RegistryDependencyKind.RUNTIME]: "pnpm add",
+			[RegistryDependencyKind.DEV]: "pnpm add -D",
 		},
 		{
 			manager: NpmPackageManager.YARN,
 			lockfiles: ["yarn.lock"],
-			runtime: "yarn add",
-			dev: "yarn add -D",
+			[RegistryDependencyKind.RUNTIME]: "yarn add",
+			[RegistryDependencyKind.DEV]: "yarn add -D",
 		},
 		{
 			manager: NpmPackageManager.BUN,
 			// bun.lock is the current text lockfile; bun.lockb is the older binary format.
 			lockfiles: ["bun.lock", "bun.lockb"],
-			runtime: "bun add",
-			dev: "bun add -D",
+			[RegistryDependencyKind.RUNTIME]: "bun add",
+			[RegistryDependencyKind.DEV]: "bun add -D",
 		},
 	],
 } satisfies Record<RegistryEcosystem, readonly PackageManagerSpec[]>;
@@ -73,60 +70,59 @@ function uniqueSortedNames(names: string[]): string[] {
 /**
  * Read one dependency list from a package set, treating missing sets as empty.
  * @param set - Package set that may be undefined.
- * @param key - Which dependency list to read.
+ * @param kind - Which dependency list to read.
  * @returns The named list, or an empty array.
  */
 function packageNames(
-	set: RegistryPackageSet | undefined,
-	key: "dependencies" | "devDependencies",
+	set: RegistryDependencySet | undefined,
+	kind: RegistryDependencyKind,
 ): string[] {
 	if (!set) return [];
-	return set[key] ?? [];
+	return set[kind] ?? [];
 }
 
 /**
- * Merge non-empty dependency lists within one ecosystem package set.
+ * Merge non-empty dependency lists within one ecosystem dependency set.
  * @param left - Existing merged set.
  * @param right - Set to fold in.
- * @returns Combined package set, or undefined when both sides are empty.
+ * @returns Combined dependency set, or undefined when both sides are empty.
  */
-function mergePackageSet(
-	left: RegistryPackageSet | undefined,
-	right: RegistryPackageSet | undefined,
-): RegistryPackageSet | undefined {
-	const dependencies = uniqueSortedNames([
-		...packageNames(left, "dependencies"),
-		...packageNames(right, "dependencies"),
+function mergeDependencySet(
+	left: RegistryDependencySet | undefined,
+	right: RegistryDependencySet | undefined,
+): RegistryDependencySet | undefined {
+	const runtime = uniqueSortedNames([
+		...packageNames(left, RegistryDependencyKind.RUNTIME),
+		...packageNames(right, RegistryDependencyKind.RUNTIME),
 	]);
-	const devDependencies = uniqueSortedNames([
-		...packageNames(left, "devDependencies"),
-		...packageNames(right, "devDependencies"),
+	const dev = uniqueSortedNames([
+		...packageNames(left, RegistryDependencyKind.DEV),
+		...packageNames(right, RegistryDependencyKind.DEV),
 	]);
 
-	if (dependencies.length === 0 && devDependencies.length === 0)
-		return undefined;
+	if (runtime.length === 0 && dev.length === 0) return undefined;
 
-	const merged: RegistryPackageSet = {};
-	if (dependencies.length > 0) merged.dependencies = dependencies;
-	if (devDependencies.length > 0) merged.devDependencies = devDependencies;
+	const merged: RegistryDependencySet = {};
+	if (runtime.length > 0) merged[RegistryDependencyKind.RUNTIME] = runtime;
+	if (dev.length > 0) merged[RegistryDependencyKind.DEV] = dev;
 	return merged;
 }
 
 /**
- * Merge package declarations from multiple registry sources.
- * @param sources - Item, variant, or payload package maps.
- * @returns Combined packages keyed by ecosystem, or undefined when empty.
+ * Merge ecosystem dependency declarations from multiple registry sources.
+ * @param sources - Item, variant, or payload dependency maps.
+ * @returns Combined dependencies keyed by ecosystem, or undefined when empty.
  */
-export function mergeRegistryPackages(
-	...sources: Array<RegistryPackages | undefined>
-): RegistryPackages | undefined {
-	const merged: Partial<Record<RegistryEcosystem, RegistryPackageSet>> = {};
+export function mergeEcosystemDependencies(
+	...sources: Array<RegistryEcosystemDependencies | undefined>
+): RegistryEcosystemDependencies | undefined {
+	const merged: Partial<Record<RegistryEcosystem, RegistryDependencySet>> = {};
 
 	for (const source of sources) {
 		if (!source) continue;
 		// Walk every known ecosystem so a later source can still fill in a language the earlier ones omitted.
 		for (const ecosystem of Object.values(RegistryEcosystem)) {
-			const next = mergePackageSet(merged[ecosystem], source[ecosystem]);
+			const next = mergeDependencySet(merged[ecosystem], source[ecosystem]);
 			if (next) merged[ecosystem] = next;
 			// Drop empty folds so the returned map only contains ecosystems with packages to install.
 			else Reflect.deleteProperty(merged, ecosystem);
@@ -134,7 +130,7 @@ export function mergeRegistryPackages(
 	}
 
 	return Object.keys(merged).length > 0
-		? (merged as RegistryPackages)
+		? (merged as RegistryEcosystemDependencies)
 		: undefined;
 }
 
@@ -166,18 +162,22 @@ export function detectPackageManagerFromLockfile(
  * Build shell commands that install packages for a chosen ecosystem manager.
  * @param ecosystem - Registry ecosystem for the packages.
  * @param manager - Selected package manager.
- * @param packageSet - Runtime and dev packages to install.
+ * @param dependencySet - Runtime and dev packages to install.
  * @returns Shell commands to run, or an empty list when there is nothing to install.
  * @throws Error when `manager` is not valid for `ecosystem`.
  */
 export function buildPackageInstallCommands(
 	ecosystem: RegistryEcosystem,
 	manager: RegistryPackageManager,
-	packageSet: RegistryPackageSet,
+	dependencySet: RegistryDependencySet,
 ): string[] {
 	// Dedupe and sort so generated command strings are stable across payloads.
-	const runtime = uniqueSortedNames(packageSet.dependencies ?? []);
-	const dev = uniqueSortedNames(packageSet.devDependencies ?? []);
+	const runtime = uniqueSortedNames(
+		dependencySet[RegistryDependencyKind.RUNTIME] ?? [],
+	);
+	const dev = uniqueSortedNames(
+		dependencySet[RegistryDependencyKind.DEV] ?? [],
+	);
 	if (runtime.length === 0 && dev.length === 0) return [];
 
 	const spec = ecosystemManagers[ecosystem].find(
@@ -191,7 +191,12 @@ export function buildPackageInstallCommands(
 
 	// Emit separate runtime/dev commands because each manager uses a distinct flag for -D installs.
 	const commands: string[] = [];
-	if (runtime.length > 0) commands.push(`${spec.runtime} ${runtime.join(" ")}`);
-	if (dev.length > 0) commands.push(`${spec.dev} ${dev.join(" ")}`);
+	if (runtime.length > 0)
+		commands.push(
+			`${spec[RegistryDependencyKind.RUNTIME]} ${runtime.join(" ")}`,
+		);
+	if (dev.length > 0)
+		commands.push(`${spec[RegistryDependencyKind.DEV]} ${dev.join(" ")}`);
+
 	return commands;
 }

@@ -2,10 +2,10 @@ import {
 	buildPackageInstallCommands,
 	detectPackageManagerFromLockfile,
 	ecosystemManagers,
-	mergeRegistryPackages,
+	mergeEcosystemDependencies,
 	RegistryEcosystem,
+	type RegistryEcosystemDependencies,
 	type RegistryPackageManager,
-	type RegistryPackages,
 	runAsync,
 } from "@tuckshop/core";
 import { primaryText } from "../cli/labels";
@@ -53,11 +53,11 @@ async function selectPackageManager(
  * @returns Commands to run now and commands to suggest as next steps.
  */
 async function collectPackageInstallCommands(
-	packageDeclarations: RegistryPackages[],
+	packageDeclarations: RegistryEcosystemDependencies[],
 	projectDir: string,
 	shouldInstall: boolean,
 ): Promise<{ installCommands: string[]; pendingCommands: string[] }> {
-	const merged = mergeRegistryPackages(...packageDeclarations);
+	const merged = mergeEcosystemDependencies(...packageDeclarations);
 	const installCommands: string[] = [];
 	const pendingCommands: string[] = [];
 	if (!merged) return { installCommands, pendingCommands };
@@ -88,7 +88,7 @@ async function collectPackageInstallCommands(
  * @returns Commands still left for the user when installation was skipped.
  */
 export async function installDeclaredPackages(
-	packageDeclarations: RegistryPackages[],
+	packageDeclarations: RegistryEcosystemDependencies[],
 	projectDir: string,
 ): Promise<string[]> {
 	if (packageDeclarations.length === 0) return [];

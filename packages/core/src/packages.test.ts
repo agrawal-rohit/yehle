@@ -3,59 +3,59 @@ import {
 	buildPackageInstallCommands,
 	detectPackageManagerFromLockfile,
 	ecosystemManagers,
-	mergeRegistryPackages,
+	mergeEcosystemDependencies,
 	NpmPackageManager,
 } from "./packages";
 import { RegistryEcosystem } from "./schema";
 
 describe("core/packages", () => {
-	describe("mergeRegistryPackages", () => {
-		it("merges package sets per ecosystem and deduplicates names", () => {
+	describe("mergeEcosystemDependencies", () => {
+		it("merges dependency sets per ecosystem and deduplicates names", () => {
 			expect(
-				mergeRegistryPackages(
+				mergeEcosystemDependencies(
 					{
-						npm: { devDependencies: ["vitest@^3"] },
+						npm: { dev: ["vitest@^3"] },
 					},
 					{
-						npm: { devDependencies: ["@vitest/coverage-v8@^3"] },
+						npm: { dev: ["@vitest/coverage-v8@^3"] },
 					},
 				),
 			).toEqual({
 				npm: {
-					devDependencies: ["@vitest/coverage-v8@^3", "vitest@^3"],
+					dev: ["@vitest/coverage-v8@^3", "vitest@^3"],
 				},
 			});
 		});
 
 		it("unions runtime and dev dependencies across sources", () => {
 			expect(
-				mergeRegistryPackages(
-					{ npm: { dependencies: ["react"], devDependencies: ["vitest"] } },
-					{ npm: { dependencies: ["react", "zod"] } },
+				mergeEcosystemDependencies(
+					{ npm: { runtime: ["react"], dev: ["vitest"] } },
+					{ npm: { runtime: ["react", "zod"] } },
 				),
 			).toEqual({
 				npm: {
-					dependencies: ["react", "zod"],
-					devDependencies: ["vitest"],
+					runtime: ["react", "zod"],
+					dev: ["vitest"],
 				},
 			});
 		});
 
 		it("keeps only the non-empty dependency list when the other side is blank", () => {
 			expect(
-				mergeRegistryPackages(
-					{ npm: { dependencies: ["left-pad"] } },
-					{ npm: { dependencies: [], devDependencies: [] } },
+				mergeEcosystemDependencies(
+					{ npm: { runtime: ["left-pad"] } },
+					{ npm: { runtime: [], dev: [] } },
 				),
 			).toEqual({
-				npm: { dependencies: ["left-pad"] },
+				npm: { runtime: ["left-pad"] },
 			});
 		});
 
 		it("returns undefined when all sources are empty", () => {
-			expect(mergeRegistryPackages(undefined, {})).toBeUndefined();
+			expect(mergeEcosystemDependencies(undefined, {})).toBeUndefined();
 			expect(
-				mergeRegistryPackages({ npm: { dependencies: [] } }, undefined),
+				mergeEcosystemDependencies({ npm: { runtime: [] } }, undefined),
 			).toBeUndefined();
 		});
 	});
@@ -145,7 +145,7 @@ describe("core/packages", () => {
 				buildPackageInstallCommands(
 					RegistryEcosystem.NPM,
 					NpmPackageManager.PNPM,
-					{ devDependencies: ["vitest@^3"] },
+					{ dev: ["vitest@^3"] },
 				),
 			).toEqual(["pnpm add -D vitest@^3"]);
 		});
@@ -156,8 +156,8 @@ describe("core/packages", () => {
 					RegistryEcosystem.NPM,
 					NpmPackageManager.NPM,
 					{
-						dependencies: ["react"],
-						devDependencies: ["vitest@^3"],
+						runtime: ["react"],
+						dev: ["vitest@^3"],
 					},
 				),
 			).toEqual(["npm install react", "npm install -D vitest@^3"]);
@@ -167,7 +167,7 @@ describe("core/packages", () => {
 			for (const spec of ecosystemManagers[RegistryEcosystem.NPM]) {
 				expect(
 					buildPackageInstallCommands(RegistryEcosystem.NPM, spec.manager, {
-						dependencies: ["left-pad"],
+						runtime: ["left-pad"],
 					}),
 				).toHaveLength(1);
 			}
@@ -178,7 +178,7 @@ describe("core/packages", () => {
 				buildPackageInstallCommands(
 					RegistryEcosystem.NPM,
 					NpmPackageManager.NPM,
-					{ dependencies: [], devDependencies: [] },
+					{ runtime: [], dev: [] },
 				),
 			).toEqual([]);
 		});
@@ -188,7 +188,7 @@ describe("core/packages", () => {
 				buildPackageInstallCommands(
 					RegistryEcosystem.NPM,
 					NpmPackageManager.NPM,
-					{ dependencies: ["react", "react", "zod"] },
+					{ runtime: ["react", "react", "zod"] },
 				),
 			).toEqual(["npm install react zod"]);
 		});
@@ -198,7 +198,7 @@ describe("core/packages", () => {
 				buildPackageInstallCommands(
 					RegistryEcosystem.NPM,
 					"cargo" as NpmPackageManager,
-					{ dependencies: ["react"] },
+					{ runtime: ["react"] },
 				),
 			).toThrow('Package manager "cargo" is not valid for ecosystem "npm".');
 		});

@@ -12,9 +12,9 @@
 				"language": "typescript"
 			},
 			"registryDependencies": ["setup-workspace-workflow"],
-			"packages": {
+			"dependencies": {
 				"npm": {
-					"devDependencies": [
+					"dev": [
 						"vitest@^3",
 						"@vitest/coverage-v8@^3"
 					]

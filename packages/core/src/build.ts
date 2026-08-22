@@ -10,7 +10,7 @@ import {
 	removeAsync,
 	writeFileAsync,
 } from "./fs";
-import { mergeRegistryPackages } from "./packages";
+import { mergeEcosystemDependencies } from "./packages";
 import {
 	parseKeyedRecord,
 	parseRegistryDocument,
@@ -167,7 +167,7 @@ async function loadAuthoredItems(
  * @returns True when a payload document should be written.
  */
 function variantLessNeedsPayload(item: AuthoredRegistryItem): boolean {
-	return (item.files?.length ?? 0) > 0 || item.packages !== undefined;
+	return (item.files?.length ?? 0) > 0 || item.dependencies !== undefined;
 }
 
 /**
@@ -228,10 +228,13 @@ async function writePayload(
 	// Item-level and variant files share one destination namespace
 	assertUniquePayloadTargets(subject, files);
 
-	const packages = mergeRegistryPackages(item.packages, variant?.packages);
+	const dependencies = mergeEcosystemDependencies(
+		item.dependencies,
+		variant?.dependencies,
+	);
 	const payload = parseWithSchema(
 		registryPayloadSchema,
-		{ files, ...(packages ? { packages } : {}) },
+		{ files, ...(dependencies ? { dependencies } : {}) },
 		`Registry payload for "${item.id}"`,
 	);
 
