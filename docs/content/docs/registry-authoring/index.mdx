@@ -13,8 +13,8 @@ pnpm add @tuckshop/core
 
 - registry schema types
 - `parseRegistryDocument()` and `parseWithSchema()` for runtime validation (unknown keys are rejected)
-- `buildRegistry()` to compile an authoring tree into `registry.json` plus payloads and handlers under `r/`
-- handler contracts (`ItemHandler`, `ConditionHandler`) and local-only loader APIs
+- `buildRegistry()` to compile an authoring tree into `registry.json` plus payloads and scripts under `r/`
+- install hook contracts (`BeforeInstallHook`, `AfterInstallHook`, `ConditionHandler`) and local-only runners (`runBeforeInstallHook`, `runAfterInstallHook`)
 
 ## Compiling a registry
 
@@ -30,38 +30,45 @@ await buildRegistry({
 
 That writes:
 
-- `registry.json` — catalog index (items may declare `source`, `variants`, and/or `handler`)
+- `registry.json` — catalog index (items may declare `source`, `variants`, and/or `beforeInstall` / `afterInstall`)
 - `r/{itemId}.json` or `r/{itemId}/{variantId}.json` — install payloads
-- `r/{itemId}.handler.js` / `r/_handlers/{key}.handler.js` — bundled item and condition handlers
+- `r/{itemId}.beforeInstall.{index}.js` / `r/{itemId}.afterInstall.{index}.js` — bundled install scripts
+- `r/_handlers/{key}.handler.js` — bundled condition handlers
 
-## Handlers (local catalogs only)
+## Install lifecycle (local catalogs only)
 
-Items and shared conditions may declare a colocated TypeScript handler. Handlers are bundled at compile time and executed only when the catalog is a **local path**. Remote HTTPS registries that declare `handler` are rejected so network JS is never executed.
+Every item has two optional authored phases. **Write** (static payload files) is core and not a script.
+
+| Phase | When it runs | Typical use |
+| --- | --- | --- |
+| `beforeInstall` | Before planned files are written | Prompts, generate/transform the file list, scaffold CLIs |
+| write | After `beforeInstall` | Static `files` plus any files returned from `beforeInstall` |
+| `afterInstall` | After files exist on disk | `git init`, format, convert |
+
+Each phase accepts a **string or array of strings**. Each entry is a **colocated script** — any relative path under the item folder (`license.ts`, `./scaffold.ts`, `scripts/setup`). Item ids belong in `registryDependencies`, not in these lists.
+
+Scripts are bundled at compile time and executed only when the catalog is a **local path**. Remote HTTPS registries cannot execute custom scripts.
 
 Use `import type` from `@tuckshop/core` (do not runtime-import the package):
 
 ```ts
-import type { ItemHandler } from "@tuckshop/core";
+import type { BeforeInstallHook } from "@tuckshop/core";
 
-const handler: ItemHandler = {
-	async prompts(ctx) {
-		const licenseId = await ctx.prompts.select("License", {
-			options: [{ label: "MIT", value: "MIT" }],
-		});
-		return { licenseId };
-	},
-	async files(ctx) {
-		return [{ target: "LICENSE", content: ctx.variables.licenseId }];
-	},
-	async transform(ctx) {
-		return ctx.files;
-	},
+const beforeInstall: BeforeInstallHook = async (ctx) => {
+	const licenseId = await ctx.prompts.select("License", {
+		options: [{ label: "MIT", value: "MIT" }],
+	});
+	return {
+		files: [{ target: "LICENSE", content: licenseId }],
+	};
 };
 
-export default handler;
+export default beforeInstall;
 ```
 
-Condition handlers expose `infer` to suggest a prompt default (for example from marker files or `ctx.run("git config --get user.name")`). Items consume those values with `"uses": ["authorName"]`; the resolved value is then `ctx.conditions.authorName` in the handler.
+`beforeInstall` may prompt (`ctx.prompts`), run commands (`ctx.run`), and return `files` / `variables`. Returned `files` **replace** `ctx.files` (append with `[...ctx.files, ...extra]` when needed). `afterInstall` uses the same function type, but returned `files` are ignored.
+
+Shared prompts stay on conditions and `uses`. Condition handlers expose `infer` to suggest a prompt default (for example from marker files or `ctx.run("git config --get user.name")`). Items consume those values with `"uses": ["authorName"]`; the captured value is then `ctx.conditions.authorName` in install scripts.
 
 Shared conditions declare a `kind`:
 
@@ -71,6 +78,27 @@ Shared conditions declare a `kind`:
 - `boolean` — yes/no (`ctx.conditions` stores `boolean`)
 
 Variant `when` may reference `select`, `multiselect`, and `boolean` keys (`"true"` / `"false"` for booleans). Text conditions are for prompts/`uses` only.
+
+### Composing templates
+
+`registryDependencies` install other items **before** the consumer. They are not lifecycle phases. Each dependency runs its own `beforeInstall` / write / `afterInstall` when it is installed.
+
+```json
+{
+	"id": "react-app-template",
+	"registryDependencies": ["create-react-app-scaffold", "license-configuration", "git-init"]
+}
+```
+
+A reusable `git-init` item is just an item whose only phase is `afterInstall`. Because it is a dependency, that script runs when `git-init` is installed — before the consumer's files. To run a command after *this* item's writes, list a colocated script on the item:
+
+```json
+{
+	"id": "license-configuration",
+	"uses": ["authorName"],
+	"beforeInstall": "license.ts"
+}
+```
 
 ## Validating artefacts
 

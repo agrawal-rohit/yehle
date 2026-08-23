@@ -14,7 +14,7 @@ export interface ConditionValueOption {
 	label: string;
 }
 
-/** Runtime resolved condition values keyed by condition name. */
+/** Captured condition values keyed by condition name. */
 export type RegistryContextValue = string | string[] | boolean;
 export type RegistryContext = Record<string, RegistryContextValue | undefined>;
 
@@ -148,13 +148,13 @@ export const conditionKindPolicy: Record<
 };
 
 /**
- * Resolve the policy for a condition kind, defaulting to select.
+ * Return the policy for a condition kind, defaulting to select.
  * @param kind - Declared kind, or undefined when omitted.
  * @returns Policy for the effective kind.
  */
 export function policyForConditionKind(
 	kind: RegistryConditionKind | undefined,
 ): ConditionKindPolicy & { kind: RegistryConditionKind } {
-	const resolved = kind ?? RegistryConditionKind.SELECT;
-	return { kind: resolved, ...conditionKindPolicy[resolved] };
+	const effectiveKind = kind ?? RegistryConditionKind.SELECT;
+	return { kind: effectiveKind, ...conditionKindPolicy[effectiveKind] };
 }

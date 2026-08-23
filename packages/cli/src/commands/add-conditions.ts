@@ -61,13 +61,13 @@ function conditionSelectOptions(condition: RequiredCondition) {
 }
 
 /**
- * Resolve a multiselect condition via sole-option auto-select or a multiselect prompt.
- * @param condition - Multiselect condition to resolve.
+ * Capture a multiselect condition via sole-option auto-select or a multiselect prompt.
+ * @param condition - Multiselect condition to capture.
  * @param promptMessage - Message shown to the user.
  * @param inferred - Optional default from a condition handler.
  * @returns Selected values.
  */
-async function resolveMultiselectConditionValue(
+async function promptMultiselectCondition(
 	condition: RequiredCondition,
 	promptMessage: string,
 	inferred: RegistryContextValue | undefined,
@@ -85,13 +85,13 @@ async function resolveMultiselectConditionValue(
 }
 
 /**
- * Resolve a select condition via sole-option auto-select or a select prompt.
- * @param condition - Select condition to resolve.
+ * Capture a select condition via sole-option auto-select or a select prompt.
+ * @param condition - Select condition to capture.
  * @param promptMessage - Message shown to the user.
  * @param inferred - Optional default from a condition handler.
  * @returns Selected value.
  */
-async function resolveSelectConditionValue(
+async function promptSelectCondition(
 	condition: RequiredCondition,
 	promptMessage: string,
 	inferred: RegistryContextValue | undefined,
@@ -109,9 +109,9 @@ async function resolveSelectConditionValue(
  * Prompt (or auto-select) a value for one required condition.
  * @param condition - Condition the install plan still needs.
  * @param inferred - Optional default from a condition handler.
- * @returns Resolved context value for this condition key.
+ * @returns Captured context value for this condition key.
  */
-async function resolveRequiredConditionValue(
+async function promptConditionValue(
 	condition: RequiredCondition,
 	inferred: RegistryContextValue | undefined,
 ): Promise<RegistryContextValue> {
@@ -120,12 +120,8 @@ async function resolveRequiredConditionValue(
 
 	if (requiresValues) {
 		if (kind === RegistryConditionKind.MULTISELECT)
-			return resolveMultiselectConditionValue(
-				condition,
-				promptMessage,
-				inferred,
-			);
-		return resolveSelectConditionValue(condition, promptMessage, inferred);
+			return promptMultiselectCondition(condition, promptMessage, inferred);
+		return promptSelectCondition(condition, promptMessage, inferred);
 	}
 
 	if (kind === RegistryConditionKind.BOOLEAN)
@@ -179,10 +175,7 @@ export async function captureRequiredConditions(
 			runtime,
 			context,
 		);
-		context[condition.key] = await resolveRequiredConditionValue(
-			condition,
-			inferred,
-		);
+		context[condition.key] = await promptConditionValue(condition, inferred);
 	}
 
 	return context;

@@ -9,7 +9,7 @@ const mockGroupedMultiselectInput = vi.fn();
 const mockSelectInput = vi.fn();
 const mockConfirmInput = vi.fn();
 const mockTextInput = vi.fn();
-const mockResolveInstallPlan = vi.fn();
+const mockBuildInstallPlan = vi.fn();
 const mockLoadRegistryPayloads = vi.fn();
 const mockWriteFileAsync = vi.fn();
 const mockIsFileAsync = vi.fn();
@@ -39,7 +39,7 @@ vi.mock("@tuckshop/core", async () => {
 		await vi.importActual<typeof import("@tuckshop/core")>("@tuckshop/core");
 	return {
 		...actual,
-		resolveInstallPlan: (...args: unknown[]) => mockResolveInstallPlan(...args),
+		buildInstallPlan: (...args: unknown[]) => mockBuildInstallPlan(...args),
 		writeFileAsync: (...args: unknown[]) => mockWriteFileAsync(...args),
 		isFileAsync: (...args: unknown[]) => mockIsFileAsync(...args),
 		runAsync: (...args: unknown[]) => mockRunAsync(...args),
@@ -80,14 +80,12 @@ describe("commands/add", () => {
 		consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 		vi.clearAllMocks();
 
-		mockResolveInstallPlan.mockReturnValue({
-			items: [
-				{
-					itemId: "pr-template-configuration",
-					source: "r/pr-template-configuration.json",
-				},
-			],
-		});
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "pr-template-configuration",
+				source: "r/pr-template-configuration.json",
+			},
+		]);
 		mockLoadRegistryPayloads.mockResolvedValue(
 			new Map([
 				[
@@ -199,14 +197,12 @@ describe("commands/add", () => {
 			},
 		};
 		mockGroupedMultiselectInput.mockResolvedValue(["alpha-configuration"]);
-		mockResolveInstallPlan.mockReturnValue({
-			items: [
-				{
-					itemId: "alpha-configuration",
-					source: "r/alpha.json",
-				},
-			],
-		});
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "alpha-configuration",
+				source: "r/alpha.json",
+			},
+		]);
 		mockLoadRegistryPayloads.mockResolvedValue(
 			new Map([["r/alpha.json", { files: [] }]]),
 		);
@@ -257,18 +253,16 @@ describe("commands/add", () => {
 			"pr-template-configuration",
 			"code-quality-workflow",
 		]);
-		mockResolveInstallPlan.mockReturnValue({
-			items: [
-				{
-					itemId: "pr-template-configuration",
-					source: "r/pr-template-configuration.json",
-				},
-				{
-					itemId: "code-quality-workflow",
-					source: "r/code-quality-workflow.json",
-				},
-			],
-		});
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "pr-template-configuration",
+				source: "r/pr-template-configuration.json",
+			},
+			{
+				itemId: "code-quality-workflow",
+				source: "r/code-quality-workflow.json",
+			},
+		]);
 		mockLoadRegistryPayloads.mockResolvedValue(
 			new Map([
 				[
@@ -310,7 +304,7 @@ describe("commands/add", () => {
 				],
 			},
 		);
-		expect(mockResolveInstallPlan).toHaveBeenCalledWith(
+		expect(mockBuildInstallPlan).toHaveBeenCalledWith(
 			["pr-template-configuration", "code-quality-workflow"],
 			groupedRegistry.items,
 			expect.any(Object),
@@ -372,18 +366,16 @@ describe("commands/add", () => {
 				},
 			},
 		};
-		mockResolveInstallPlan.mockReturnValue({
-			items: [
-				{
-					itemId: "pr-template-configuration",
-					source: "r/pr-template-configuration.json",
-				},
-				{
-					itemId: "other",
-					source: "r/other.json",
-				},
-			],
-		});
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "pr-template-configuration",
+				source: "r/pr-template-configuration.json",
+			},
+			{
+				itemId: "other",
+				source: "r/other.json",
+			},
+		]);
 		mockLoadRegistryPayloads.mockResolvedValue(
 			new Map([
 				[
@@ -432,18 +424,16 @@ describe("commands/add", () => {
 				},
 			},
 		};
-		mockResolveInstallPlan.mockReturnValue({
-			items: [
-				{
-					itemId: "pr-template-configuration",
-					source: "r/pr-template-configuration.json",
-				},
-				{
-					itemId: "other",
-					source: "r/other.json",
-				},
-			],
-		});
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "pr-template-configuration",
+				source: "r/pr-template-configuration.json",
+			},
+			{
+				itemId: "other",
+				source: "r/other.json",
+			},
+		]);
 		mockLoadRegistryPayloads.mockResolvedValue(
 			new Map([
 				[
@@ -728,14 +718,12 @@ describe("commands/add", () => {
 			},
 		};
 
-		mockResolveInstallPlan.mockReturnValue({
-			items: [
-				{
-					itemId: "demo",
-					source: "r/pr-template-configuration.json",
-				},
-			],
-		});
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "demo",
+				source: "r/pr-template-configuration.json",
+			},
+		]);
 		mockMultiselectInput.mockResolvedValue(["ios"]);
 		mockSelectInput.mockResolvedValue("typescript");
 
@@ -819,14 +807,12 @@ module.exports = {
 			},
 		};
 
-		mockResolveInstallPlan.mockReturnValue({
-			items: [
-				{
-					itemId: "demo",
-					source: "r/pr-template-configuration.json",
-				},
-			],
-		});
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "demo",
+				source: "r/pr-template-configuration.json",
+			},
+		]);
 		mockTextInput.mockResolvedValue("Ada");
 		mockConfirmInput.mockResolvedValue(true);
 
@@ -939,14 +925,12 @@ module.exports = {
 				},
 			},
 		};
-		mockResolveInstallPlan.mockReturnValue({
-			items: [
-				{
-					itemId: "untitled-item",
-					source: "r/pr-template-configuration.json",
-				},
-			],
-		});
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "untitled-item",
+				source: "r/pr-template-configuration.json",
+			},
+		]);
 
 		await addCommand(untitledRegistry, catalogLocation, {
 			items: ["untitled-item"],
@@ -960,14 +944,12 @@ module.exports = {
 	});
 
 	it("falls back to the item id when the catalog entry is missing", async () => {
-		mockResolveInstallPlan.mockReturnValue({
-			items: [
-				{
-					itemId: "ghost-item",
-					source: "r/pr-template-configuration.json",
-				},
-			],
-		});
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "ghost-item",
+				source: "r/pr-template-configuration.json",
+			},
+		]);
 
 		await addCommand(registry, catalogLocation, {
 			items: ["pr-template-configuration"],
@@ -980,8 +962,8 @@ module.exports = {
 		);
 	});
 
-	it("throws when the install plan resolves to no items", async () => {
-		mockResolveInstallPlan.mockReturnValue({ items: [] });
+	it("throws when the install plan contains no items", async () => {
+		mockBuildInstallPlan.mockReturnValue([]);
 
 		await expect(
 			addCommand(registry, catalogLocation, {
@@ -990,41 +972,39 @@ module.exports = {
 		).rejects.toThrow("No registry items were selected for installation.");
 	});
 
-	it("passes variantId into item handlers when present", async () => {
+	it("passes variantId into beforeInstall scripts when present", async () => {
 		const handlerDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-variant-"));
 		const catalogPath = path.join(handlerDir, "registry.json");
-		const handlerPath = path.join(handlerDir, "r/hello.handler.js");
-		fs.mkdirSync(path.dirname(handlerPath), { recursive: true });
+		const scriptPath = path.join(handlerDir, "r/hello.beforeInstall.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(catalogPath, "{}\n");
 		fs.writeFileSync(
-			handlerPath,
+			scriptPath,
 			`
-module.exports = {
-  async files(ctx) {
-    return [{ target: "VARIANT.md", content: ctx.variantId || "none" }];
-  },
+module.exports = async function beforeInstall(ctx) {
+  return {
+    files: [{ target: "VARIANT.md", content: ctx.variantId || "none" }],
+  };
 };
 `,
 		);
 
-		mockResolveInstallPlan.mockReturnValue({
-			items: [
-				{
-					itemId: "hello",
-					variantId: "typescript",
-					handler: "r/hello.handler.js",
-				},
-			],
-		});
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "hello",
+				variantId: "typescript",
+				beforeInstallScripts: ["r/hello.beforeInstall.0.js"],
+			},
+		]);
 
 		const handlerRegistry: Registry = {
 			types: { configuration: { label: "Configurations" } },
 			items: {
 				hello: {
 					title: "Hello",
-					description: "Handler demo",
+					description: "Install script demo",
 					type: "configuration",
-					handler: "r/hello.handler.js",
+					beforeInstall: ["r/hello.beforeInstall.0.js"],
 				},
 			},
 		};
@@ -1039,6 +1019,69 @@ module.exports = {
 				path.join(tempDir, "VARIANT.md"),
 				"typescript",
 			);
+		} finally {
+			fs.rmSync(handlerDir, { recursive: true, force: true });
+		}
+	});
+
+	it("passes variantId into afterInstall scripts when present", async () => {
+		const handlerDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "add-after-variant-"),
+		);
+		const catalogPath = path.join(handlerDir, "registry.json");
+		const logPath = path.join(tempDir, "after-variant.log");
+		const scriptPath = path.join(handlerDir, "r/hello.afterInstall.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(catalogPath, "{}\n");
+		fs.writeFileSync(
+			scriptPath,
+			`
+const fs = require("node:fs");
+module.exports = async function afterInstall(ctx) {
+  fs.appendFileSync(${JSON.stringify(logPath)}, ctx.variantId || "none");
+};
+`,
+		);
+
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "hello",
+				variantId: "typescript",
+				source: "r/hello.json",
+				afterInstallScripts: ["r/hello.afterInstall.0.js"],
+			},
+		]);
+		mockLoadRegistryPayloads.mockResolvedValue(
+			new Map([
+				[
+					"r/hello.json",
+					{
+						files: [{ target: "DONE.txt", content: "ok" }],
+					},
+				],
+			]),
+		);
+
+		const handlerRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			items: {
+				hello: {
+					title: "Hello",
+					description: "After-install script demo",
+					type: "configuration",
+					source: "r/hello.json",
+					afterInstall: ["r/hello.afterInstall.0.js"],
+				},
+			},
+		};
+
+		try {
+			await addCommand(handlerRegistry, catalogPath, {
+				items: ["hello"],
+				overwrite: true,
+			});
+
+			expect(fs.readFileSync(logPath, "utf8")).toBe("typescript");
 		} finally {
 			fs.rmSync(handlerDir, { recursive: true, force: true });
 		}
@@ -1262,47 +1305,43 @@ module.exports = {
 		);
 	});
 
-	it("runs a local item handler before writing files", async () => {
+	it("runs a local beforeInstall script before writing files", async () => {
 		const fs = await import("node:fs");
 		const os = await import("node:os");
 		const handlerDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-handler-"));
 		const catalogPath = path.join(handlerDir, "registry.json");
-		const handlerPath = path.join(handlerDir, "r/hello.handler.js");
-		fs.mkdirSync(path.dirname(handlerPath), { recursive: true });
+		const scriptPath = path.join(handlerDir, "r/hello.beforeInstall.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(catalogPath, "{}\n");
 		fs.writeFileSync(
-			handlerPath,
+			scriptPath,
 			`
-module.exports = {
-  async prompts(ctx) {
-    const name = await ctx.prompts.text("Name", {}, "world");
-    return { name };
-  },
-  async files(ctx) {
-    return [{ target: "HELLO.md", content: "Hello " + ctx.variables.name }];
-  },
+module.exports = async function beforeInstall(ctx) {
+  const name = await ctx.prompts.text("Name", {}, "world");
+  return {
+    variables: { name },
+    files: [{ target: "HELLO.md", content: "Hello " + name }],
+  };
 };
 `,
 		);
 
 		mockTextInput.mockResolvedValue("Ada");
-		mockResolveInstallPlan.mockReturnValue({
-			items: [
-				{
-					itemId: "hello",
-					handler: "r/hello.handler.js",
-				},
-			],
-		});
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "hello",
+				beforeInstallScripts: ["r/hello.beforeInstall.0.js"],
+			},
+		]);
 
 		const handlerRegistry: Registry = {
 			types: { configuration: { label: "Configurations" } },
 			items: {
 				hello: {
 					title: "Hello",
-					description: "Handler demo",
+					description: "Install script demo",
 					type: "configuration",
-					handler: "r/hello.handler.js",
+					beforeInstall: ["r/hello.beforeInstall.0.js"],
 				},
 			},
 		};
@@ -1318,6 +1357,84 @@ module.exports = {
 			expect(mockWriteFileAsync).toHaveBeenCalledWith(
 				path.join(tempDir, "HELLO.md"),
 				"Hello Ada",
+			);
+		} finally {
+			fs.rmSync(handlerDir, { recursive: true, force: true });
+		}
+	});
+
+	it("runs beforeInstall before writes and afterInstall after writes", async () => {
+		const fs = await import("node:fs");
+		const os = await import("node:os");
+		const handlerDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-lifecycle-"));
+		const catalogPath = path.join(handlerDir, "registry.json");
+		const logPath = path.join(tempDir, "lifecycle-order.log");
+		const beforePath = path.join(handlerDir, "r/lifecycle.beforeInstall.0.js");
+		const afterPath = path.join(handlerDir, "r/lifecycle.afterInstall.0.js");
+		fs.mkdirSync(path.dirname(beforePath), { recursive: true });
+		fs.writeFileSync(catalogPath, "{}\n");
+		fs.writeFileSync(
+			beforePath,
+			`
+const fs = require("node:fs");
+module.exports = async function beforeInstall() {
+  fs.appendFileSync(${JSON.stringify(logPath)}, "before\\n");
+};
+`,
+		);
+		fs.writeFileSync(
+			afterPath,
+			`
+const fs = require("node:fs");
+module.exports = async function afterInstall() {
+  fs.appendFileSync(${JSON.stringify(logPath)}, "after\\n");
+};
+`,
+		);
+
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "lifecycle",
+				source: "r/lifecycle.json",
+				beforeInstallScripts: ["r/lifecycle.beforeInstall.0.js"],
+				afterInstallScripts: ["r/lifecycle.afterInstall.0.js"],
+			},
+		]);
+		mockLoadRegistryPayloads.mockResolvedValue(
+			new Map([
+				[
+					"r/lifecycle.json",
+					{
+						files: [{ target: "DONE.txt", content: "ok" }],
+					},
+				],
+			]),
+		);
+
+		const lifecycleRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			items: {
+				lifecycle: {
+					title: "Lifecycle",
+					description: "Lifecycle scripts",
+					type: "configuration",
+					source: "r/lifecycle.json",
+					beforeInstall: ["r/lifecycle.beforeInstall.0.js"],
+					afterInstall: ["r/lifecycle.afterInstall.0.js"],
+				},
+			},
+		};
+
+		try {
+			await addCommand(lifecycleRegistry, catalogPath, {
+				items: ["lifecycle"],
+				overwrite: true,
+			});
+
+			expect(fs.readFileSync(logPath, "utf8")).toBe("before\nafter\n");
+			expect(mockWriteFileAsync).toHaveBeenCalledWith(
+				path.join(tempDir, "DONE.txt"),
+				"ok",
 			);
 		} finally {
 			fs.rmSync(handlerDir, { recursive: true, force: true });

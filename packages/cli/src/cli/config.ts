@@ -9,20 +9,13 @@ export interface TuckshopConfig {
 	registry?: string;
 }
 
-/** Options that control where the config file is resolved. */
-export interface ConfigPathOptions {
-	/** Environment variables used for XDG_CONFIG_HOME. */
-	env?: NodeJS.ProcessEnv;
-}
-
 /**
- * Resolve the absolute path to the global tuckshop config file.
+ * Return the absolute path to the global tuckshop config file.
  * Prefers `$XDG_CONFIG_HOME/tuckshop/config.json`, otherwise `~/.config/tuckshop/config.json`.
- * @param options - Optional env overrides for tests.
+ * @param env - Environment used for `XDG_CONFIG_HOME`. Defaults to `process.env`.
  * @returns Absolute config file path.
  */
-export function configPath(options: ConfigPathOptions = {}): string {
-	const env = options.env ?? process.env;
+export function configPath(env: NodeJS.ProcessEnv = process.env): string {
 	const xdg = env.XDG_CONFIG_HOME?.trim();
 
 	// Honour XDG_CONFIG_HOME when set, otherwise use the home directory.
@@ -32,15 +25,15 @@ export function configPath(options: ConfigPathOptions = {}): string {
 
 /**
  * Read the global tuckshop config.
- * Missing files resolve to an empty config; malformed JSON fails fast with the file path.
- * @param options - Optional path resolution overrides for tests.
+ * Missing files are treated as an empty config; malformed JSON fails fast with the file path.
+ * @param env - Environment used for config path resolution. Defaults to `process.env`.
  * @returns Parsed config object.
  * @throws Error when the config file exists but cannot be parsed as JSON.
  */
 export async function readConfig(
-	options: ConfigPathOptions = {},
+	env?: NodeJS.ProcessEnv,
 ): Promise<TuckshopConfig> {
-	const filePath = configPath(options);
+	const filePath = configPath(env);
 
 	let raw: string;
 	try {
@@ -79,14 +72,14 @@ export async function readConfig(
 /**
  * Write the global tuckshop config, creating parent directories as needed.
  * @param config - Config object to persist.
- * @param options - Optional path resolution overrides for tests.
+ * @param env - Environment used for config path resolution. Defaults to `process.env`.
  */
 export async function writeConfig(
 	config: TuckshopConfig,
-	options: ConfigPathOptions = {},
+	env?: NodeJS.ProcessEnv,
 ): Promise<void> {
 	// Create the parent directories if they don't exist.
-	const filePath = configPath(options);
+	const filePath = configPath(env);
 	await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
 
 	// Write the config file.
@@ -100,22 +93,22 @@ export async function writeConfig(
 /**
  * Remove the saved registry key from the global config.
  * Deletes the config file entirely when no keys remain; no-ops when unset.
- * @param options - Optional path resolution overrides for tests.
+ * @param env - Environment used for config path resolution. Defaults to `process.env`.
  * @returns True when a previously saved registry was cleared.
  */
 export async function unsetRegistryConfig(
-	options: ConfigPathOptions = {},
+	env?: NodeJS.ProcessEnv,
 ): Promise<boolean> {
-	const config = await readConfig(options);
+	const config = await readConfig(env);
 	if (config.registry === undefined) return false;
 
 	// Leave no empty config file on disk when registry was the only key.
 	const { registry: _removed, ...rest } = config;
 	if (Object.keys(rest).length === 0) {
-		await fs.promises.rm(configPath(options), { force: true });
+		await fs.promises.rm(configPath(env), { force: true });
 		return true;
 	}
 
-	await writeConfig(rest, options);
+	await writeConfig(rest, env);
 	return true;
 }

@@ -117,7 +117,7 @@ describe("commands/list", () => {
 			}),
 		});
 
-		await listCommand(registry, { type: "theme" });
+		await listCommand(registry, "theme");
 
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
 		expect(output).toContain("─".repeat(40));
@@ -148,7 +148,7 @@ describe("commands/list", () => {
 			}),
 		});
 
-		await listCommand(registry, { type: "all" });
+		await listCommand(registry, "all");
 
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
 		expect(output).toContain("Components");
@@ -165,7 +165,7 @@ describe("commands/list", () => {
 			}),
 		});
 
-		await listCommand(registry, { type: "all" });
+		await listCommand(registry, "all");
 
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
 		expect(output).not.toContain("Components");
@@ -194,7 +194,7 @@ describe("commands/list", () => {
 			}),
 		});
 
-		await listCommand(registry, { type: "theme" });
+		await listCommand(registry, "theme");
 
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
 		expect(output).toContain("Alpha Theme [Light, Dark]");
@@ -210,7 +210,7 @@ describe("commands/list", () => {
 			}),
 		});
 
-		await listCommand(registry, { type: "theme" });
+		await listCommand(registry, "theme");
 
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
 		expect(output).toContain("Alpha Theme: Alpha Theme description");
@@ -228,7 +228,7 @@ describe("commands/list", () => {
 			}),
 		});
 
-		await listCommand(registry, { type: "theme" });
+		await listCommand(registry, "theme");
 
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
 		expect(output).toContain("Alpha Theme: Alpha Theme description");
@@ -244,9 +244,7 @@ describe("commands/list", () => {
 			}),
 		});
 
-		await listCommand(registry, {
-			type: "component",
-		});
+		await listCommand(registry, "component");
 
 		expect(consoleLogSpy).toHaveBeenCalledWith("─".repeat(40));
 		expect(consoleLogSpy).toHaveBeenCalledWith(
@@ -263,7 +261,7 @@ describe("commands/list", () => {
 			}),
 		});
 
-		await listCommand(registry, {});
+		await listCommand(registry);
 
 		expect(
 			consoleLogSpy.mock.calls.map((call) => call[0]).join("\n"),
@@ -284,7 +282,7 @@ describe("commands/list", () => {
 			}),
 		});
 
-		await listCommand(registry, {});
+		await listCommand(registry);
 
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
 		expect(output).toContain("Components");
@@ -295,16 +293,17 @@ describe("commands/list", () => {
 	});
 
 	it("throws when no registry item types are available", () => {
-		expect(() => listCommand(makeRegistry({}, {}), {})).toThrow(
+		expect(() => listCommand(makeRegistry({}, {}))).toThrow(
 			"No registry item types found.",
 		);
 	});
 
 	it('throws when combining "all" with specific types', () => {
 		expect(() =>
-			listCommand(makeRegistry({}, { theme: { label: "Themes" } }), {
-				type: "all,theme",
-			}),
+			listCommand(
+				makeRegistry({}, { theme: { label: "Themes" } }),
+				"all,theme",
+			),
 		).toThrow('Cannot combine type "all" with specific --type values.');
 	});
 
@@ -318,9 +317,7 @@ describe("commands/list", () => {
 						component: { label: "Components" },
 					},
 				),
-				{
-					type: "workflow",
-				},
+				"workflow",
 			),
 		).toThrow(
 			'Unsupported registry type "workflow" (available: theme, component).',
@@ -366,7 +363,7 @@ describe("commands/list", () => {
 			}),
 		});
 
-		await listCommand(registry, { type: "all" });
+		await listCommand(registry, "all");
 
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
 		expect(output).toContain("Components");
@@ -395,7 +392,7 @@ describe("commands/list", () => {
 			},
 		);
 
-		listCommand(registry, { type: "theme" });
+		listCommand(registry, "theme");
 
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
 		expect(output).toContain("theme");
@@ -416,7 +413,7 @@ describe("commands/list", () => {
 			},
 		);
 
-		listCommand(registry, { type: "theme" });
+		listCommand(registry, "theme");
 
 		expect(
 			consoleLogSpy.mock.calls.some(

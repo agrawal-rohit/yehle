@@ -1,6 +1,6 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveRegistrySource } from "./source";
+import { locateRegistry } from "./source";
 
 const mockIsFileAsync = vi.fn<(candidate: string) => Promise<boolean>>();
 
@@ -27,7 +27,7 @@ describe("registry/source", () => {
 
 	it("prefers an explicit URL registry override", async () => {
 		await expect(
-			resolveRegistrySource({
+			locateRegistry({
 				registry: "https://example.com/registry.json",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
@@ -37,7 +37,7 @@ describe("registry/source", () => {
 
 	it("rejects an explicit HTTP registry override", async () => {
 		await expect(
-			resolveRegistrySource({
+			locateRegistry({
 				registry: "http://example.com/registry.json",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
@@ -46,7 +46,7 @@ describe("registry/source", () => {
 
 	it("rejects an explicit localhost registry override", async () => {
 		await expect(
-			resolveRegistrySource({
+			locateRegistry({
 				registry: "https://localhost/registry.json",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
@@ -55,16 +55,16 @@ describe("registry/source", () => {
 
 	it("rejects an explicit registry override with credentials", async () => {
 		await expect(
-			resolveRegistrySource({
+			locateRegistry({
 				registry: "https://user:secret@example.com/registry.json",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
 		).rejects.toThrow("Remote registries must not include credentials.");
 	});
 
-	it("resolves an explicit file override relative to cwd", async () => {
+	it("joins an explicit file override relative to cwd", async () => {
 		await expect(
-			resolveRegistrySource({
+			locateRegistry({
 				registry: "./custom/registry.json",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
@@ -78,7 +78,7 @@ describe("registry/source", () => {
 		});
 
 		await expect(
-			resolveRegistrySource({
+			locateRegistry({
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
 		).resolves.toBe(cwdRegistry);
@@ -91,7 +91,7 @@ describe("registry/source", () => {
 		});
 
 		await expect(
-			resolveRegistrySource({
+			locateRegistry({
 				bundledRegistryPath: packagedRegistry,
 			}),
 		).resolves.toBe(packagedRegistry);
@@ -105,7 +105,7 @@ describe("registry/source", () => {
 		});
 
 		await expect(
-			resolveRegistrySource({
+			locateRegistry({
 				bundledRegistryPath: packagedRegistry,
 				fallbackRegistryPaths: [fallbackRegistry],
 			}),
@@ -119,7 +119,7 @@ describe("registry/source", () => {
 		});
 
 		await expect(
-			resolveRegistrySource({
+			locateRegistry({
 				bundledRegistryPath: "/bundle/registry.json",
 				fallbackRegistryPaths: [fallbackRegistry],
 			}),
@@ -130,7 +130,7 @@ describe("registry/source", () => {
 		vi.stubEnv("TUCKSHOP_REGISTRY", "https://example.com/env-registry.json");
 
 		await expect(
-			resolveRegistrySource({
+			locateRegistry({
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
 		).resolves.toBe("https://example.com/env-registry.json");
@@ -138,7 +138,7 @@ describe("registry/source", () => {
 
 	it("uses a saved registry config when flag and env are absent", async () => {
 		await expect(
-			resolveRegistrySource({
+			locateRegistry({
 				savedRegistry: "https://example.com/saved-registry.json",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
@@ -149,7 +149,7 @@ describe("registry/source", () => {
 		vi.stubEnv("TUCKSHOP_REGISTRY", "https://example.com/env-registry.json");
 
 		await expect(
-			resolveRegistrySource({
+			locateRegistry({
 				savedRegistry: "https://example.com/saved-registry.json",
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
@@ -160,7 +160,7 @@ describe("registry/source", () => {
 		vi.stubEnv("TUCKSHOP_REGISTRY", "https://example.com/env-registry.json");
 
 		await expect(
-			resolveRegistrySource({
+			locateRegistry({
 				registry: "https://example.com/flag-registry.json",
 				savedRegistry: "https://example.com/saved-registry.json",
 				bundledRegistryPath: "/bundle/registry.json",
@@ -178,7 +178,7 @@ describe("registry/source", () => {
 			return candidate === defaultBundledPath;
 		});
 
-		await expect(resolveRegistrySource()).resolves.toBe(defaultBundledPath);
+		await expect(locateRegistry()).resolves.toBe(defaultBundledPath);
 	});
 
 	it("defaults fallback registry paths relative to the workspace registry", async () => {
@@ -191,7 +191,7 @@ describe("registry/source", () => {
 		});
 
 		await expect(
-			resolveRegistrySource({
+			locateRegistry({
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
 		).resolves.toBe(defaultFallbackPath);
@@ -201,7 +201,7 @@ describe("registry/source", () => {
 		mockIsFileAsync.mockResolvedValue(false);
 
 		await expect(
-			resolveRegistrySource({
+			locateRegistry({
 				bundledRegistryPath: "/bundle/registry.json",
 			}),
 		).rejects.toThrow(

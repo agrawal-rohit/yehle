@@ -643,39 +643,58 @@ describe("core/schema", () => {
 			expect(parsed.files).toEqual([validFile()]);
 		});
 
-		it("rejects an item with neither files, variants, nor a handler", () => {
+		it("rejects an item with neither files, variants, nor install scripts", () => {
 			expect(
 				rejectMessage(registryItemSchema, validItem({ variants: [] })),
 			).toBe("missing_files_or_variants");
 		});
 
-		it("accepts a handler-only item without files or variants", () => {
+		it("accepts a script-only item without files or variants", () => {
 			const { variants: _variants, ...withoutVariants } = validItem();
 			expect(
 				registryItemSchema.parse({
 					...withoutVariants,
-					handler: "handler.ts",
+					beforeInstall: "handler.ts",
 				}),
 			).toEqual({
 				id: "button",
 				title: "Button",
 				description: "A button",
 				type: "component",
-				handler: "handler.ts",
+				beforeInstall: ["handler.ts"],
 			});
 		});
 
-		it("rejects absolute, URL, and parent-escape handler paths", () => {
+		it("accepts afterInstall-only script items without beforeInstall", () => {
 			const { variants: _variants, ...withoutVariants } = validItem();
-			for (const handler of [
+			expect(
+				registryItemSchema.parse({
+					...withoutVariants,
+					afterInstall: "cleanup.ts",
+				}),
+			).toEqual({
+				id: "button",
+				title: "Button",
+				description: "A button",
+				type: "component",
+				afterInstall: ["cleanup.ts"],
+			});
+		});
+
+		it("rejects absolute, URL, and parent-escape install script paths", () => {
+			const { variants: _variants, ...withoutVariants } = validItem();
+			for (const script of [
 				"/abs/handler.ts",
 				"https://evil.example/h.js",
 				"../evil.ts",
 				"r\\x.ts",
 			]) {
 				expect(
-					rejectMessage(registryItemSchema, { ...withoutVariants, handler }),
-				).toBe(`invalid_handler:${handler}`);
+					rejectMessage(registryItemSchema, {
+						...withoutVariants,
+						beforeInstall: script,
+					}),
+				).toBe(`invalid_script:${script}`);
 			}
 		});
 
@@ -684,7 +703,7 @@ describe("core/schema", () => {
 			expect(
 				registryItemSchema.parse({
 					...withoutVariants,
-					handler: "handler.ts",
+					beforeInstall: "handler.ts",
 					uses: ["authorName"],
 				}),
 			).toEqual({
@@ -692,13 +711,13 @@ describe("core/schema", () => {
 				title: "Button",
 				description: "A button",
 				type: "component",
-				handler: "handler.ts",
+				beforeInstall: ["handler.ts"],
 				uses: ["authorName"],
 			});
 			expect(
 				registryItemSchema.safeParse({
 					...withoutVariants,
-					handler: "handler.ts",
+					beforeInstall: "handler.ts",
 					conditions: ["authorName"],
 				}).success,
 			).toBe(false);
@@ -717,6 +736,33 @@ describe("core/schema", () => {
 			expect(
 				registryItemSchema.safeParse(validItem({ typo: true })).success,
 			).toBe(false);
+		});
+
+		it("keeps beforeInstall and afterInstall scripts and rejects duplicates", () => {
+			const { variants: _variants, ...withoutVariants } = validItem();
+			expect(
+				registryItemSchema.parse({
+					...withoutVariants,
+					files: [validFile()],
+					beforeInstall: ["handler.ts"],
+					afterInstall: ["./commit.ts"],
+					registryDependencies: ["shared"],
+				}),
+			).toMatchObject({
+				beforeInstall: ["handler.ts"],
+				afterInstall: ["./commit.ts"],
+				registryDependencies: ["shared"],
+			});
+			expect(
+				rejectMessage(
+					registryItemSchema,
+					validItem({
+						files: [validFile()],
+						variants: [],
+						beforeInstall: ["handler.ts", "handler.ts"],
+					}),
+				),
+			).toBe("duplicate_hook:beforeInstall:handler.ts");
 		});
 	});
 
@@ -805,7 +851,7 @@ describe("core/schema", () => {
 			});
 		});
 
-		it("rejects an item with neither source, variants, nor a handler", () => {
+		it("rejects an item with neither source, variants, nor install scripts", () => {
 			expect(
 				rejectMessage(catalogItemSchema, {
 					title: "Button",
@@ -815,21 +861,37 @@ describe("core/schema", () => {
 			).toBe("missing_source_or_variants");
 		});
 
-		it("accepts a handler-only catalog item", () => {
+		it("accepts a script-only catalog item", () => {
 			expect(
 				catalogItemSchema.parse({
 					title: "License",
 					description: "SPDX license",
 					type: "configuration",
-					handler: "r/license-configuration.handler.js",
+					beforeInstall: ["r/license-configuration.beforeInstall.0.js"],
 					uses: ["authorName"],
 				}),
 			).toEqual({
 				title: "License",
 				description: "SPDX license",
 				type: "configuration",
-				handler: "r/license-configuration.handler.js",
+				beforeInstall: ["r/license-configuration.beforeInstall.0.js"],
 				uses: ["authorName"],
+			});
+		});
+
+		it("accepts afterInstall-only catalog items", () => {
+			expect(
+				catalogItemSchema.parse({
+					title: "Cleanup",
+					description: "Post-install cleanup",
+					type: "configuration",
+					afterInstall: ["r/cleanup.afterInstall.0.js"],
+				}),
+			).toEqual({
+				title: "Cleanup",
+				description: "Post-install cleanup",
+				type: "configuration",
+				afterInstall: ["r/cleanup.afterInstall.0.js"],
 			});
 		});
 

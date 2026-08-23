@@ -69,7 +69,7 @@ describe("cli/errors", () => {
 		expect(isErrnoCode(undefined, "ENOENT")).toBe(false);
 	});
 
-	test("runCliCommand resolves when the action succeeds", async () => {
+	test("runCliCommand succeeds when the action succeeds", async () => {
 		await expect(runCliCommand(async () => {})).resolves.toBeUndefined();
 		expect(processExitSpy).not.toHaveBeenCalled();
 	});

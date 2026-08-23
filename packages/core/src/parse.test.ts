@@ -114,7 +114,7 @@ describe("registry/parse", () => {
 				}),
 			),
 		).toThrow(
-			'Registry items["button"] must declare source, a handler, or at least one variant.',
+			'Registry items["button"] must declare source, an install script (beforeInstall/afterInstall), or at least one variant.',
 		);
 	});
 
@@ -606,7 +606,7 @@ describe("registry/parse", () => {
 								description: "License file",
 								uses: ["authorName"],
 								variants: undefined,
-								handler: "r/license.handler.js",
+								beforeInstall: ["r/license.beforeInstall.0.js"],
 							}),
 						},
 					}),
@@ -718,7 +718,7 @@ describe("registry/parse", () => {
 			);
 		});
 
-		it("rejects unsafe handler paths", () => {
+		it("rejects unsafe install script paths", () => {
 			expect(() =>
 				parseWithSchema(
 					registryItemSchema,
@@ -727,17 +727,17 @@ describe("registry/parse", () => {
 						title: "License",
 						description: "License",
 						type: "configuration",
-						handler: "/abs/handler.ts",
+						beforeInstall: "/abs/handler.ts",
 						files: [{ source: "a.txt", target: "a.txt" }],
 					},
 					"Registry item",
 				),
 			).toThrow(
-				'Registry item.handler must be a relative path under the registry (no absolute paths, URLs, or "..").',
+				'Registry item.beforeInstall must be a relative path under the registry (no absolute paths, URLs, or "..").',
 			);
 		});
 
-		it("rejects items with neither files, handler, nor variants", () => {
+		it("rejects items with neither files, install scripts, nor variants", () => {
 			expect(() =>
 				parseWithSchema(
 					registryItemSchema,
@@ -750,7 +750,26 @@ describe("registry/parse", () => {
 					"Registry item",
 				),
 			).toThrow(
-				"Registry item must declare files, a handler, or at least one variant.",
+				"Registry item must declare files, an install script (beforeInstall/afterInstall), or at least one variant.",
+			);
+		});
+
+		it("rejects duplicate install scripts with a readable message", () => {
+			expect(() =>
+				parseWithSchema(
+					registryItemSchema,
+					{
+						id: "license",
+						title: "License",
+						description: "License",
+						type: "configuration",
+						files: [{ source: "a.txt", target: "a.txt" }],
+						afterInstall: ["cleanup.ts", "cleanup.ts"],
+					},
+					"Registry item",
+				),
+			).toThrow(
+				'Registry item lists "cleanup.ts" more than once in afterInstall.',
 			);
 		});
 

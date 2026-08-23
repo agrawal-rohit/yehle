@@ -50,14 +50,18 @@ function messageForCustomIssue(
 		"duplicate:": (value) => `${label} has duplicate value "${value}".`,
 		"duplicate_variant:": (value) =>
 			`${label} has duplicate variant id "${value}".`,
+		"duplicate_hook:": (value) => {
+			const [listName, entry] = value.split(":");
+			return `${label} lists "${entry}" more than once in ${listName}.`;
+		},
 		"invalid_id:": () =>
 			String.raw`${fieldLabel} must be a single path segment (no "/", "\", or "..").`,
-		"invalid_handler:": () =>
+		"invalid_script:": () =>
 			`${fieldLabel} must be a relative path under the registry (no absolute paths, URLs, or "..").`,
 		missing_files_or_variants: () =>
-			`${label} must declare files, a handler, or at least one variant.`,
+			`${label} must declare files, an install script (beforeInstall/afterInstall), or at least one variant.`,
 		missing_source_or_variants: () =>
-			`${label} must declare source, a handler, or at least one variant.`,
+			`${label} must declare source, an install script (beforeInstall/afterInstall), or at least one variant.`,
 		source_with_variants: () =>
 			`${label} cannot declare source together with variants.`,
 		select_requires_values: () => `${label} must declare at least one value.`,

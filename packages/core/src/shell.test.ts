@@ -60,7 +60,7 @@ describe("core/shell", () => {
 	});
 
 	describe("runAsync", () => {
-		it("uses spawn and resolves trimmed stdout when stdio is pipe (default)", async () => {
+		it("uses spawn and returns trimmed stdout when stdio is pipe (default)", async () => {
 			const fakeChild = {
 				stdout: {
 					on: (event: string, handler: (data: string) => void) => {
@@ -189,7 +189,7 @@ describe("core/shell", () => {
 			).rejects.toThrowError("Command failed: bad-pipe (exit 1)");
 		});
 
-		it("uses spawn and resolves empty string when stdio is ignore", async () => {
+		it("uses spawn and returns empty string when stdio is ignore", async () => {
 			const fakeChild = {
 				on: vi.fn(),
 			};
@@ -269,7 +269,7 @@ describe("core/shell", () => {
 			).rejects.toThrowError("Command failed: bad-ignore (exit 3)");
 		});
 
-		it("uses spawn and resolves empty string when stdio is inherit and exit code is 0", async () => {
+		it("uses spawn and returns empty string when stdio is inherit and exit code is 0", async () => {
 			const fakeChild = {
 				on: vi.fn(),
 			};

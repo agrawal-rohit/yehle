@@ -33,7 +33,6 @@ export default defineConfig({
 				"packages/registry/scripts/**",
 				"**/docs/**",
 				"**/stryker.config.mjs",
-				"packages/core/src/handlers.ts",
 			],
 		},
 	},

@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	assertSafeRemoteUrl,
 	isAbsoluteHttpUrl,
+	joinCatalogSource,
 	joinRelativePathUnderRoot,
 	publishedRegistryUrl,
-	resolveRegistryPayload,
 } from "./urls";
 
 describe("isAbsoluteHttpUrl", () => {
@@ -151,10 +151,10 @@ describe("publishedRegistryUrl", () => {
 	});
 });
 
-describe("resolveRegistryPayload", () => {
+describe("joinCatalogSource", () => {
 	it("passes absolute payload URLs through unchanged", () => {
 		expect(
-			resolveRegistryPayload(
+			joinCatalogSource(
 				"https://example.com/registry.json",
 				"https://cdn.example.com/payloads/button.json",
 			),
@@ -163,66 +163,63 @@ describe("resolveRegistryPayload", () => {
 
 	it("trims whitespace before treating a source as an absolute URL", () => {
 		expect(
-			resolveRegistryPayload(
+			joinCatalogSource(
 				"/tmp/my-registry/registry.json",
 				"  https://cdn.example.com/payloads/button.json  ",
 			),
 		).toBe("https://cdn.example.com/payloads/button.json");
 	});
 
-	it("resolves relative payloads against an http(s) catalog URL", () => {
+	it("joins relative payloads against an http(s) catalog URL", () => {
 		expect(
-			resolveRegistryPayload(
+			joinCatalogSource(
 				"https://example.com/reg/registry.json",
 				"r/button/react.json",
 			),
 		).toBe("https://example.com/reg/r/button/react.json");
 	});
 
-	it("resolves relative payloads against a local catalog path", () => {
+	it("joins relative payloads against a local catalog path", () => {
 		const catalog = "/tmp/my-registry/registry.json";
-		expect(resolveRegistryPayload(catalog, "r/button/react.json")).toBe(
+		expect(joinCatalogSource(catalog, "r/button/react.json")).toBe(
 			"/tmp/my-registry/r/button/react.json",
 		);
 	});
 
 	it("rejects local path traversal", () => {
 		expect(() =>
-			resolveRegistryPayload(
-				"/tmp/my-registry/registry.json",
-				"../secret.json",
-			),
+			joinCatalogSource("/tmp/my-registry/registry.json", "../secret.json"),
 		).toThrow('Registry file source "../secret.json" must be a relative path');
 	});
 
 	it("rejects an empty file source", () => {
 		expect(() =>
-			resolveRegistryPayload("/tmp/my-registry/registry.json", "   "),
+			joinCatalogSource("/tmp/my-registry/registry.json", "   "),
 		).toThrow("Registry file source must not be empty.");
 	});
 
 	it("rejects an empty catalog location", () => {
-		expect(() => resolveRegistryPayload("  ", "r/button/react.json")).toThrow(
+		expect(() => joinCatalogSource("  ", "r/button/react.json")).toThrow(
 			"Registry catalog location must not be empty.",
 		);
 	});
 
 	it("rejects absolute local source paths", () => {
 		expect(() =>
-			resolveRegistryPayload("/tmp/my-registry/registry.json", "/etc/passwd"),
+			joinCatalogSource("/tmp/my-registry/registry.json", "/etc/passwd"),
 		).toThrow(
 			'Registry file source "/etc/passwd" must be a relative path under the catalog directory.',
 		);
 	});
 
-	it("rejects sources that escape the catalog directory after resolution", () => {
+	it("rejects sources that escape the catalog directory after joining", () => {
 		const relativeSpy = vi
 			.spyOn(path, "relative")
 			.mockReturnValueOnce("../escaped.json");
 
 		try {
 			expect(() =>
-				resolveRegistryPayload(
+				joinCatalogSource(
 					"/tmp/my-registry/registry.json",
 					"r/button/react.json",
 				),
@@ -234,14 +231,14 @@ describe("resolveRegistryPayload", () => {
 		}
 	});
 
-	it("rejects sources whose resolved relative path is absolute", () => {
+	it("rejects sources whose joined relative path is absolute", () => {
 		const relativeSpy = vi
 			.spyOn(path, "relative")
 			.mockReturnValueOnce("/absolute/escape.json");
 
 		try {
 			expect(() =>
-				resolveRegistryPayload(
+				joinCatalogSource(
 					"/tmp/my-registry/registry.json",
 					"r/button/react.json",
 				),

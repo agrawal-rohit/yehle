@@ -1,14 +1,15 @@
 import {
+	buildInstallPlan,
 	type HandlerRuntime,
+	type InstallNode,
 	parseWithSchema,
 	type Registry,
 	type RegistryContext,
 	type RegistryEcosystemDependencies,
 	type RegistryPayload,
-	type ResolvedRegistryItem,
 	registryPayloadSchema,
-	resolveInstallPlan,
-	runItemHandler,
+	runAfterInstallHook,
+	runBeforeInstallHook,
 } from "@tuckshop/core";
 import chalk from "chalk";
 import { defaultText, primaryText } from "../cli/labels";
@@ -36,6 +37,12 @@ interface PreparedInstallItem {
 	label: string;
 	/** Validated install payload. */
 	payload: RegistryPayload;
+}
+
+/** Prepared install item paired with its install-plan node. */
+interface InstallPlanItem extends PreparedInstallItem {
+	/** Install node from the plan. */
+	node: InstallNode;
 }
 
 /**
@@ -76,20 +83,21 @@ async function promptForItems(registry: Registry): Promise<string[]> {
 
 /**
  * Parse fetched payload documents into labeled install units.
- * @param planItems - Ordered install nodes from the resolved plan.
+ * @param planItems - Ordered install nodes from the install plan.
  * @param registry - Loaded registry catalog for display titles.
  * @param payloadDocuments - Raw payload documents keyed by source URI.
- * @returns Prepared items ready for handler hooks, overwrite checks, and writes.
+ * @returns Prepared items ready for lifecycle scripts, overwrite checks, and writes.
  * @throws Error when a planned source is missing from the fetched documents.
  */
 function prepareInstallItems(
-	planItems: ResolvedRegistryItem[],
+	planItems: InstallNode[],
 	registry: Registry,
 	payloadDocuments: Map<string, unknown>,
-): Array<PreparedInstallItem & { node: ResolvedRegistryItem }> {
+): InstallPlanItem[] {
 	return planItems.map((node) => {
 		const label = registry.items[node.itemId]?.title ?? node.itemId;
 
+		// If the item has no source, it's an item with only scripts.
 		if (!node.source)
 			return {
 				label,
@@ -116,52 +124,81 @@ function prepareInstallItems(
 }
 
 /**
- * Run item handlers to transform payloads before overwrite checks.
+ * Run `beforeInstall` scripts for install items in plan order.
  * @param catalogLocation - Absolute path or HTTPS URL of the catalog document.
  * @param runtime - Shared handler runtime.
  * @param conditions - Resolved condition context.
- * @param preparedItems - Parsed payloads with plan nodes.
- * @returns Prepared items with post-handler file lists.
+ * @param installItems - Prepared install items with plan nodes.
+ * @returns Updated items and merged variables.
  */
-async function applyItemHandlers(
+async function runBeforeInstallScripts(
 	catalogLocation: string,
 	runtime: HandlerRuntime,
 	conditions: RegistryContext,
-	preparedItems: Array<PreparedInstallItem & { node: ResolvedRegistryItem }>,
-): Promise<PreparedInstallItem[]> {
+	installItems: InstallPlanItem[],
+): Promise<{ items: InstallPlanItem[]; variables: Record<string, string> }> {
 	const variables: Record<string, string> = {};
-	const result: PreparedInstallItem[] = [];
+	const result: InstallPlanItem[] = [];
 
-	for (const item of preparedItems) {
-		if (!item.node.handler) {
-			result.push({ label: item.label, payload: item.payload });
-			continue;
+	for (const item of installItems) {
+		let files = [...item.payload.files];
+		for (const scriptUri of item.node.beforeInstallScripts ?? []) {
+			const hookResult = await runBeforeInstallHook(
+				catalogLocation,
+				scriptUri,
+				runtime,
+				{
+					itemId: item.node.itemId,
+					...(item.node.variantId ? { variantId: item.node.variantId } : {}),
+					conditions,
+					variables,
+					payload: item.payload,
+					files,
+				},
+			);
+			Object.assign(variables, hookResult.variables);
+			files = hookResult.files;
 		}
 
-		const handled = await runItemHandler(
-			catalogLocation,
-			item.node.handler,
-			runtime,
-			{
+		result.push({
+			...item,
+			payload: {
+				...item.payload,
+				files,
+			},
+		});
+	}
+
+	return { items: result, variables };
+}
+
+/**
+ * Run `afterInstall` scripts for install items in plan order.
+ * @param catalogLocation - Absolute path or HTTPS URL of the catalog document.
+ * @param runtime - Shared handler runtime.
+ * @param conditions - Resolved condition context.
+ * @param installItems - Prepared install items with plan nodes.
+ * @param variables - Variables collected during beforeInstall.
+ */
+async function runAfterInstallScripts(
+	catalogLocation: string,
+	runtime: HandlerRuntime,
+	conditions: RegistryContext,
+	installItems: InstallPlanItem[],
+	variables: Record<string, string>,
+): Promise<void> {
+	for (const item of installItems) {
+		for (const scriptUri of item.node.afterInstallScripts ?? []) {
+			await runAfterInstallHook(catalogLocation, scriptUri, runtime, {
 				itemId: item.node.itemId,
 				...(item.node.variantId ? { variantId: item.node.variantId } : {}),
 				conditions,
 				variables,
 				payload: item.payload,
-			},
-		);
-
-		Object.assign(variables, handled.variables);
-		result.push({
-			label: item.label,
-			payload: {
-				...item.payload,
-				files: handled.files,
-			},
-		});
+				files: item.payload.files,
+			});
+		}
 	}
-
-	return result;
 }
 
 /**
@@ -212,14 +249,14 @@ export async function addCommand(
 		items,
 		runtime,
 	);
-	const plan = resolveInstallPlan(items, registry.items, conditions);
-	if (plan.items.length === 0)
+	const plan = buildInstallPlan(items, registry.items, conditions);
+	if (plan.length === 0)
 		throw new Error("No registry items were selected for installation.");
 
 	console.log();
 
 	let payloadDocuments = new Map<string, unknown>();
-	const payloadSources = plan.items
+	const payloadSources = plan
 		.map((node) => node.source)
 		.filter((source): source is string => Boolean(source));
 
@@ -231,36 +268,38 @@ export async function addCommand(
 			);
 		});
 
-	const preparedWithNodes = prepareInstallItems(
-		plan.items,
-		registry,
-		payloadDocuments,
-	);
-	const preparedItems = await applyItemHandlers(
+	const preparedItems = prepareInstallItems(plan, registry, payloadDocuments);
+	const { items: installItems, variables } = await runBeforeInstallScripts(
 		catalogLocation,
 		runtime,
 		conditions,
-		preparedWithNodes,
+		preparedItems,
 	);
 	await confirmFileOverwrites(
 		projectDir,
-		preparedItems.map((item) => item.payload),
+		installItems.map((item) => item.payload),
 		options.overwrite === true,
 	);
 
 	const packageDeclarations = await writePreparedItems(
 		projectDir,
-		preparedItems,
+		installItems,
+	);
+	await runAfterInstallScripts(
+		catalogLocation,
+		runtime,
+		conditions,
+		installItems,
+		variables,
 	);
 	const pendingInstallCommands = await installDeclaredPackages(
 		packageDeclarations,
 		projectDir,
 	);
 
-	// Print install summary
-	const itemWord = preparedItems.length === 1 ? "item" : "items";
+	const itemWord = installItems.length === 1 ? "item" : "items";
 	console.log();
-	console.log(defaultText(`Installed ${preparedItems.length} ${itemWord}.`));
+	console.log(defaultText(`Installed ${installItems.length} ${itemWord}.`));
 
 	if (pendingInstallCommands.length > 0) {
 		console.log();

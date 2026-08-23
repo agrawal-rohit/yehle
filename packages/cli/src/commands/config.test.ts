@@ -43,25 +43,25 @@ describe("commands/config", () => {
 	describe("configSetCommand / configGetCommand / configUnsetCommand", () => {
 		it("sets, gets, and unsets a registry URL", async () => {
 			const root = await makeTempRoot();
-			const options = { env: { XDG_CONFIG_HOME: root } };
+			const env = { XDG_CONFIG_HOME: root };
 			const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-			await configSetCommand("https://example.com/registry.json", options);
+			await configSetCommand("https://example.com/registry.json", env);
 
-			await configGetCommand(options);
+			await configGetCommand(env);
 
 			const output = logSpy.mock.calls.map((call) => call.join(" ")).join("\n");
 			expect(output).toContain("Configuration");
 			expect(output).toContain("https://example.com/registry.json");
 			expect(output).toContain(path.join(root, "tuckshop", "config.json"));
 
-			await expect(configUnsetCommand(options)).resolves.toBe(true);
-			await expect(configUnsetCommand(options)).resolves.toBe(false);
+			await expect(configUnsetCommand(env)).resolves.toBe(true);
+			await expect(configUnsetCommand(env)).resolves.toBe(false);
 		});
 
 		it("persists a local path as absolute from the set-time cwd", async () => {
 			const root = await makeTempRoot();
-			const options = { env: { XDG_CONFIG_HOME: root } };
+			const env = { XDG_CONFIG_HOME: root };
 			const registryFile = path.join(root, "registry.json");
 			await fs.promises.writeFile(registryFile, "{}\n");
 			const workDir = path.join(root, "workdir");
@@ -70,7 +70,7 @@ describe("commands/config", () => {
 			vi.spyOn(console, "log").mockImplementation(() => {});
 
 			const relative = path.relative(workDir, registryFile);
-			await configSetCommand(relative, options);
+			await configSetCommand(relative, env);
 
 			const saved = JSON.parse(
 				await fs.promises.readFile(
@@ -84,44 +84,41 @@ describe("commands/config", () => {
 
 		it("rejects HTTP URLs", async () => {
 			const root = await makeTempRoot();
-			const options = { env: { XDG_CONFIG_HOME: root } };
+			const env = { XDG_CONFIG_HOME: root };
 			vi.spyOn(console, "log").mockImplementation(() => {});
 
 			await expect(
-				configSetCommand("http://example.com/registry.json", options),
+				configSetCommand("http://example.com/registry.json", env),
 			).rejects.toThrow("Remote registries must use HTTPS");
 		});
 
 		it("rejects localhost registry URLs", async () => {
 			const root = await makeTempRoot();
-			const options = { env: { XDG_CONFIG_HOME: root } };
+			const env = { XDG_CONFIG_HOME: root };
 			vi.spyOn(console, "log").mockImplementation(() => {});
 
 			await expect(
-				configSetCommand("https://localhost/registry.json", options),
+				configSetCommand("https://localhost/registry.json", env),
 			).rejects.toThrow("Remote registries cannot target localhost.");
 		});
 
 		it("rejects registry URLs with credentials", async () => {
 			const root = await makeTempRoot();
-			const options = { env: { XDG_CONFIG_HOME: root } };
+			const env = { XDG_CONFIG_HOME: root };
 			vi.spyOn(console, "log").mockImplementation(() => {});
 
 			await expect(
-				configSetCommand(
-					"https://user:secret@example.com/registry.json",
-					options,
-				),
+				configSetCommand("https://user:secret@example.com/registry.json", env),
 			).rejects.toThrow("Remote registries must not include credentials.");
 		});
 
 		it("prompts for a source when omitted", async () => {
 			const root = await makeTempRoot();
-			const options = { env: { XDG_CONFIG_HOME: root } };
+			const env = { XDG_CONFIG_HOME: root };
 			vi.spyOn(console, "log").mockImplementation(() => {});
 			mockTextInput.mockResolvedValue("https://example.com/prompted.json");
 
-			await configSetCommand(undefined, options);
+			await configSetCommand(undefined, env);
 
 			expect(mockTextInput).toHaveBeenCalledWith(
 				"Registry URL or local path",
@@ -141,52 +138,52 @@ describe("commands/config", () => {
 
 		it("prompts for a source when the provided value is whitespace", async () => {
 			const root = await makeTempRoot();
-			const options = { env: { XDG_CONFIG_HOME: root } };
+			const env = { XDG_CONFIG_HOME: root };
 			vi.spyOn(console, "log").mockImplementation(() => {});
 			mockTextInput.mockResolvedValue("https://example.com/prompted.json");
 
-			await configSetCommand("   ", options);
+			await configSetCommand("   ", env);
 
 			expect(mockTextInput).toHaveBeenCalled();
 		});
 
 		it("rejects invalid sources without writing config", async () => {
 			const root = await makeTempRoot();
-			const options = { env: { XDG_CONFIG_HOME: root } };
+			const env = { XDG_CONFIG_HOME: root };
 			vi.spyOn(console, "log").mockImplementation(() => {});
 			mockTextInput.mockResolvedValue("");
 
-			await expect(configSetCommand(undefined, options)).rejects.toThrow(
+			await expect(configSetCommand(undefined, env)).rejects.toThrow(
 				"Registry source must not be empty.",
 			);
 
-			await expect(configSetCommand("./nope.json", options)).rejects.toThrow(
+			await expect(configSetCommand("./nope.json", env)).rejects.toThrow(
 				"does not exist",
 			);
 
-			await expect(configGetCommand({ ...options })).resolves.toBeUndefined();
+			await expect(configGetCommand({ ...env })).resolves.toBeUndefined();
 		});
 
-		it("rejects a local path that resolves to a directory", async () => {
+		it("rejects a local path that is a directory", async () => {
 			const root = await makeTempRoot();
-			const options = { env: { XDG_CONFIG_HOME: root } };
+			const env = { XDG_CONFIG_HOME: root };
 			const registryDir = path.join(root, "registry-dir");
 			await fs.promises.mkdir(registryDir);
 			vi.spyOn(console, "log").mockImplementation(() => {});
 
-			await expect(configSetCommand(registryDir, options)).rejects.toThrow(
+			await expect(configSetCommand(registryDir, env)).rejects.toThrow(
 				/is not a file/,
 			);
 
-			await expect(configGetCommand({ ...options })).resolves.toBeUndefined();
+			await expect(configGetCommand({ ...env })).resolves.toBeUndefined();
 		});
 
 		it("prints the default registry URL when none is saved", async () => {
 			const root = await makeTempRoot();
-			const options = { env: { XDG_CONFIG_HOME: root } };
+			const env = { XDG_CONFIG_HOME: root };
 			const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-			await configGetCommand(options);
+			await configGetCommand(env);
 
 			const output = logSpy.mock.calls.map((call) => call.join(" ")).join("\n");
 			expect(output).toMatch(
@@ -197,13 +194,13 @@ describe("commands/config", () => {
 
 		it("prints the default registry URL after unset", async () => {
 			const root = await makeTempRoot();
-			const options = { env: { XDG_CONFIG_HOME: root } };
+			const env = { XDG_CONFIG_HOME: root };
 			const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-			await configSetCommand("https://example.com/registry.json", options);
+			await configSetCommand("https://example.com/registry.json", env);
 			logSpy.mockClear();
 
-			await expect(configUnsetCommand(options)).resolves.toBe(true);
+			await expect(configUnsetCommand(env)).resolves.toBe(true);
 
 			const output = logSpy.mock.calls.map((call) => call.join(" ")).join("\n");
 			expect(output).not.toContain("Restored the default registry.");

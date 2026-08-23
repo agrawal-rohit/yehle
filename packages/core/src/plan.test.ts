@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { RegistryConditionKind } from "./condition-kind";
 import {
 	assumeContextFromSelectedItems,
+	buildInstallPlan,
 	collectRegistryDependencies,
 	collectRequiredConditions,
 	parseItemId,
-	resolveInstallPlan,
 	selectRegistryVariant,
 	whenMatchesContext,
 } from "./plan";
@@ -79,35 +79,35 @@ describe("core/plan", () => {
 			});
 		});
 
-		it("returns source and/or handler for a variant-less item", () => {
+		it("returns source and/or install scripts for a variant-less item", () => {
 			expect(
 				selectRegistryVariant(
 					"item",
 					makeItem({
 						source: "r/item.json",
-						handler: "r/item.handler.js",
+						beforeInstall: ["r/item.beforeInstall.0.js"],
 					}),
 					{},
 				),
 			).toEqual({
 				source: "r/item.json",
-				handler: "r/item.handler.js",
+				beforeInstallScripts: ["r/item.beforeInstall.0.js"],
 			});
 		});
 
-		it("returns handler only when a variant-less item has no payload source", () => {
+		it("returns install scripts only when a variant-less item has no payload source", () => {
 			expect(
 				selectRegistryVariant(
 					"item",
-					makeItem({ handler: "r/item.handler.js" }),
+					makeItem({ beforeInstall: ["r/item.beforeInstall.0.js"] }),
 					{},
 				),
-			).toEqual({ handler: "r/item.handler.js" });
+			).toEqual({ beforeInstallScripts: ["r/item.beforeInstall.0.js"] });
 		});
 
-		it("includes an item-level handler on a matched variant", () => {
+		it("includes item-level install scripts on a matched variant", () => {
 			const item = makeItem({
-				handler: "r/item.handler.js",
+				beforeInstall: ["r/item.beforeInstall.0.js"],
 				variants: [
 					makeVariant({
 						id: "default",
@@ -120,7 +120,30 @@ describe("core/plan", () => {
 			expect(selectRegistryVariant("item", item, {})).toEqual({
 				variantId: "default",
 				source: "r/item/default.json",
-				handler: "r/item.handler.js",
+				beforeInstallScripts: ["r/item.beforeInstall.0.js"],
+			});
+		});
+
+		it("stacks item-level and selected-variant install scripts", () => {
+			const item = makeItem({
+				beforeInstall: ["r/item.beforeInstall.0.js"],
+				variants: [
+					makeVariant({
+						id: "typescript",
+						title: "TypeScript",
+						source: "r/item/typescript.json",
+						beforeInstall: ["r/item/typescript.beforeInstall.0.js"],
+					}),
+				],
+			});
+
+			expect(selectRegistryVariant("item", item, {})).toEqual({
+				variantId: "typescript",
+				source: "r/item/typescript.json",
+				beforeInstallScripts: [
+					"r/item.beforeInstall.0.js",
+					"r/item/typescript.beforeInstall.0.js",
+				],
 			});
 		});
 
@@ -166,9 +189,9 @@ describe("core/plan", () => {
 			);
 		});
 
-		it("rejects a variant-less item with neither source nor handler", () => {
+		it("rejects a variant-less item with neither source nor install phases", () => {
 			expect(() => selectRegistryVariant("item", makeItem(), {})).toThrow(
-				"missing a payload source or handler",
+				"missing a payload source or install phase",
 			);
 		});
 
@@ -256,7 +279,7 @@ describe("core/plan", () => {
 		});
 	});
 
-	describe("resolveInstallPlan", () => {
+	describe("buildInstallPlan", () => {
 		it("orders dependencies depth-first and deduplicates shared deps", () => {
 			const shared = makeItem({ source: "r/shared.json" });
 			const root = makeItem({
@@ -264,25 +287,52 @@ describe("core/plan", () => {
 				registryDependencies: ["shared"],
 			});
 
-			const plan = resolveInstallPlan(["root"], { root, shared }, {});
+			const plan = buildInstallPlan(["root"], { root, shared }, {});
 
-			expect(plan.items.map((node) => node.itemId)).toEqual(["shared", "root"]);
+			expect(plan.map((node) => node.itemId)).toEqual(["shared", "root"]);
+		});
+
+		it("walks item-level and selected-variant registryDependencies", () => {
+			const shared = makeItem({ source: "r/shared.json" });
+			const eslint = makeItem({ source: "r/eslint.json" });
+			const item = makeItem({
+				registryDependencies: ["shared"],
+				variants: [
+					makeVariant({
+						id: "typescript",
+						title: "TypeScript",
+						source: "r/item/typescript.json",
+						registryDependencies: ["eslint"],
+					}),
+				],
+			});
+
+			expect(
+				buildInstallPlan(["item"], { item, shared, eslint }, {}).map(
+					(node) => node.itemId,
+				),
+			).toEqual(["shared", "eslint", "item"]);
 		});
 
 		it("throws when a selected item is missing from the catalog", () => {
-			expect(() => resolveInstallPlan(["missing"], {}, {})).toThrow(
+			expect(() => buildInstallPlan(["missing"], {}, {})).toThrow(
 				'Registry item not found: "missing"',
 			);
 		});
 
-		it("includes handler-only items without a payload source", () => {
-			const license = makeItem({ handler: "r/license.handler.js" });
-			expect(resolveInstallPlan(["license"], { license }, {})).toEqual({
-				items: [{ itemId: "license", handler: "r/license.handler.js" }],
+		it("includes script-only items without a payload source", () => {
+			const license = makeItem({
+				beforeInstall: ["r/license.beforeInstall.0.js"],
 			});
+			expect(buildInstallPlan(["license"], { license }, {})).toEqual([
+				{
+					itemId: "license",
+					beforeInstallScripts: ["r/license.beforeInstall.0.js"],
+				},
+			]);
 		});
 
-		it("records selected variant id and source on resolved items", () => {
+		it("records selected variant id and source on planned items", () => {
 			const item = makeItem({
 				variants: [
 					makeVariant({
@@ -295,16 +345,14 @@ describe("core/plan", () => {
 			});
 
 			expect(
-				resolveInstallPlan(["item"], { item }, { language: "typescript" }),
-			).toEqual({
-				items: [
-					{
-						itemId: "item",
-						variantId: "typescript",
-						source: "r/item/typescript.json",
-					},
-				],
-			});
+				buildInstallPlan(["item"], { item }, { language: "typescript" }),
+			).toEqual([
+				{
+					itemId: "item",
+					variantId: "typescript",
+					source: "r/item/typescript.json",
+				},
+			]);
 		});
 
 		it("detects dependency cycles", () => {
@@ -317,7 +365,7 @@ describe("core/plan", () => {
 				registryDependencies: ["a"],
 			});
 
-			expect(() => resolveInstallPlan(["a"], { a, b }, {})).toThrow(
+			expect(() => buildInstallPlan(["a"], { a, b }, {})).toThrow(
 				"dependency cycle",
 			);
 		});
@@ -333,16 +381,12 @@ describe("core/plan", () => {
 				registryDependencies: ["shared"],
 			});
 
-			const plan = resolveInstallPlan(["a", "b"], { a, b, shared }, {});
+			const plan = buildInstallPlan(["a", "b"], { a, b, shared }, {});
 
-			expect(plan.items.map((node) => node.itemId)).toEqual([
-				"shared",
-				"a",
-				"b",
-			]);
+			expect(plan.map((node) => node.itemId)).toEqual(["shared", "a", "b"]);
 		});
 
-		it("throws when the same item resolves to conflicting variants across selections", () => {
+		it("throws when the same item selects conflicting variants across selections", () => {
 			const shared = makeItem({
 				variants: [
 					makeVariant({
@@ -368,9 +412,9 @@ describe("core/plan", () => {
 				registryDependencies: ["shared@python"],
 			});
 
-			expect(() =>
-				resolveInstallPlan(["a", "b"], { a, b, shared }, {}),
-			).toThrow("conflicting variants");
+			expect(() => buildInstallPlan(["a", "b"], { a, b, shared }, {})).toThrow(
+				"conflicting variants",
+			);
 		});
 
 		it("allows revisiting a shared dependency with the same pinned variant", () => {
@@ -399,21 +443,108 @@ describe("core/plan", () => {
 				registryDependencies: ["shared@typescript"],
 			});
 
-			const plan = resolveInstallPlan(["a", "b"], { a, b, shared }, {});
+			const plan = buildInstallPlan(["a", "b"], { a, b, shared }, {});
 
-			expect(plan.items.map((node) => node.itemId)).toEqual([
-				"shared",
-				"a",
-				"b",
-			]);
-			expect(plan.items[0]).toMatchObject({
+			expect(plan.map((node) => node.itemId)).toEqual(["shared", "a", "b"]);
+			expect(plan[0]).toMatchObject({
 				itemId: "shared",
 				variantId: "typescript",
 			});
 		});
+
+		it("treats phase lists as this item's scripts, not other registry items", () => {
+			expect(
+				selectRegistryVariant(
+					"template",
+					makeItem({
+						beforeInstall: ["r/template.beforeInstall.0.js"],
+						afterInstall: ["r/template.afterInstall.0.js"],
+					}),
+					{},
+				),
+			).toEqual({
+				beforeInstallScripts: ["r/template.beforeInstall.0.js"],
+				afterInstallScripts: ["r/template.afterInstall.0.js"],
+			});
+		});
+
+		it("orders registryDependencies before the consumer and ignores phase item-like names", () => {
+			const license = makeItem({ source: "r/license.json" });
+			const gitInit = makeItem({
+				afterInstall: ["r/git-init.afterInstall.0.js"],
+			});
+			const template = makeItem({
+				source: "r/template.json",
+				beforeInstall: ["r/template.beforeInstall.0.js"],
+				registryDependencies: ["license", "git-init"],
+			});
+
+			const plan = buildInstallPlan(
+				["template"],
+				{ template, license, "git-init": gitInit },
+				{},
+			);
+
+			expect(plan.map((node) => node.itemId)).toEqual([
+				"license",
+				"git-init",
+				"template",
+			]);
+			expect(plan[2]).toMatchObject({
+				itemId: "template",
+				beforeInstallScripts: ["r/template.beforeInstall.0.js"],
+			});
+		});
+
+		it("places a shared registryDependency once before every consumer", () => {
+			const gitInit = makeItem({
+				afterInstall: ["r/git-init.afterInstall.0.js"],
+			});
+			const left = makeItem({
+				source: "r/left.json",
+				registryDependencies: ["git-init"],
+			});
+			const right = makeItem({
+				source: "r/right.json",
+				registryDependencies: ["git-init"],
+			});
+
+			const plan = buildInstallPlan(
+				["left", "right"],
+				{ left, right, "git-init": gitInit },
+				{},
+			);
+
+			expect(plan.map((node) => node.itemId)).toEqual([
+				"git-init",
+				"left",
+				"right",
+			]);
+		});
 	});
 
 	describe("collectRegistryDependencies", () => {
+		it("walks registryDependencies and ignores install-phase scripts", () => {
+			const gitInit = makeItem({
+				afterInstall: ["r/git-init.afterInstall.0.js"],
+			});
+			const template = makeItem({
+				source: "r/template.json",
+				registryDependencies: ["git-init"],
+				afterInstall: ["r/template.afterInstall.0.js"],
+			});
+
+			const dependencies = collectRegistryDependencies(["template"], {
+				template,
+				"git-init": gitInit,
+			});
+
+			expect(dependencies.map((entry) => entry.itemId)).toEqual([
+				"template",
+				"git-init",
+			]);
+		});
+
 		it("includes selected items and walks registryDependencies from all variants", () => {
 			const setup = makeItem({
 				variants: [
@@ -483,7 +614,7 @@ describe("core/plan", () => {
 	});
 
 	describe("collectRequiredConditions", () => {
-		it("returns unresolved keys with intersected prompt values", () => {
+		it("returns missing keys with intersected prompt values", () => {
 			const item = makeItem({
 				variants: [
 					makeVariant({

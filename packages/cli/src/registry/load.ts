@@ -2,12 +2,12 @@ import {
 	assertSafeRemoteUrl,
 	InvalidJsonError,
 	isAbsoluteHttpUrl,
+	joinCatalogSource,
 	parseRegistryDocument,
 	type Registry,
 	readJsonFileAsync,
-	resolveRegistryPayload,
 } from "@tuckshop/core";
-import { resolveRegistrySource } from "./source";
+import { locateRegistry } from "./source";
 
 /** Parsed registry catalog paired with the location it was loaded from. */
 export interface LoadedRegistry {
@@ -110,13 +110,13 @@ async function loadJsonDocument(
  * @param registryOverride - Optional `--registry` flag value.
  * @param savedRegistry - Optional registry source persisted via `tuckshop config set`.
  * @returns Parsed registry and the catalog path or URL it was loaded from.
- * @throws Error when the resolved registry source cannot be loaded safely.
+ * @throws Error when the located registry catalog cannot be loaded safely.
  */
 export async function loadRuntimeRegistry(
 	registryOverride?: string,
 	savedRegistry?: string,
 ): Promise<LoadedRegistry> {
-	const catalogLocation = await resolveRegistrySource({
+	const catalogLocation = await locateRegistry({
 		registry: registryOverride,
 		savedRegistry,
 	});
@@ -144,7 +144,7 @@ export async function loadRegistryPayloads(
 
 	await Promise.all(
 		uniqueSources.map(async (source) => {
-			const location = resolveRegistryPayload(catalogLocation, source);
+			const location = joinCatalogSource(catalogLocation, source);
 			documents.set(
 				source,
 				await loadJsonDocument(location, "registry payload"),

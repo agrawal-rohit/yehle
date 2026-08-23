@@ -17,7 +17,7 @@ const defaultFallbackRegistryPaths = [
 	path.resolve(__dirname, "../../../registry/registry.json"),
 ];
 
-export interface ResolveRegistrySourceOptions {
+export interface LocateRegistryOptions {
 	/** Explicit registry flag value from the CLI. */
 	registry?: string;
 	/** Registry source persisted via `tuckshop config set`. */
@@ -29,15 +29,15 @@ export interface ResolveRegistrySourceOptions {
 }
 
 /**
- * Resolve which registry source the CLI should use.
+ * Locate which registry catalog the CLI should use.
  * Precedence for an explicit source: CLI flag > `TUCKSHOP_REGISTRY` env > saved config.
  * When none is set, probe: cwd `registry.json` > fallback paths > bundled default.
- * @param options - Resolution inputs from CLI flags, env, and package defaults.
+ * @param options - Inputs from CLI flags, env, and package defaults.
  * @returns Absolute local path or HTTPS URL to the catalog.
  * @throws Error when no local or bundled registry can be found, or an explicit URL is unsafe.
  */
-export async function resolveRegistrySource(
-	options: ResolveRegistrySourceOptions = {},
+export async function locateRegistry(
+	options: LocateRegistryOptions = {},
 ): Promise<string> {
 	const bundledRegistryPath =
 		options.bundledRegistryPath ?? defaultBundledRegistryPath;

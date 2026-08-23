@@ -7,7 +7,6 @@ import {
 	readJsonFileAsync,
 } from "@tuckshop/core";
 import {
-	type ConfigPathOptions,
 	configPath,
 	readConfig,
 	unsetRegistryConfig,
@@ -77,13 +76,13 @@ async function toPersistedRegistrySource(source: string): Promise<string> {
  * Persist a default registry source to the global config.
  * Prompts for a source when omitted. Accepts HTTPS URLs, or local paths that point to an existing file.
  * @param source - Optional registry URL or local path from the CLI.
- * @param options - Optional config path overrides for tests.
+ * @param env - Environment used for config path resolution. Defaults to `process.env`.
  * @returns Absolute path of the config file that was written.
  * @throws Error when the source is empty, an unsafe remote URL, or not an existing file.
  */
 export async function configSetCommand(
 	source?: string,
-	options: ConfigPathOptions = {},
+	env?: NodeJS.ProcessEnv,
 ): Promise<string> {
 	let input = source?.trim() ?? "";
 	if (!input) {
@@ -94,9 +93,9 @@ export async function configSetCommand(
 	}
 
 	const toStore = await toPersistedRegistrySource(input);
-	const existing = await readConfig(options);
-	await writeConfig({ ...existing, registry: toStore }, options);
-	const filePath = configPath(options);
+	const existing = await readConfig(env);
+	await writeConfig({ ...existing, registry: toStore }, env);
+	const filePath = configPath(env);
 	printConfiguration(toStore, filePath);
 
 	return filePath;
@@ -104,27 +103,25 @@ export async function configSetCommand(
 
 /**
  * Print the saved registry, or the bundled default registry URL when unset.
- * @param options - Optional config path overrides for tests.
+ * @param env - Environment used for config path resolution. Defaults to `process.env`.
  */
-export async function configGetCommand(
-	options: ConfigPathOptions = {},
-): Promise<void> {
-	const config = await readConfig(options);
-	const filePath = configPath(options);
+export async function configGetCommand(env?: NodeJS.ProcessEnv): Promise<void> {
+	const config = await readConfig(env);
+	const filePath = configPath(env);
 	const registry = config.registry ?? (await defaultRegistryUrl());
 	printConfiguration(registry, filePath);
 }
 
 /**
  * Clear the saved registry source and fall back to the published default.
- * @param options - Optional config path overrides for tests.
+ * @param env - Environment used for config path resolution. Defaults to `process.env`.
  * @returns True when a previously saved registry was cleared.
  */
 export async function configUnsetCommand(
-	options: ConfigPathOptions = {},
+	env?: NodeJS.ProcessEnv,
 ): Promise<boolean> {
-	const cleared = await unsetRegistryConfig(options);
-	const filePath = configPath(options);
+	const cleared = await unsetRegistryConfig(env);
+	const filePath = configPath(env);
 	const registry = await defaultRegistryUrl();
 	printConfiguration(registry, filePath);
 

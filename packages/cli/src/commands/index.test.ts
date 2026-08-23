@@ -228,7 +228,7 @@ describe("commands/index", () => {
 		expect(mockPickStringOptions).toHaveBeenCalledWith({ type: "theme" }, [
 			"type",
 		]);
-		expect(mockListCommand).toHaveBeenCalledWith(registry, { type: "theme" });
+		expect(mockListCommand).toHaveBeenCalledWith(registry, "theme");
 		expect(processExitSpy).not.toHaveBeenCalled();
 	});
 

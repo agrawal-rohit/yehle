@@ -9,34 +9,30 @@ export {
 export {
 	InvalidJsonError,
 	isFileAsync,
-	isMissingPathError,
 	PathKind,
 	pathKindAsync,
-	readDirectoryAsync,
 	readFileAsync,
 	readJsonFileAsync,
-	removeAsync,
 	writeFileAsync,
 } from "./fs";
 export type {
+	AfterInstallHook,
+	BeforeInstallHook,
+	BeforeInstallHookResult,
 	ConditionHandler,
 	ConditionHandlerContext,
 	HandlerRuntime,
 	HandlerSelectOption,
-	ItemHandler,
-	ItemHandlerContext,
+	InstallHookContext,
 	PromptHost,
+	RunInstallHookOptions,
 } from "./handlers";
-export {
-	loadConditionHandler,
-	loadItemHandler,
-	resolveLocalHandlerPath,
-} from "./handlers-load";
 export {
 	createHandlerRuntime,
 	inferConditionDefault,
-	runItemHandler,
-} from "./handlers-run";
+	runAfterInstallHook,
+	runBeforeInstallHook,
+} from "./handlers";
 export {
 	buildPackageInstallCommands,
 	detectPackageManagerFromLockfile,
@@ -49,18 +45,12 @@ export {
 export { parseRegistryDocument, parseWithSchema } from "./parse";
 export {
 	assumeContextFromSelectedItems,
+	buildInstallPlan,
 	type CatalogEntry,
 	collectRegistryDependencies,
 	collectRequiredConditions,
-	type ParsedItemId,
-	parseItemId,
-	type RegistryItemSelection,
+	type InstallNode,
 	type RequiredCondition,
-	type ResolvedRegistryItem,
-	type ResolvedRegistryPlan,
-	resolveInstallPlan,
-	selectRegistryVariant,
-	whenMatchesContext,
 } from "./plan";
 export {
 	type AuthoredRegistryItem,
@@ -96,7 +86,7 @@ export { type RunOptions, runAsync } from "./shell";
 export {
 	assertSafeRemoteUrl,
 	isAbsoluteHttpUrl,
+	joinCatalogSource,
 	joinRelativePathUnderRoot,
 	publishedRegistryUrl,
-	resolveRegistryPayload,
 } from "./urls";

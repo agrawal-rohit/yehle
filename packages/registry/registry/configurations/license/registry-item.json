@@ -4,5 +4,5 @@
 	"description": "License file to include in the project.",
 	"type": "configuration",
 	"uses": ["authorName"],
-	"handler": "handler.ts"
+	"beforeInstall": "handler.ts"
 }

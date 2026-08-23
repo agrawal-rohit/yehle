@@ -54,7 +54,7 @@ export function registerCommandsCli(
 		await runCliCommand(async () => {
 			const { registry } = await loadRegistry();
 			await animatedIntro("here's the menu");
-			listCommand(registry, pickStringOptions(commandOptions, ["type"]));
+			listCommand(registry, pickStringOptions(commandOptions, ["type"]).type);
 		});
 	});
 

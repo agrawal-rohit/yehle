@@ -81,16 +81,16 @@ export function joinRelativePathUnderRoot(
 }
 
 /**
- * Resolve a catalog item or variant `source` against the catalog location.
+ * Join a catalog item or variant `source` against the catalog location.
  * Absolute http(s) sources pass through unchanged. Relative sources use
- * WHATWG URL resolution against http(s) catalogs, or a traversal-safe join
+ * WHATWG URL joining against http(s) catalogs, or a traversal-safe join
  * under the catalog directory for local file paths.
  * @param catalogLocation - Absolute path or http(s) URL of `registry.json`.
  * @param source - Opaque URI from a compiled catalog item or variant `source`.
  * @returns Absolute http(s) URL or absolute local filesystem path.
  * @throws Error when a local relative source escapes the catalog directory.
  */
-export function resolveRegistryPayload(
+export function joinCatalogSource(
 	catalogLocation: string,
 	source: string,
 ): string {
@@ -98,14 +98,14 @@ export function resolveRegistryPayload(
 	if (!trimmedSource)
 		throw new Error("Registry file source must not be empty.");
 
-	// If the source is an absolute URL, we don't need to resolve it
+	// Absolute URLs are already fetchable; skip catalog-relative joining.
 	if (isAbsoluteHttpUrl(trimmedSource)) return trimmedSource;
 
 	const trimmedCatalog = catalogLocation.trim();
 	if (!trimmedCatalog)
 		throw new Error("Registry catalog location must not be empty.");
 
-	// Remote catalogs: WHATWG URL path resolution (…/registry.json + r/x.json → …/r/x.json).
+	// Remote catalogs: WHATWG URL path joining (…/registry.json + r/x.json → …/r/x.json).
 	if (isAbsoluteHttpUrl(trimmedCatalog))
 		return new URL(trimmedSource, trimmedCatalog).href;
 

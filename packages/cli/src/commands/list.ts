@@ -7,20 +7,14 @@ import chalk from "chalk";
 import { defaultText, primaryText } from "../cli/labels";
 import { parseMultiValueOption } from "../cli/options";
 
-/** Options accepted by the list command. */
-interface ListCommandOptions {
-	/** Comma-separated registry item types, or `all`. */
-	type?: string;
-}
-
 /**
- * Resolve which item types to include from `--type`.
+ * Parse which item types to include from `--type`.
  * Defaults to every available type when `--type` is omitted.
  * @param typeOption - Raw `--type` value from the CLI.
  * @param availableTypes - Types present in the registry.
  * @returns Allowed item types.
  */
-function resolveFilterTypes(
+function parseTypeFilter(
 	typeOption: string | undefined,
 	availableTypes: string[],
 ): Set<string> {
@@ -106,14 +100,11 @@ function printItemsByType(
 /**
  * List registry items, optionally filtered by `--type`.
  * @param registry - Registry loaded at CLI registration time.
- * @param options - Optional list command options.
+ * @param type - Optional `--type` filter: `all`, or comma-separated types.
  */
-export function listCommand(
-	registry: Registry,
-	options: ListCommandOptions = {},
-): void {
+export function listCommand(registry: Registry, type?: string): void {
 	const itemTypes = Object.keys(registry.types);
-	const allowedTypes = resolveFilterTypes(options.type, itemTypes);
+	const allowedTypes = parseTypeFilter(type, itemTypes);
 	const matches = Object.values(registry.items).filter((item) =>
 		allowedTypes.has(item.type),
 	);

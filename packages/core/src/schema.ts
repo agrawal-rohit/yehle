@@ -65,6 +65,43 @@ function optionalNonEmptyString() {
 		);
 }
 
+/** Relative path to a colocated script or compiled script URI under the catalog. */
+const registryScriptPathSchema = nonEmptyString.superRefine(
+	(value, context) => {
+		if (
+			value.startsWith("/") ||
+			value.includes("\\") ||
+			value.split("/").includes("..") ||
+			/^https?:\/\//i.test(value)
+		)
+			context.addIssue({
+				code: "custom",
+				message: `invalid_script:${value}`,
+			});
+	},
+);
+
+/**
+ * Optional install-phase field accepting one script path or a non-empty list.
+ * Every entry is a colocated or compiled script — never a registry item id.
+ * @returns Zod schema normalised to a string array or undefined.
+ */
+function optionalInstallPhaseList() {
+	return z
+		.union([registryScriptPathSchema, z.array(registryScriptPathSchema).min(1)])
+		.optional()
+		.transform((value) => {
+			if (value === undefined) return undefined;
+			return Array.isArray(value) ? value : [value];
+		});
+}
+
+/** Install lifecycle phase field names on catalog and authored items. */
+export enum InstallPhase {
+	BeforeInstall = "beforeInstall",
+	AfterInstall = "afterInstall",
+}
+
 /** File metadata in an authoring `registry-item.json`. */
 export const registryFileSchema = z.strictObject({
 	/** Path to the file in the item folder. */
@@ -142,7 +179,7 @@ export type RegistryEcosystemDependencies = NonNullable<
 /** Install payload for one item or variant (templates, not rendered output). */
 export const registryPayloadSchema = z
 	.strictObject({
-		/** Files to install (item-level files first when folded into a variant). May be empty when an item handler generates every file at install time. */
+		/** Files to install (item-level files first when folded into a variant). May be empty when an install script generates every file at install time. */
 		files: z.array(registryPayloadFileSchema).default([]),
 		/** Ecosystem packages to install, keyed by ecosystem. */
 		dependencies: registryEcosystemDependenciesSchema.optional(),
@@ -158,22 +195,6 @@ const registryWhenSchema = z
 		if (!value || Object.keys(value).length === 0) return undefined;
 		return value;
 	});
-
-/** Relative path to a colocated handler module (authoring) or compiled handler URI (catalog). */
-const registryHandlerPathSchema = nonEmptyString.superRefine(
-	(value, context) => {
-		if (
-			value.startsWith("/") ||
-			value.includes("\\") ||
-			value.split("/").includes("..") ||
-			/^https?:\/\//i.test(value)
-		)
-			context.addIssue({
-				code: "custom",
-				message: `invalid_handler:${value}`,
-			});
-	},
-);
 
 /** A labelled value for a shared condition. */
 export const registryConditionValueSchema = z
@@ -198,7 +219,7 @@ export const registryConditionSchema = z
 		/** Type of condition to prompt for. */
 		kind: z.enum(RegistryConditionKind).optional(),
 		/** Handler path: authoring-relative for conditions/conditions.json, or compiled `r/_handlers/{key}.handler.js` URI in the catalog. */
-		handler: registryHandlerPathSchema.optional(),
+		handler: registryScriptPathSchema.optional(),
 		/** Allowed labelled values for select and multiselect conditions. */
 		values: z.array(registryConditionValueSchema).min(1).optional(),
 	})
@@ -281,6 +302,53 @@ function rejectDuplicateVariantIds(
 	}
 }
 
+/**
+ * Reject duplicate entries inside one named list.
+ * @param entries - List that may contain duplicate strings.
+ * @param listName - Field name used in the error code.
+ * @param context - Zod refinement context.
+ */
+function rejectDuplicateListEntries(
+	entries: string[] | undefined,
+	listName: string,
+	context: z.RefinementCtx,
+): void {
+	if (!entries) return;
+	const seen = new Set<string>();
+	for (const entry of entries) {
+		if (seen.has(entry)) {
+			context.addIssue({
+				code: "custom",
+				message: `duplicate_hook:${listName}:${entry}`,
+			});
+			return;
+		}
+		seen.add(entry);
+	}
+}
+
+/**
+ * Reject duplicate scripts and registry dependency ids on an item or variant.
+ * @param item - Parsed item or variant candidate.
+ * @param context - Zod refinement context.
+ */
+function rejectInstallPhaseConflicts(
+	item: {
+		registryDependencies?: string[];
+		beforeInstall?: string[];
+		afterInstall?: string[];
+	},
+	context: z.RefinementCtx,
+): void {
+	rejectDuplicateListEntries(item.beforeInstall, "beforeInstall", context);
+	rejectDuplicateListEntries(item.afterInstall, "afterInstall", context);
+	rejectDuplicateListEntries(
+		item.registryDependencies,
+		"registryDependencies",
+		context,
+	);
+}
+
 /** Shared fields for authored and catalog variants. */
 const variantSharedFields = {
 	/** Unique variant id within the item. */
@@ -291,6 +359,10 @@ const variantSharedFields = {
 	when: registryWhenSchema,
 	/** Other registry items this variant depends on. */
 	registryDependencies: optionalNonEmptyStringArray(),
+	/** Colocated scripts to run before this variant's files are written. */
+	beforeInstall: optionalInstallPhaseList(),
+	/** Colocated scripts to run after this variant's files are written. */
+	afterInstall: optionalInstallPhaseList(),
 };
 
 /** Variant from an authoring `registry-item.json`. */
@@ -304,6 +376,9 @@ export const registryVariantSchema = z
 		/** Ecosystem packages added with this variant, keyed by ecosystem. */
 		dependencies: registryEcosystemDependenciesSchema.optional(),
 	})
+	.superRefine((variant, context) => {
+		rejectInstallPhaseConflicts(variant, context);
+	})
 	.transform(omitUndefined);
 export type AuthoredRegistryVariant = z.infer<typeof registryVariantSchema>;
 
@@ -311,8 +386,11 @@ export type AuthoredRegistryVariant = z.infer<typeof registryVariantSchema>;
 export const catalogVariantSchema = z
 	.strictObject({
 		...variantSharedFields,
-		/** Payload URI resolved against the catalog location. */
+		/** Payload URI joined against the catalog location. */
 		source: nonEmptyString,
+	})
+	.superRefine((variant, context) => {
+		rejectInstallPhaseConflicts(variant, context);
 	})
 	.transform(omitUndefined);
 export type CatalogVariant = z.infer<typeof catalogVariantSchema>;
@@ -332,12 +410,14 @@ const itemSharedFields = {
 	description: nonEmptyString,
 	/** Item type key declared in `types`. */
 	type: nonEmptyString,
-	/** Item-relative path to a TypeScript/JavaScript handler module. Compiled to `r/{itemId}.handler.js` at build time. */
-	handler: registryHandlerPathSchema.optional(),
 	/** Shared condition keys this item consumes. */
 	uses: optionalNonEmptyStringArray(),
 	/** Other registry items this item depends on. */
 	registryDependencies: optionalNonEmptyStringArray(),
+	/** Colocated scripts to run before this item's files are written. */
+	beforeInstall: optionalInstallPhaseList(),
+	/** Colocated scripts to run after this item's files are written. */
+	afterInstall: optionalInstallPhaseList(),
 };
 
 /**
@@ -349,7 +429,8 @@ const itemSharedFields = {
 function refineRegistryItem(
 	item: {
 		variants?: Array<{ id: string }>;
-		handler?: string;
+		beforeInstall?: string[];
+		afterInstall?: string[];
 		files?: unknown[];
 		source?: string;
 	},
@@ -357,12 +438,15 @@ function refineRegistryItem(
 	options: { authored: boolean },
 ): void {
 	const hasVariants = (item.variants?.length ?? 0) > 0;
-	const hasHandler = Boolean(item.handler);
+	const hasInstallPhases =
+		(item.beforeInstall?.length ?? 0) > 0 ||
+		(item.afterInstall?.length ?? 0) > 0;
 	const hasInstallSource = options.authored
 		? (item.files?.length ?? 0) > 0
 		: Boolean(item.source);
 
-	if (!hasVariants && !hasInstallSource && !hasHandler) {
+	// Script-only or composer-only items need no static files when phases or variants exist.
+	if (!hasVariants && !hasInstallSource && !hasInstallPhases) {
 		context.addIssue({
 			code: "custom",
 			message: options.authored
@@ -398,6 +482,7 @@ export const registryItemSchema = z
 	})
 	.superRefine((item, context) => {
 		refineRegistryItem(item, context, { authored: true });
+		rejectInstallPhaseConflicts(item, context);
 	})
 	.transform(omitUndefined);
 export type AuthoredRegistryItem = z.infer<typeof registryItemSchema>;
@@ -406,13 +491,14 @@ export type AuthoredRegistryItem = z.infer<typeof registryItemSchema>;
 export const catalogItemSchema = z
 	.strictObject({
 		...itemSharedFields,
-		/** Payload URI for a variant-less item, resolved against the catalog location. */
+		/** Payload URI for a variant-less item, joined against the catalog location. */
 		source: nonEmptyString.optional(),
 		/** Installable slices of this item; omit for a single top-level configuration. */
 		variants: optionalVariants(catalogVariantSchema),
 	})
 	.superRefine((item, context) => {
 		refineRegistryItem(item, context, { authored: false });
+		rejectInstallPhaseConflicts(item, context);
 	})
 	.transform(omitUndefined);
 export type CatalogItem = z.infer<typeof catalogItemSchema>;

@@ -161,7 +161,7 @@ export async function confirmFileOverwrites(
 }
 
 /**
- * Write payload files to disk. Callers must resolve overwrite conflicts first.
+ * Write payload files to disk. Callers must confirm overwrite conflicts first.
  * @param projectDir - Absolute project root.
  * @param payload - Parsed install payload.
  * @param writtenTargets - Absolute destinations already written during this install.
