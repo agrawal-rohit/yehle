@@ -10,7 +10,6 @@ export enum PathKind {
 
 /**
  * Check whether a filesystem error means the path does not exist.
- * Lets callers tolerate missing paths while still failing on permission or type errors.
  * @param error - Value caught from a filesystem call.
  * @returns True when the error carries an ENOENT code.
  */

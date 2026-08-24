@@ -7,17 +7,8 @@ const GITHUB_ACTIONS_SENTINEL = "\uE000GHA\uE000";
 
 /** Render options: do not HTML-escape YAML, shell, or source files. */
 const MUSTACHE_RENDER_OPTIONS = {
-	escape: unescapeInterpolation,
+	escape: String,
 } as const;
-
-/**
- * Stringify a Mustache value without HTML escaping.
- * @param value - Interpolated view value.
- * @returns String form of the interpolated value.
- */
-function unescapeInterpolation(value: unknown): string {
-	return String(value);
-}
 
 /** Typed Mustache view: conditions keep their runtime types; bindings are strings. */
 export type InterpolationView = Record<
@@ -27,7 +18,6 @@ export type InterpolationView = Record<
 
 /**
  * Build a typed Mustache view from install conditions, select-option bindings, and hook bindings.
- * Skipped optionals are omitted (falsy for sections). Hook bindings win on key conflicts.
  * @param conditions - Captured condition context.
  * @param bindings - Bindings from beforeInstall hooks.
  * @param optionValues - Select options keyed by condition name (shared + item-local).
@@ -59,7 +49,6 @@ export function buildInterpolationContext(
 
 /**
  * Render a Mustache template with a typed interpolation view.
- * Missing keys become empty strings. Does not touch `${{ ... }}`.
  * @param input - Template string.
  * @param values - Interpolation view.
  * @returns Resolved string.
@@ -75,8 +64,6 @@ function interpolateString(input: string, values: InterpolationView): string {
 
 /**
  * Replace `{{key}}` placeholders in compiled item file contents and command values.
- * Does not touch GitHub Actions expressions (`${{ ... }}`).
- * Skipped optionals (missing keys) become empty strings / falsy sections.
  * @param payload - Compiled item to interpolate.
  * @param values - Interpolation view.
  * @returns Payload with placeholders resolved.

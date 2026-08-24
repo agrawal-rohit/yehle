@@ -82,9 +82,6 @@ export function joinRelativePathUnderRoot(
 
 /**
  * Join a index item or variant `source` against the index location.
- * Absolute http(s) sources pass through unchanged. Relative sources use
- * WHATWG URL joining against http(s) registries, or a traversal-safe join
- * under the registry directory for local file paths.
  * @param indexLocation - Absolute path or http(s) URL of `registry.json`.
  * @param source - Opaque URI from a compiled index item or variant `source`.
  * @returns Absolute http(s) URL or absolute local filesystem path.
