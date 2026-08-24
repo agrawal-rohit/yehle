@@ -96,8 +96,10 @@ function optionalInstallPhaseList() {
 
 /** Install lifecycle phase field names on catalog and raw items. */
 export enum InstallPhase {
-	BeforeInstall = "beforeInstall",
-	AfterInstall = "afterInstall",
+	/** Mutate the install plan before files are written. */
+	PREPARE = "prepare",
+	/** Run side effects after files and packages are applied. */
+	FINALIZE = "finalize",
 }
 
 /** File metadata in an raw `registry-item.json`. */
@@ -526,13 +528,13 @@ function rejectDuplicateListEntries(
 function rejectInstallPhaseConflicts(
 	item: {
 		dependsOn?: string[];
-		beforeInstall?: string[];
-		afterInstall?: string[];
+		prepare?: string[];
+		finalize?: string[];
 	},
 	context: z.RefinementCtx,
 ): void {
-	rejectDuplicateListEntries(item.beforeInstall, "beforeInstall", context);
-	rejectDuplicateListEntries(item.afterInstall, "afterInstall", context);
+	rejectDuplicateListEntries(item.prepare, "prepare", context);
+	rejectDuplicateListEntries(item.finalize, "finalize", context);
 	rejectDuplicateListEntries(item.dependsOn, "dependsOn", context);
 }
 
@@ -546,10 +548,10 @@ const packSharedFields = {
 	when: registryWhenSchema,
 	/** Other registry items this pack depends on. */
 	dependsOn: optionalNonEmptyStringArray(),
-	/** Colocated scripts to run before this pack's files are written. */
-	beforeInstall: optionalInstallPhaseList(),
-	/** Colocated scripts to run after this pack's files are written. */
-	afterInstall: optionalInstallPhaseList(),
+	/** Colocated scripts that mutate the install plan before files are written. */
+	prepare: optionalInstallPhaseList(),
+	/** Colocated scripts that run side effects after files and packages are applied. */
+	finalize: optionalInstallPhaseList(),
 };
 
 /** Pack from an raw `registry-item.json`. */
@@ -605,10 +607,10 @@ const itemSharedFields = {
 	conditions: optionalConditionMap,
 	/** Other registry items this item depends on. */
 	dependsOn: optionalNonEmptyStringArray(),
-	/** Colocated scripts to run before this item's files are written. */
-	beforeInstall: optionalInstallPhaseList(),
-	/** Colocated scripts to run after this item's files are written. */
-	afterInstall: optionalInstallPhaseList(),
+	/** Colocated scripts that mutate the install plan before files are written. */
+	prepare: optionalInstallPhaseList(),
+	/** Colocated scripts that run side effects after files and packages are applied. */
+	finalize: optionalInstallPhaseList(),
 };
 
 /**
@@ -623,13 +625,13 @@ function hasEntries(value: readonly unknown[] | undefined): boolean {
 /**
  * Whether an item declares at least one install-phase script.
  * @param item - Parsed item candidate.
- * @returns True when beforeInstall or afterInstall is non-empty.
+ * @returns True when prepare or finalize is non-empty.
  */
 function hasInstallPhaseScripts(item: {
-	beforeInstall?: string[];
-	afterInstall?: string[];
+	prepare?: string[];
+	finalize?: string[];
 }): boolean {
-	return hasEntries(item.beforeInstall) || hasEntries(item.afterInstall);
+	return hasEntries(item.prepare) || hasEntries(item.finalize);
 }
 
 /**
@@ -640,8 +642,8 @@ function hasInstallPhaseScripts(item: {
 function refineRawRegistryItem(
 	item: {
 		packs?: Array<{ id: string }>;
-		beforeInstall?: string[];
-		afterInstall?: string[];
+		prepare?: string[];
+		finalize?: string[];
 		files?: unknown[];
 		requires?: string[];
 		conditions?: Record<string, unknown>;
@@ -672,8 +674,8 @@ function refineRawRegistryItem(
 function refineIndexItem(
 	item: {
 		packs?: Array<{ id: string }>;
-		beforeInstall?: string[];
-		afterInstall?: string[];
+		prepare?: string[];
+		finalize?: string[];
 		source?: string;
 		requires?: string[];
 		conditions?: Record<string, unknown>;
@@ -766,6 +768,10 @@ export const registryDocumentFieldsSchema = z.strictObject({
 	types: z.unknown().optional(),
 	/** Registry items keyed by id. */
 	items: z.record(z.string(), z.unknown()),
+	/** sha256 integrity digests for compiled script URIs (`sha256-<base64>`). */
+	scriptIntegrity: z.record(z.string(), z.string()).optional(),
+	/** sha256 integrity digests for compiled item `source` URIs (`sha256-<base64>`). */
+	itemIntegrity: z.record(z.string(), z.string()).optional(),
 });
 
 /** Fully parsed index document written to registry.json. */
@@ -776,4 +782,8 @@ export interface Registry {
 	types: Record<string, RegistryItemTypeDefinition>;
 	/** Registry items keyed by id. */
 	items: Record<string, IndexItem>;
+	/** sha256 integrity digests for compiled script URIs (`sha256-<base64>`). */
+	scriptIntegrity?: Record<string, string>;
+	/** sha256 integrity digests for compiled item `source` URIs (`sha256-<base64>`). */
+	itemIntegrity?: Record<string, string>;
 }

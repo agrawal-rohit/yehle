@@ -810,30 +810,30 @@ describe("core/schema", () => {
 			expect(
 				registryItemSchema.parse({
 					...withoutPacks,
-					beforeInstall: "handler.ts",
+					prepare: "handler.ts",
 				}),
 			).toEqual({
 				id: "button",
 				title: "Button",
 				description: "A button",
 				type: "component",
-				beforeInstall: ["handler.ts"],
+				prepare: ["handler.ts"],
 			});
 		});
 
-		it("accepts afterInstall-only script items without beforeInstall", () => {
+		it("accepts finalize-only script items without prepare", () => {
 			const { packs: _packs, ...withoutPacks } = validItem();
 			expect(
 				registryItemSchema.parse({
 					...withoutPacks,
-					afterInstall: "cleanup.ts",
+					finalize: "cleanup.ts",
 				}),
 			).toEqual({
 				id: "button",
 				title: "Button",
 				description: "A button",
 				type: "component",
-				afterInstall: ["cleanup.ts"],
+				finalize: ["cleanup.ts"],
 			});
 		});
 
@@ -848,7 +848,7 @@ describe("core/schema", () => {
 				expect(
 					rejectMessage(registryItemSchema, {
 						...withoutPacks,
-						beforeInstall: script,
+						prepare: script,
 					}),
 				).toBe(`invalid_script:${script}`);
 			}
@@ -859,7 +859,7 @@ describe("core/schema", () => {
 			expect(
 				registryItemSchema.parse({
 					...withoutPacks,
-					beforeInstall: "handler.ts",
+					prepare: "handler.ts",
 					requires: ["authorName"],
 					conditions: {
 						coverageThreshold: {
@@ -874,7 +874,7 @@ describe("core/schema", () => {
 				title: "Button",
 				description: "A button",
 				type: "component",
-				beforeInstall: ["handler.ts"],
+				prepare: ["handler.ts"],
 				requires: ["authorName"],
 				conditions: {
 					coverageThreshold: {
@@ -887,7 +887,7 @@ describe("core/schema", () => {
 			expect(
 				registryItemSchema.safeParse({
 					...withoutPacks,
-					beforeInstall: "handler.ts",
+					prepare: "handler.ts",
 					conditions: ["authorName"],
 				}).success,
 			).toBe(false);
@@ -898,7 +898,7 @@ describe("core/schema", () => {
 			expect(
 				rejectMessage(registryItemSchema, {
 					...withoutPacks,
-					beforeInstall: "handler.ts",
+					prepare: "handler.ts",
 					requires: ["coverageThreshold"],
 					conditions: {
 						coverageThreshold: { kind: "text", label: "Coverage" },
@@ -922,19 +922,19 @@ describe("core/schema", () => {
 			).toBe(false);
 		});
 
-		it("keeps beforeInstall and afterInstall scripts and rejects duplicates", () => {
+		it("keeps prepare and finalize scripts and rejects duplicates", () => {
 			const { packs: _packs, ...withoutPacks } = validItem();
 			expect(
 				registryItemSchema.parse({
 					...withoutPacks,
 					files: [validFile()],
-					beforeInstall: ["handler.ts"],
-					afterInstall: ["./commit.ts"],
+					prepare: ["handler.ts"],
+					finalize: ["./commit.ts"],
 					dependsOn: ["shared"],
 				}),
 			).toMatchObject({
-				beforeInstall: ["handler.ts"],
-				afterInstall: ["./commit.ts"],
+				prepare: ["handler.ts"],
+				finalize: ["./commit.ts"],
 				dependsOn: ["shared"],
 			});
 			expect(
@@ -943,10 +943,10 @@ describe("core/schema", () => {
 					validItem({
 						files: [validFile()],
 						packs: [],
-						beforeInstall: ["handler.ts", "handler.ts"],
+						prepare: ["handler.ts", "handler.ts"],
 					}),
 				),
-			).toBe("duplicate_hook:beforeInstall:handler.ts");
+			).toBe("duplicate_hook:prepare:handler.ts");
 		});
 	});
 
@@ -1099,31 +1099,31 @@ describe("core/schema", () => {
 					title: "License",
 					description: "SPDX license",
 					type: "configuration",
-					beforeInstall: ["r/license-configuration.beforeInstall.0.js"],
+					prepare: ["r/license-configuration.prepare.0.js"],
 					requires: ["authorName"],
 				}),
 			).toEqual({
 				title: "License",
 				description: "SPDX license",
 				type: "configuration",
-				beforeInstall: ["r/license-configuration.beforeInstall.0.js"],
+				prepare: ["r/license-configuration.prepare.0.js"],
 				requires: ["authorName"],
 			});
 		});
 
-		it("accepts afterInstall-only index items", () => {
+		it("accepts finalize-only index items", () => {
 			expect(
 				indexItemSchema.parse({
 					title: "Cleanup",
 					description: "Post-install cleanup",
 					type: "configuration",
-					afterInstall: ["r/cleanup.afterInstall.0.js"],
+					finalize: ["r/cleanup.finalize.0.js"],
 				}),
 			).toEqual({
 				title: "Cleanup",
 				description: "Post-install cleanup",
 				type: "configuration",
-				afterInstall: ["r/cleanup.afterInstall.0.js"],
+				finalize: ["r/cleanup.finalize.0.js"],
 			});
 		});
 

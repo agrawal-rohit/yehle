@@ -81,18 +81,48 @@ export function joinRelativePathUnderRoot(
 }
 
 /**
+ * Reject absolute http(s) compiled `source` values that leave the index origin.
+ * Local indexes reject absolute URLs entirely; remote indexes require the same origin.
+ * @param indexLocation - Absolute path or http(s) URL of registry.json.
+ * @param source - Candidate source URI.
+ * @throws Error when the source is an unsafe cross-origin absolute URL.
+ */
+export function assertSameOriginIndexSource(
+	indexLocation: string,
+	source: string,
+): void {
+	const trimmedSource = source.trim();
+	if (!isAbsoluteHttpUrl(trimmedSource)) return;
+
+	if (!isAbsoluteHttpUrl(indexLocation))
+		throw new Error(
+			`Registry file source "${source}" must be a relative path under a local registry (absolute URLs are not allowed).`,
+		);
+
+	const indexUrl = new URL(indexLocation);
+	const sourceUrl = new URL(trimmedSource);
+	if (indexUrl.origin !== sourceUrl.origin)
+		throw new Error(
+			`Registry file source "${source}" must stay on the same origin as the registry index (${indexUrl.origin}).`,
+		);
+}
+
+/**
  * Join a index item or variant `source` against the index location.
  * @param indexLocation - Absolute path or http(s) URL of `registry.json`.
  * @param source - Opaque URI from a compiled index item or variant `source`.
  * @returns Absolute http(s) URL or absolute local filesystem path.
- * @throws Error when a local relative source escapes the registry directory.
+ * @throws Error when a local relative source escapes the registry directory,
+ *   or an absolute source is cross-origin / disallowed for local indexes.
  */
 export function joinIndexSource(indexLocation: string, source: string): string {
 	const trimmedSource = source.trim();
 	if (!trimmedSource)
 		throw new Error("Registry file source must not be empty.");
 
-	// Absolute URLs are already fetchable; skip index-relative joining.
+	assertSameOriginIndexSource(indexLocation, trimmedSource);
+
+	// Absolute same-origin URLs are already fetchable; skip index-relative joining.
 	if (isAbsoluteHttpUrl(trimmedSource)) return trimmedSource;
 
 	const trimmedCatalog = indexLocation.trim();

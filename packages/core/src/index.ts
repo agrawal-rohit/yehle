@@ -17,22 +17,25 @@ export {
 	writeFileAsync,
 } from "./fs";
 export type {
-	AfterInstallHook,
-	BeforeInstallHook,
-	BeforeInstallHookResult,
 	ConditionHandler,
 	ConditionHandlerContext,
+	FinalizeInstallHook,
 	HandlerRuntime,
 	HandlerSelectOption,
 	InstallHookContext,
+	PrepareInstallHook,
+	PrepareInstallHookResult,
 	PromptHost,
 	RunInstallHookOptions,
 } from "./handlers";
 export {
 	createHandlerRuntime,
+	getScriptExecutor,
 	inferConditionDefault,
-	runAfterInstallHook,
-	runBeforeInstallHook,
+	localScriptPath,
+	runFinalizeInstallHook,
+	runPrepareInstallHook,
+	setScriptExecutor,
 } from "./handlers";
 export {
 	buildInterpolationContext,
@@ -103,9 +106,26 @@ export {
 	registryWhenSchema,
 	registryWhenValueSchema,
 } from "./schema";
+export {
+	assertIntegrityMatch,
+	assertScriptsAllowed,
+	type CreateScriptExecutorOptions,
+	classifyRegistryTrust,
+	collectDeclaredScriptUris,
+	createScriptExecutor,
+	INTEGRITY_PREFIX,
+	loadSandboxedModule,
+	RegistryTrust,
+	resolveSandboxRunnerPath,
+	type ScriptExecutor,
+	sha256Integrity,
+	verifyItemIntegrity,
+	verifyScriptIntegrity,
+} from "./scripts";
 export { type RunOptions, runAsync } from "./shell";
 export {
 	assertSafeRemoteUrl,
+	assertSameOriginIndexSource,
 	isAbsoluteHttpUrl,
 	joinIndexSource,
 	joinRelativePathUnderRoot,

@@ -200,18 +200,18 @@ The compiled items are written next to the package root by `pnpm run build:regis
 
 `registry.json` is regenerated and staged automatically by the pre-commit hook whenever anything under `packages/registry/registry/` or the core compiler changes. Compiled item files under `r/` are build output only — not committed — and ship with the published `tuckshop` package.
 
-`registry.json` only holds index metadata for individual items, so the index stays lean as the registry grows. Source manifests keep item-relative file `source` paths, ecosystem-tagged `dependencies`, optional `beforeInstall` / `afterInstall` scripts, and variant descriptions. The build inlines those files into compact payloads under `r/`, bundles install scripts to `r/{itemId}.beforeInstall.{index}.js` and `r/{itemId}/{variantId}.beforeInstall.{index}.js` (and condition handlers to `r/_handlers/{key}.handler.js`), and writes a compact index entry keyed by item id. Payloads keep `target`, inlined `content`, and `dependencies` keyed by ecosystem — no item or variant identity fields. Consumers join index `source` values and script URIs against the index location. Third-party registries that host remotely should keep `registry.json` and `r/` side by side (GitHub raw, S3, or a CDN). The default registry ships payloads inside the CLI package instead.
+`registry.json` only holds index metadata for individual items, so the index stays lean as the registry grows. Source manifests keep item-relative file `source` paths, ecosystem-tagged `dependencies`, optional `prepare` / `finalize` scripts, and variant descriptions. The build inlines those files into compact payloads under `r/`, bundles install scripts to `r/{itemId}.prepare.{index}.js` and `r/{itemId}/{variantId}.prepare.{index}.js` (and condition handlers to `r/_handlers/{key}.handler.js`), and writes a compact index entry keyed by item id. Payloads keep `target`, inlined `content`, and `dependencies` keyed by ecosystem — no item or variant identity fields. Consumers join index `source` values and script URIs against the index location. Third-party registries that host remotely should keep `registry.json` and `r/` side by side (GitHub raw, S3, or a CDN). The default registry ships payloads inside the CLI package instead.
 
-Payload `content` is the source template text. Condition defaults and install lifecycle scripts run on the client after the payload is loaded — not at compile time. **Install scripts execute only for local registries** (bundled CLI registry, a local `--registry` path, or a third-party package). Remote HTTPS registries cannot execute custom scripts.
+Payload `content` is the source template text. Condition defaults and install lifecycle scripts run on the client after the payload is loaded — not at compile time. **Install scripts execute only for local registries** (bundled CLI registry, a local `--registry` path, or a third-party package). Remote HTTPS registries cannot execute custom scripts. Non-bundled local registries require confirmation. Compiled `scriptIntegrity` / `itemIntegrity` digests are verified before load; hooks run in a sandboxed child process.
 
 ### Install scripts and condition handlers
 
 Colocate a TypeScript install script next to the manifest (or under `registry/conditions/` for shared conditions). Use `import type` from `@tuckshop/core` — do not runtime-import the package (the build rejects it).
 
 ```ts
-import type { BeforeInstallHook } from "@tuckshop/core";
+import type { PrepareInstallHook } from "@tuckshop/core";
 
-const beforeInstall: BeforeInstallHook = async (ctx) => {
+const prepare: PrepareInstallHook = async (ctx) => {
  const name = await ctx.prompts.text("Project name", { required: true });
  return {
   variables: { name },
@@ -219,12 +219,12 @@ const beforeInstall: BeforeInstallHook = async (ctx) => {
  };
 };
 
-export default beforeInstall;
+export default prepare;
 ```
 
-Point the manifest at it with `"beforeInstall": "before-install.ts"`. Script-only items may omit `files`. Compose other registry items with `"registryDependencies"` — they install before this item. Shared conditions can declare `"handler": "conditions/language.ts"` with an `infer` hook that returns a prompt default (for example from marker files or `ctx.run("git config --get user.name")`). Condition `kind` may be `select` (default), `multiselect`, `text`, or `boolean`. Items consume those values with `"uses": ["authorName"]`; the captured value is then `ctx.conditions.authorName` in install scripts.
+Point the manifest at it with `"prepare": "before-install.ts"`. Script-only items may omit `files`. Compose other registry items with `"registryDependencies"` — they install before this item. Shared conditions can declare `"handler": "conditions/language.ts"` with an `infer` hook that returns a prompt default (for example from marker files or `ctx.run("git config --get user.name")`). Condition `kind` may be `select` (default), `multiselect`, `text`, or `boolean`. Items consume those values with `"uses": ["authorName"]`; the captured value is then `ctx.conditions.authorName` in install scripts.
 
-See `packages/registry/registry/configurations/license/` for an SPDX license picker that generates a `LICENSE` file during `beforeInstall`.
+See `packages/registry/registry/configurations/license/` for an SPDX license picker that generates a `LICENSE` file during `prepare`.
 
 Third-party registries compile the same way — pass the registry source tree and output directory explicitly:
 

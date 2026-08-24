@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockIsFileAsync = vi.fn<(candidate: string) => Promise<boolean>>();
 const mockReadJsonFileAsync = vi.fn();
+const mockReadFileAsync = vi.fn();
 const mockParseRegistryDocument = vi.fn();
 const mockFetch = vi.fn();
 
@@ -16,6 +17,7 @@ vi.mock("@tuckshop/core", async () => {
 		isFileAsync: (candidate: string) => mockIsFileAsync(candidate),
 		readJsonFileAsync: (location: string, label: string) =>
 			mockReadJsonFileAsync(location, label),
+		readFileAsync: (location: string) => mockReadFileAsync(location),
 		parseRegistryDocument: (raw: unknown) => mockParseRegistryDocument(raw),
 	};
 });
@@ -576,9 +578,11 @@ describe("loadCompiledItems", () => {
 	});
 
 	it("loads unique payloads relative to the given index location", async () => {
-		mockReadJsonFileAsync.mockResolvedValueOnce({
-			files: [{ target: "a.txt", content: "hello" }],
-		});
+		mockReadFileAsync.mockResolvedValueOnce(
+			JSON.stringify({
+				files: [{ target: "a.txt", content: "hello" }],
+			}),
+		);
 
 		const payloads = await loadCompiledItems("/workspace/registry.json", [
 			"r/item.json",
@@ -589,17 +593,14 @@ describe("loadCompiledItems", () => {
 		expect(payloads.get("r/item.json")).toEqual({
 			files: [{ target: "a.txt", content: "hello" }],
 		});
-		expect(mockReadJsonFileAsync).toHaveBeenCalledWith(
-			"/workspace/r/item.json",
-			"compiled item at /workspace/r/item.json",
-		);
+		expect(mockReadFileAsync).toHaveBeenCalledWith("/workspace/r/item.json");
 	});
 
 	it("returns an empty map when no compiled item sources are provided", async () => {
 		const payloads = await loadCompiledItems("/workspace/registry.json", []);
 
 		expect(payloads.size).toBe(0);
-		expect(mockReadJsonFileAsync).not.toHaveBeenCalled();
+		expect(mockReadFileAsync).not.toHaveBeenCalled();
 		expect(mockFetch).not.toHaveBeenCalled();
 	});
 
@@ -624,31 +625,29 @@ describe("loadCompiledItems", () => {
 		);
 	});
 
-	it("loads mixed local-relative and absolute HTTPS compiled item sources", async () => {
-		mockReadJsonFileAsync.mockResolvedValueOnce({
-			files: [{ target: "local.txt", content: "a" }],
-		});
+	it("rejects absolute HTTPS compiled item sources against a local index", async () => {
+		await expect(
+			loadCompiledItems("/workspace/registry.json", [
+				"https://cdn.example.com/abs.json",
+			]),
+		).rejects.toThrow("must be a relative path under a local registry");
+	});
+
+	it("loads same-origin absolute HTTPS compiled item sources for a remote index", async () => {
 		mockFetchOk({
 			body: JSON.stringify({ files: [{ target: "abs.txt", content: "b" }] }),
 		});
 
-		const payloads = await loadCompiledItems("/workspace/registry.json", [
-			"r/local.json",
-			"https://cdn.example.com/abs.json",
-		]);
+		const payloads = await loadCompiledItems(
+			"https://example.com/registry.json",
+			["https://example.com/abs.json"],
+		);
 
-		expect(payloads.get("r/local.json")).toEqual({
-			files: [{ target: "local.txt", content: "a" }],
-		});
-		expect(payloads.get("https://cdn.example.com/abs.json")).toEqual({
+		expect(payloads.get("https://example.com/abs.json")).toEqual({
 			files: [{ target: "abs.txt", content: "b" }],
 		});
-		expect(mockReadJsonFileAsync).toHaveBeenCalledWith(
-			"/workspace/r/local.json",
-			"compiled item at /workspace/r/local.json",
-		);
 		expect(mockFetch).toHaveBeenCalledWith(
-			new URL("https://cdn.example.com/abs.json"),
+			new URL("https://example.com/abs.json"),
 			expect.objectContaining({ method: "GET" }),
 		);
 	});
@@ -669,14 +668,10 @@ describe("loadCompiledItems", () => {
 	});
 
 	it("propagates labeled local payload JSON parse failures", async () => {
-		const failure = new InvalidJsonError(
-			"compiled item at /workspace/r/bad.json",
-			new SyntaxError("Unexpected token"),
-		);
-		mockReadJsonFileAsync.mockRejectedValueOnce(failure);
+		mockReadFileAsync.mockResolvedValueOnce("{ not json");
 
 		await expect(
 			loadCompiledItems("/workspace/registry.json", ["r/bad.json"]),
-		).rejects.toBe(failure);
+		).rejects.toBeInstanceOf(InvalidJsonError);
 	});
 });

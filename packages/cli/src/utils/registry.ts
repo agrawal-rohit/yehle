@@ -7,7 +7,9 @@ import {
 	joinIndexSource,
 	parseRegistryDocument,
 	type Registry,
+	readFileAsync,
 	readJsonFileAsync,
+	verifyItemIntegrity,
 } from "@tuckshop/core";
 
 export interface LocateRegistryOptions {
@@ -35,12 +37,20 @@ export interface LoadedRegistry {
  * @returns Absolute local path or HTTPS URL to the index.
  * @throws Error when no local or bundled registry can be found, or an explicit URL is unsafe.
  */
+
+/**
+ * Absolute path to the registry.json packaged with the CLI.
+ * @returns Absolute filesystem path.
+ */
+export function bundledRegistryPath(): string {
+	return path.resolve(__dirname, "../../", "registry.json");
+}
+
 export async function locateRegistry(
 	options: LocateRegistryOptions = {},
 ): Promise<string> {
-	const bundledRegistryPath =
-		options.bundledRegistryPath ??
-		path.resolve(__dirname, "../../", "registry.json");
+	const resolvedBundledRegistryPath =
+		options.bundledRegistryPath ?? bundledRegistryPath();
 	const fallbackRegistryPaths = options.fallbackRegistryPaths ?? [
 		path.resolve(__dirname, "../../../registry/registry.json"),
 	];
@@ -61,7 +71,7 @@ export async function locateRegistry(
 	const candidates = [
 		path.resolve(process.cwd(), "registry.json"),
 		...fallbackRegistryPaths,
-		bundledRegistryPath,
+		resolvedBundledRegistryPath,
 	];
 
 	for (const candidate of candidates)
@@ -79,7 +89,10 @@ export async function locateRegistry(
  * @returns Parsed JSON value.
  * @throws Error when the request fails or the response is invalid.
  */
-async function fetchRemoteJson(url: string, label: string): Promise<unknown> {
+async function fetchRemoteJsonBytes(
+	url: string,
+	label: string,
+): Promise<Buffer> {
 	const parsedUrl = new URL(url);
 	assertSafeRemoteUrl(parsedUrl);
 
@@ -126,6 +139,11 @@ async function fetchRemoteJson(url: string, label: string): Promise<unknown> {
 	if (body.length > maxRegistryBytes)
 		throw new Error(`Remote ${label} is too large.`);
 
+	return body;
+}
+
+async function fetchRemoteJson(url: string, label: string): Promise<unknown> {
+	const body = await fetchRemoteJsonBytes(url, label);
 	try {
 		return JSON.parse(body.toString("utf8")) as unknown;
 	} catch (error) {
@@ -193,6 +211,7 @@ export async function loadRuntimeRegistry(
 export async function loadCompiledItems(
 	indexLocation: string,
 	sources: readonly string[],
+	itemIntegrity?: Record<string, string>,
 ): Promise<Map<string, unknown>> {
 	const uniqueSources = [...new Set(sources)];
 	const documents = new Map<string, unknown>();
@@ -200,9 +219,46 @@ export async function loadCompiledItems(
 	await Promise.all(
 		uniqueSources.map(async (source) => {
 			const location = joinIndexSource(indexLocation, source);
-			documents.set(source, await loadJsonDocument(location, "compiled item"));
+			const { bytes, value } = await loadJsonDocumentWithBytes(
+				location,
+				"compiled item",
+			);
+			if (itemIntegrity) verifyItemIntegrity(itemIntegrity, source, bytes);
+			documents.set(source, value);
 		}),
 	);
 
 	return documents;
+}
+
+/**
+ * Load a JSON document and retain the raw bytes for integrity checks.
+ * @param location - Absolute path or HTTPS URL.
+ * @param label - Error context label.
+ * @returns Raw UTF-8 bytes and parsed JSON value.
+ */
+async function loadJsonDocumentWithBytes(
+	location: string,
+	label: string,
+): Promise<{ bytes: Buffer; value: unknown }> {
+	if (isAbsoluteHttpUrl(location)) {
+		const bytes = await fetchRemoteJsonBytes(location, label);
+		try {
+			return { bytes, value: JSON.parse(bytes.toString("utf8")) as unknown };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(`Remote ${label} returned invalid JSON: ${message}`);
+		}
+	}
+
+	try {
+		const text = await readFileAsync(location);
+		const bytes = Buffer.from(text);
+		return { bytes, value: JSON.parse(text) as unknown };
+	} catch (error) {
+		if (error instanceof SyntaxError)
+			throw new InvalidJsonError(`${label} at ${location}`, error);
+		const message = error instanceof Error ? error.message : String(error);
+		throw new Error(`Failed to read ${label} at ${location}: ${message}`);
+	}
 }

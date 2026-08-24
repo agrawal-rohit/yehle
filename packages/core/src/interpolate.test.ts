@@ -69,16 +69,13 @@ describe("core/interpolate", () => {
 
 	describe("interpolateCompiledItem", () => {
 		it("replaces {{key}} in files and commands without touching GitHub Actions expressions", () => {
-			const ghaSha = "${{" + " github.sha }}";
+			const ghaSha = `\${{ github.sha }}`;
 			const payload = interpolateCompiledItem(
 				{
 					files: [
 						{
 							target: "ci.yml",
-							content:
-								"branch: {{defaultBranch}}\nsha: " +
-								ghaSha +
-								"\nrun: {{pmRun}} test\n",
+							content: `branch: {{defaultBranch}}\nsha: ${ghaSha}\nrun: {{pmRun}} test\n`,
 						},
 					],
 					commands: { npm: { test: "{{pmExec}} vitest run" } },
@@ -91,7 +88,7 @@ describe("core/interpolate", () => {
 			);
 
 			expect(payload.files[0].content).toBe(
-				"branch: main\nsha: " + ghaSha + "\nrun: pnpm test\n",
+				`branch: main\nsha: ${ghaSha}\nrun: pnpm test\n`,
 			);
 			expect(payload.commands).toEqual({
 				npm: { test: "pnpm exec vitest run" },

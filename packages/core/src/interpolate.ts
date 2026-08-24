@@ -19,7 +19,7 @@ export type InterpolationView = Record<
 /**
  * Build a typed Mustache view from install conditions, select-option bindings, and hook bindings.
  * @param conditions - Captured condition context.
- * @param bindings - Bindings from beforeInstall hooks.
+ * @param bindings - Bindings from prepare hooks.
  * @param optionValues - Select options keyed by condition name (shared + item-local).
  * @returns View used for `{{key}}` and Mustache sections.
  */

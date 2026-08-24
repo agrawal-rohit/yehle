@@ -19,9 +19,10 @@ import {
 	type RegistryContext,
 	type RegistryEcosystemDependencies,
 	type RegistryPackageManager,
-	runAfterInstallHook,
-	runBeforeInstallHook,
+	runFinalizeInstallHook,
+	runPrepareInstallHook,
 	selectNpmPackageManager,
+	setScriptExecutor,
 } from "@tuckshop/core";
 import chalk from "chalk";
 import { defaultText, primaryText } from "../cli/labels";
@@ -38,6 +39,7 @@ import {
 	mergeProjectCommands,
 } from "../utils/packages";
 import { loadCompiledItems } from "../utils/registry";
+import { confirmHookMutations, prepareScriptExecution } from "../utils/scripts";
 
 /** Options accepted by the add command. */
 interface AddCommandOptions {
@@ -207,15 +209,15 @@ function prepareInstallItems(
 }
 
 /**
- * Apply one `beforeInstall` hook result to a payload and shared bindings.
+ * Apply one `prepare` hook result to a payload and shared bindings.
  * @param payload - Payload accumulated for the current item.
  * @param hookResult - Hook output to merge.
  * @param bindings - Shared bindings map mutated in place.
  * @returns Payload with hook file and manifest updates applied.
  */
-function applyBeforeInstallHookResult(
+function applyPrepareInstallHookResult(
 	compiledItem: CompiledItem,
-	hookResult: Awaited<ReturnType<typeof runBeforeInstallHook>>,
+	hookResult: Awaited<ReturnType<typeof runPrepareInstallHook>>,
 	bindings: Record<string, string>,
 ): CompiledItem {
 	Object.assign(bindings, hookResult.bindings);
@@ -229,14 +231,14 @@ function applyBeforeInstallHookResult(
 }
 
 /**
- * Run `beforeInstall` scripts for install items in plan order.
+ * Run `prepare` scripts for install items in plan order.
  * @param indexLocation - Absolute path or HTTPS URL of the index document.
  * @param runtime - Shared handler runtime.
  * @param conditions - Resolved condition context.
  * @param installItems - Prepared install items with plan nodes.
  * @returns Updated items and merged bindings.
  */
-async function runBeforeInstallScripts(
+async function runPrepareInstallScripts(
 	indexLocation: string,
 	runtime: HandlerRuntime,
 	conditions: RegistryContext,
@@ -248,10 +250,10 @@ async function runBeforeInstallScripts(
 
 	for (const item of installItems) {
 		let compiledItem = item.compiledItem;
-		for (const scriptUri of item.node.beforeInstallScripts ?? []) {
-			compiledItem = applyBeforeInstallHookResult(
+		for (const scriptUri of item.node.prepareScripts ?? []) {
+			compiledItem = applyPrepareInstallHookResult(
 				compiledItem,
-				await runBeforeInstallHook(indexLocation, scriptUri, runtime, {
+				await runPrepareInstallHook(indexLocation, scriptUri, runtime, {
 					itemId: item.node.itemId,
 					...(item.node.packIds ? { packIds: item.node.packIds } : {}),
 					conditions,
@@ -340,6 +342,8 @@ function printInstallNextSteps(
 		);
 		for (const name of secrets) console.log(`     - ${primaryText(name)}`);
 	}
+
+	setScriptExecutor(undefined);
 }
 
 /**
@@ -358,6 +362,13 @@ export async function addCommand(
 		options.items && options.items.length > 0
 			? options.items
 			: await promptForItems(registry);
+
+	await prepareScriptExecution({
+		indexLocation,
+		registry,
+		itemIds: items,
+		projectDir,
+	});
 
 	const runtime = createProjectHandlerRuntime(projectDir);
 
@@ -409,6 +420,7 @@ export async function addCommand(
 			compiledItemDocuments = await loadCompiledItems(
 				indexLocation,
 				compiledItemSources,
+				registry.itemIntegrity,
 			);
 		});
 
@@ -418,13 +430,20 @@ export async function addCommand(
 		compiledItemDocuments,
 	);
 
-	const { items: afterHooks, bindings } = await runBeforeInstallScripts(
+	const { items: afterHooks, bindings } = await runPrepareInstallScripts(
 		indexLocation,
 		runtime,
 		conditions,
 		packageManager,
 		preparedItems,
 	);
+
+	if (!(await confirmHookMutations(afterHooks))) {
+		setScriptExecutor(undefined);
+		throw new Error(
+			"Install cancelled: script-proposed changes were declined.",
+		);
+	}
 
 	const interpolationValues = buildInterpolationContext(
 		conditions,
@@ -456,8 +475,8 @@ export async function addCommand(
 	);
 
 	for (const item of installItems) {
-		for (const scriptUri of item.node.afterInstallScripts ?? []) {
-			await runAfterInstallHook(indexLocation, scriptUri, runtime, {
+		for (const scriptUri of item.node.finalizeScripts ?? []) {
+			await runFinalizeInstallHook(indexLocation, scriptUri, runtime, {
 				itemId: item.node.itemId,
 				...(item.node.packIds ? { packIds: item.node.packIds } : {}),
 				conditions,

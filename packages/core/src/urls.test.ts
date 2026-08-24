@@ -152,22 +152,40 @@ describe("publishedRegistryUrl", () => {
 });
 
 describe("joinIndexSource", () => {
-	it("passes absolute payload URLs through unchanged", () => {
+	it("passes same-origin absolute payload URLs through unchanged", () => {
 		expect(
+			joinIndexSource(
+				"https://example.com/registry.json",
+				"https://example.com/payloads/button.json",
+			),
+		).toBe("https://example.com/payloads/button.json");
+	});
+
+	it("rejects cross-origin absolute payload URLs", () => {
+		expect(() =>
 			joinIndexSource(
 				"https://example.com/registry.json",
 				"https://cdn.example.com/payloads/button.json",
 			),
-		).toBe("https://cdn.example.com/payloads/button.json");
+		).toThrow("must stay on the same origin as the registry index");
 	});
 
-	it("trims whitespace before treating a source as an absolute URL", () => {
-		expect(
+	it("rejects absolute URLs against a local registry index", () => {
+		expect(() =>
 			joinIndexSource(
 				"/tmp/my-registry/registry.json",
 				"  https://cdn.example.com/payloads/button.json  ",
 			),
-		).toBe("https://cdn.example.com/payloads/button.json");
+		).toThrow("must be a relative path under a local registry");
+	});
+
+	it("trims whitespace before treating a same-origin source as an absolute URL", () => {
+		expect(
+			joinIndexSource(
+				"https://example.com/registry.json",
+				"  https://example.com/payloads/button.json  ",
+			),
+		).toBe("https://example.com/payloads/button.json");
 	});
 
 	it("joins relative payloads against an http(s) index URL", () => {

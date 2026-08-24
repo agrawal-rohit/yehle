@@ -93,13 +93,13 @@ describe("core/plan", () => {
 					"item",
 					makeItem({
 						source: "r/item.json",
-						beforeInstall: ["r/item.beforeInstall.0.js"],
+						prepare: ["r/item.prepare.0.js"],
 					}),
 					{},
 				),
 			).toEqual({
 				sources: ["r/item.json"],
-				beforeInstallScripts: ["r/item.beforeInstall.0.js"],
+				prepareScripts: ["r/item.prepare.0.js"],
 			});
 		});
 
@@ -107,15 +107,15 @@ describe("core/plan", () => {
 			expect(
 				selectRegistryPacks(
 					"item",
-					makeItem({ beforeInstall: ["r/item.beforeInstall.0.js"] }),
+					makeItem({ prepare: ["r/item.prepare.0.js"] }),
 					{},
 				),
-			).toEqual({ beforeInstallScripts: ["r/item.beforeInstall.0.js"] });
+			).toEqual({ prepareScripts: ["r/item.prepare.0.js"] });
 		});
 
 		it("includes item-level install scripts on matching packs", () => {
 			const item = makeItem({
-				beforeInstall: ["r/item.beforeInstall.0.js"],
+				prepare: ["r/item.prepare.0.js"],
 				packs: [
 					makePack({
 						id: "default",
@@ -128,19 +128,19 @@ describe("core/plan", () => {
 			expect(selectRegistryPacks("item", item, {})).toEqual({
 				packIds: ["default"],
 				sources: ["r/item/default.json"],
-				beforeInstallScripts: ["r/item.beforeInstall.0.js"],
+				prepareScripts: ["r/item.prepare.0.js"],
 			});
 		});
 
 		it("stacks item-level and selected-pack install scripts", () => {
 			const item = makeItem({
-				beforeInstall: ["r/item.beforeInstall.0.js"],
+				prepare: ["r/item.prepare.0.js"],
 				packs: [
 					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/item/typescript.json",
-						beforeInstall: ["r/item/typescript.beforeInstall.0.js"],
+						prepare: ["r/item/typescript.prepare.0.js"],
 					}),
 				],
 			});
@@ -148,9 +148,9 @@ describe("core/plan", () => {
 			expect(selectRegistryPacks("item", item, {})).toEqual({
 				packIds: ["typescript"],
 				sources: ["r/item/typescript.json"],
-				beforeInstallScripts: [
-					"r/item.beforeInstall.0.js",
-					"r/item/typescript.beforeInstall.0.js",
+				prepareScripts: [
+					"r/item.prepare.0.js",
+					"r/item/typescript.prepare.0.js",
 				],
 			});
 		});
@@ -318,12 +318,12 @@ describe("core/plan", () => {
 
 		it("includes script-only items without a compiled item source", () => {
 			const license = makeItem({
-				beforeInstall: ["r/license.beforeInstall.0.js"],
+				prepare: ["r/license.prepare.0.js"],
 			});
 			expect(buildInstallPlan(["license"], { license }, {})).toEqual([
 				{
 					itemId: "license",
-					beforeInstallScripts: ["r/license.beforeInstall.0.js"],
+					prepareScripts: ["r/license.prepare.0.js"],
 				},
 			]);
 		});
@@ -453,25 +453,25 @@ describe("core/plan", () => {
 				selectRegistryPacks(
 					"template",
 					makeItem({
-						beforeInstall: ["r/template.beforeInstall.0.js"],
-						afterInstall: ["r/template.afterInstall.0.js"],
+						prepare: ["r/template.prepare.0.js"],
+						finalize: ["r/template.finalize.0.js"],
 					}),
 					{},
 				),
 			).toEqual({
-				beforeInstallScripts: ["r/template.beforeInstall.0.js"],
-				afterInstallScripts: ["r/template.afterInstall.0.js"],
+				prepareScripts: ["r/template.prepare.0.js"],
+				finalizeScripts: ["r/template.finalize.0.js"],
 			});
 		});
 
 		it("orders dependsOn before the consumer and ignores phase item-like names", () => {
 			const license = makeItem({ source: "r/license.json" });
 			const gitInit = makeItem({
-				afterInstall: ["r/git-init.afterInstall.0.js"],
+				finalize: ["r/git-init.finalize.0.js"],
 			});
 			const template = makeItem({
 				source: "r/template.json",
-				beforeInstall: ["r/template.beforeInstall.0.js"],
+				prepare: ["r/template.prepare.0.js"],
 				dependsOn: ["license", "git-init"],
 			});
 
@@ -488,13 +488,13 @@ describe("core/plan", () => {
 			]);
 			expect(plan[2]).toMatchObject({
 				itemId: "template",
-				beforeInstallScripts: ["r/template.beforeInstall.0.js"],
+				prepareScripts: ["r/template.prepare.0.js"],
 			});
 		});
 
 		it("places a shared dependsOn once before every consumer", () => {
 			const gitInit = makeItem({
-				afterInstall: ["r/git-init.afterInstall.0.js"],
+				finalize: ["r/git-init.finalize.0.js"],
 			});
 			const left = makeItem({
 				source: "r/left.json",
@@ -537,12 +537,12 @@ describe("core/plan", () => {
 	describe("collectRegistryDependencies", () => {
 		it("walks dependsOn and ignores install-phase scripts", () => {
 			const gitInit = makeItem({
-				afterInstall: ["r/git-init.afterInstall.0.js"],
+				finalize: ["r/git-init.finalize.0.js"],
 			});
 			const template = makeItem({
 				source: "r/template.json",
 				dependsOn: ["git-init"],
-				afterInstall: ["r/template.afterInstall.0.js"],
+				finalize: ["r/template.finalize.0.js"],
 			});
 
 			const dependencies = collectRegistryDependencies(["template"], {

@@ -40,6 +40,7 @@ import {
 	registryItemSchema,
 	registryItemTypeSchema,
 } from "./schema";
+import { collectRegistryArtifactUris, sha256Integrity } from "./scripts";
 import { joinRelativePathUnderRoot } from "./urls";
 
 export interface BuildRegistryOptions {
@@ -590,19 +591,19 @@ async function indexPackEntry(
 	pack: RawRegistryPack,
 	config: BuildConfig,
 ): Promise<IndexPack> {
-	const packBeforeInstall = await compileInstallPhaseList(
+	const packPREPARE = await compileInstallPhaseList(
 		itemDir,
 		itemId,
-		InstallPhase.BeforeInstall,
-		pack.beforeInstall,
+		InstallPhase.PREPARE,
+		pack.prepare,
 		config,
 		pack.id,
 	);
-	const packAfterInstall = await compileInstallPhaseList(
+	const packFINALIZE = await compileInstallPhaseList(
 		itemDir,
 		itemId,
-		InstallPhase.AfterInstall,
-		pack.afterInstall,
+		InstallPhase.FINALIZE,
+		pack.finalize,
 		config,
 		pack.id,
 	);
@@ -613,8 +614,8 @@ async function indexPackEntry(
 		source: compiledItemUri(config.compiledDirName, itemId, pack.id),
 		...(pack.when ? { when: pack.when } : {}),
 		...(pack.dependsOn ? { dependsOn: pack.dependsOn } : {}),
-		...(packBeforeInstall ? { beforeInstall: packBeforeInstall } : {}),
-		...(packAfterInstall ? { afterInstall: packAfterInstall } : {}),
+		...(packPREPARE ? { prepare: packPREPARE } : {}),
+		...(packFINALIZE ? { finalize: packFINALIZE } : {}),
 	};
 }
 
@@ -630,23 +631,23 @@ async function compileItemIndexArtifacts(
 	item: RawRegistryItem,
 	config: BuildConfig,
 ): Promise<{
-	beforeInstall: string[] | undefined;
-	afterInstall: string[] | undefined;
+	prepare: string[] | undefined;
+	finalize: string[] | undefined;
 	itemConditions: Record<string, RegistryCondition> | undefined;
 }> {
-	const [beforeInstall, afterInstall, itemConditions] = await Promise.all([
+	const [prepare, finalize, itemConditions] = await Promise.all([
 		compileInstallPhaseList(
 			itemDir,
 			item.id,
-			InstallPhase.BeforeInstall,
-			item.beforeInstall,
+			InstallPhase.PREPARE,
+			item.prepare,
 			config,
 		),
 		compileInstallPhaseList(
 			itemDir,
 			item.id,
-			InstallPhase.AfterInstall,
-			item.afterInstall,
+			InstallPhase.FINALIZE,
+			item.finalize,
 			config,
 		),
 		compileConditionHandlers(itemDir, item.conditions, config, {
@@ -659,7 +660,7 @@ async function compileItemIndexArtifacts(
 		}),
 	]);
 
-	return { beforeInstall, afterInstall, itemConditions };
+	return { prepare, finalize, itemConditions };
 }
 
 /**
@@ -679,10 +680,10 @@ function sharedIndexItemFields(
 	| "requires"
 	| "conditions"
 	| "dependsOn"
-	| "beforeInstall"
-	| "afterInstall"
+	| "prepare"
+	| "finalize"
 > {
-	const { beforeInstall, afterInstall, itemConditions } = artifacts;
+	const { prepare, finalize, itemConditions } = artifacts;
 	return {
 		title: item.title,
 		description: item.description,
@@ -690,8 +691,8 @@ function sharedIndexItemFields(
 		...(item.requires ? { requires: item.requires } : {}),
 		...(itemConditions ? { conditions: itemConditions } : {}),
 		...(item.dependsOn ? { dependsOn: item.dependsOn } : {}),
-		...(beforeInstall ? { beforeInstall } : {}),
-		...(afterInstall ? { afterInstall } : {}),
+		...(prepare ? { prepare } : {}),
+		...(finalize ? { finalize } : {}),
 	};
 }
 
@@ -790,7 +791,46 @@ async function fetchTypesAndConditions(config: BuildConfig): Promise<{
 }
 
 /**
- * Compile a registry registry source tree into a index JSON file and compiled items under the compiled output directory.
+ * Hash compiled catalog URIs under `outDir`.
+ * @param outDir - Absolute registry output directory.
+ * @param uris - Catalog URIs to hash.
+ * @returns Integrity map keyed by catalog URI.
+ */
+async function hashCatalogUris(
+	outDir: string,
+	uris: Iterable<string>,
+): Promise<Record<string, string>> {
+	const integrity: Record<string, string> = {};
+	for (const uri of [...uris].sort((a, b) => a.localeCompare(b))) {
+		integrity[uri] = sha256Integrity(
+			await readFileAsync(path.join(outDir, uri)),
+		);
+	}
+	return integrity;
+}
+
+/**
+ * Collect sha256 integrity digests for every compiled script and item URI in the index.
+ * @param outDir - Absolute registry output directory containing compiled artifacts.
+ * @param document - Parsed registry document whose URIs should be hashed.
+ * @returns Integrity maps keyed by catalog URI.
+ */
+async function collectIntegrityMaps(
+	outDir: string,
+	document: Registry,
+): Promise<{
+	scriptIntegrity: Record<string, string>;
+	itemIntegrity: Record<string, string>;
+}> {
+	const { scriptUris, itemUris } = collectRegistryArtifactUris(document);
+	return {
+		scriptIntegrity: await hashCatalogUris(outDir, scriptUris),
+		itemIntegrity: await hashCatalogUris(outDir, itemUris),
+	};
+}
+
+/**
+ * Compile a registry source tree into an index JSON file and compiled items under the compiled output directory.
  * @param options - Absolute `sourceDir` / `outDir`, plus optional layout and bundling overrides (see {@link BuildRegistryOptions}).
  * @returns The compiled registry document that was written to disk.
  * @throws Error when a file-name option is invalid, an item is invalid, a source is missing, or types are absent.
@@ -824,6 +864,19 @@ export async function buildRegistry(
 		items: await buildIndexItems(rawItems, config),
 	});
 
-	await writeFileAsync(registryPath, `${JSON.stringify(document)}\n`);
-	return document;
+	const { scriptIntegrity, itemIntegrity } = await collectIntegrityMaps(
+		config.outDir,
+		document,
+	);
+	const documentWithIntegrity: Registry = {
+		...document,
+		...(Object.keys(scriptIntegrity).length > 0 ? { scriptIntegrity } : {}),
+		...(Object.keys(itemIntegrity).length > 0 ? { itemIntegrity } : {}),
+	};
+
+	await writeFileAsync(
+		registryPath,
+		`${JSON.stringify(documentWithIntegrity)}\n`,
+	);
+	return documentWithIntegrity;
 }

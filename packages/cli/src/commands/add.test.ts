@@ -31,6 +31,16 @@ vi.mock("../cli/prompts", () => ({
 
 vi.mock("../utils/registry", () => ({
 	loadCompiledItems: (...args: unknown[]) => mockLoadCompiledItems(...args),
+	bundledRegistryPath: () => "/bundled/registry.json",
+}));
+
+vi.mock("../utils/scripts", () => ({
+	prepareScriptExecution: vi.fn(async () => ({
+		trust: "bundled",
+		policy: "allow",
+		scriptsAllowed: true,
+	})),
+	confirmHookMutations: vi.fn(async () => true),
 }));
 
 vi.mock("@tuckshop/core", async () => {
@@ -128,9 +138,11 @@ describe("commands/add", () => {
 		});
 
 		expect(mockMultiselectInput).not.toHaveBeenCalled();
-		expect(mockLoadCompiledItems).toHaveBeenCalledWith(indexLocation, [
-			"r/pr-template-configuration.json",
-		]);
+		expect(mockLoadCompiledItems).toHaveBeenCalledWith(
+			indexLocation,
+			["r/pr-template-configuration.json"],
+			undefined,
+		);
 		expect(mockRunWithTasks).toHaveBeenCalledWith(
 			"Fetching compiled items",
 			expect.any(Function),
@@ -936,16 +948,16 @@ module.exports = {
 		).rejects.toThrow("No registry items were selected for installation.");
 	});
 
-	it("passes packIds into beforeInstall scripts when present", async () => {
+	it("passes packIds into prepare scripts when present", async () => {
 		const handlerDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-variant-"));
 		const catalogPath = path.join(handlerDir, "registry.json");
-		const scriptPath = path.join(handlerDir, "r/hello.beforeInstall.0.js");
+		const scriptPath = path.join(handlerDir, "r/hello.prepare.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(catalogPath, "{}\n");
 		fs.writeFileSync(
 			scriptPath,
 			`
-module.exports = async function beforeInstall(ctx) {
+module.exports = async function prepare(ctx) {
   return {
     files: [{ target: "VARIANT.md", content: (ctx.packIds || []).join(",") || "none" }],
   };
@@ -957,7 +969,7 @@ module.exports = async function beforeInstall(ctx) {
 			{
 				itemId: "hello",
 				packIds: ["typescript"],
-				beforeInstallScripts: ["r/hello.beforeInstall.0.js"],
+				prepareScripts: ["r/hello.prepare.0.js"],
 			},
 		]);
 
@@ -968,7 +980,7 @@ module.exports = async function beforeInstall(ctx) {
 					title: "Hello",
 					description: "Install script demo",
 					type: "configuration",
-					beforeInstall: ["r/hello.beforeInstall.0.js"],
+					prepare: ["r/hello.prepare.0.js"],
 				},
 			},
 		};
@@ -988,20 +1000,20 @@ module.exports = async function beforeInstall(ctx) {
 		}
 	});
 
-	it("passes packIds into afterInstall scripts when present", async () => {
+	it("passes packIds into finalize scripts when present", async () => {
 		const handlerDir = fs.mkdtempSync(
 			path.join(os.tmpdir(), "add-after-variant-"),
 		);
 		const catalogPath = path.join(handlerDir, "registry.json");
 		const logPath = path.join(tempDir, "after-variant.log");
-		const scriptPath = path.join(handlerDir, "r/hello.afterInstall.0.js");
+		const scriptPath = path.join(handlerDir, "r/hello.finalize.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(catalogPath, "{}\n");
 		fs.writeFileSync(
 			scriptPath,
 			`
 const fs = require("node:fs");
-module.exports = async function afterInstall(ctx) {
+module.exports = async function finalize(ctx) {
   fs.appendFileSync(${JSON.stringify(logPath)}, (ctx.packIds || []).join(",") || "none");
 };
 `,
@@ -1012,7 +1024,7 @@ module.exports = async function afterInstall(ctx) {
 				itemId: "hello",
 				packIds: ["typescript"],
 				sources: ["r/hello.json"],
-				afterInstallScripts: ["r/hello.afterInstall.0.js"],
+				finalizeScripts: ["r/hello.finalize.0.js"],
 			},
 		]);
 		mockLoadCompiledItems.mockResolvedValue(
@@ -1034,7 +1046,7 @@ module.exports = async function afterInstall(ctx) {
 					description: "After-install script demo",
 					type: "configuration",
 					source: "r/hello.json",
-					afterInstall: ["r/hello.afterInstall.0.js"],
+					finalize: ["r/hello.finalize.0.js"],
 				},
 			},
 		};
@@ -1218,18 +1230,18 @@ module.exports = async function afterInstall(ctx) {
 		);
 	});
 
-	it("runs a local beforeInstall script before writing files", async () => {
+	it("runs a local prepare script before writing files", async () => {
 		const fs = await import("node:fs");
 		const os = await import("node:os");
 		const handlerDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-handler-"));
 		const catalogPath = path.join(handlerDir, "registry.json");
-		const scriptPath = path.join(handlerDir, "r/hello.beforeInstall.0.js");
+		const scriptPath = path.join(handlerDir, "r/hello.prepare.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(catalogPath, "{}\n");
 		fs.writeFileSync(
 			scriptPath,
 			`
-module.exports = async function beforeInstall(ctx) {
+module.exports = async function prepare(ctx) {
   const name = ctx.conditions.authorName || "world";
   return {
     bindings: { name },
@@ -1243,7 +1255,7 @@ module.exports = async function beforeInstall(ctx) {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "hello",
-				beforeInstallScripts: ["r/hello.beforeInstall.0.js"],
+				prepareScripts: ["r/hello.prepare.0.js"],
 			},
 		]);
 
@@ -1261,7 +1273,7 @@ module.exports = async function beforeInstall(ctx) {
 					description: "Install script demo",
 					type: "configuration",
 					requires: ["authorName"],
-					beforeInstall: ["r/hello.beforeInstall.0.js"],
+					prepare: ["r/hello.prepare.0.js"],
 				},
 			},
 		};
@@ -1287,21 +1299,21 @@ module.exports = async function beforeInstall(ctx) {
 		}
 	});
 
-	it("runs beforeInstall before writes and afterInstall after writes", async () => {
+	it("runs prepare before writes and finalize after writes", async () => {
 		const fs = await import("node:fs");
 		const os = await import("node:os");
 		const handlerDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-lifecycle-"));
 		const catalogPath = path.join(handlerDir, "registry.json");
 		const logPath = path.join(tempDir, "lifecycle-order.log");
-		const beforePath = path.join(handlerDir, "r/lifecycle.beforeInstall.0.js");
-		const afterPath = path.join(handlerDir, "r/lifecycle.afterInstall.0.js");
+		const beforePath = path.join(handlerDir, "r/lifecycle.prepare.0.js");
+		const afterPath = path.join(handlerDir, "r/lifecycle.finalize.0.js");
 		fs.mkdirSync(path.dirname(beforePath), { recursive: true });
 		fs.writeFileSync(catalogPath, "{}\n");
 		fs.writeFileSync(
 			beforePath,
 			`
 const fs = require("node:fs");
-module.exports = async function beforeInstall() {
+module.exports = async function prepare() {
   fs.appendFileSync(${JSON.stringify(logPath)}, "before\\n");
 };
 `,
@@ -1310,7 +1322,7 @@ module.exports = async function beforeInstall() {
 			afterPath,
 			`
 const fs = require("node:fs");
-module.exports = async function afterInstall() {
+module.exports = async function finalize() {
   fs.appendFileSync(${JSON.stringify(logPath)}, "after\\n");
 };
 `,
@@ -1320,8 +1332,8 @@ module.exports = async function afterInstall() {
 			{
 				itemId: "lifecycle",
 				sources: ["r/lifecycle.json"],
-				beforeInstallScripts: ["r/lifecycle.beforeInstall.0.js"],
-				afterInstallScripts: ["r/lifecycle.afterInstall.0.js"],
+				prepareScripts: ["r/lifecycle.prepare.0.js"],
+				finalizeScripts: ["r/lifecycle.finalize.0.js"],
 			},
 		]);
 		mockLoadCompiledItems.mockResolvedValue(
@@ -1343,8 +1355,8 @@ module.exports = async function afterInstall() {
 					description: "Lifecycle scripts",
 					type: "configuration",
 					source: "r/lifecycle.json",
-					beforeInstall: ["r/lifecycle.beforeInstall.0.js"],
-					afterInstall: ["r/lifecycle.afterInstall.0.js"],
+					prepare: ["r/lifecycle.prepare.0.js"],
+					finalize: ["r/lifecycle.finalize.0.js"],
 				},
 			},
 		};
@@ -1396,7 +1408,7 @@ module.exports = async function afterInstall() {
 						files: [
 							{
 								target: "ci.yml",
-								content: "branch: {{defaultBranch}}\nsha: ${{ github.sha }}\n",
+								content: `branch: {{defaultBranch}}\nsha: \${{ github.sha }}\n`,
 							},
 						],
 					},
@@ -1411,7 +1423,7 @@ module.exports = async function afterInstall() {
 
 		expect(mockWriteFileAsync).toHaveBeenCalledWith(
 			path.join(tempDir, "ci.yml"),
-			"branch: main\nsha: ${{ github.sha }}\n",
+			`branch: main\nsha: \${{ github.sha }}\n`,
 		);
 	});
 
@@ -1503,10 +1515,10 @@ module.exports = async function afterInstall() {
 		);
 	});
 
-	it("folds beforeInstall hook dependencies into the working compiled item", async () => {
+	it("folds prepare hook dependencies into the working compiled item", async () => {
 		const handlerDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-deps-"));
 		const catalogPath = path.join(handlerDir, "registry.json");
-		const scriptPath = path.join(handlerDir, "r/hello.beforeInstall.0.js");
+		const scriptPath = path.join(handlerDir, "r/hello.prepare.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(catalogPath, "{}\n");
 		fs.writeFileSync(
@@ -1517,7 +1529,7 @@ module.exports = async function afterInstall() {
 		fs.writeFileSync(
 			scriptPath,
 			`
-module.exports = async function beforeInstall() {
+module.exports = async function prepare() {
   return {
     files: [{ target: "HELLO.md", content: "hi" }],
     dependencies: { npm: { runtime: ["left-pad"] } },
@@ -1531,7 +1543,7 @@ module.exports = async function beforeInstall() {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "hello",
-				beforeInstallScripts: ["r/hello.beforeInstall.0.js"],
+				prepareScripts: ["r/hello.prepare.0.js"],
 			},
 		]);
 
@@ -1542,7 +1554,7 @@ module.exports = async function beforeInstall() {
 					title: "Hello",
 					description: "Hook deps",
 					type: "configuration",
-					beforeInstall: ["r/hello.beforeInstall.0.js"],
+					prepare: ["r/hello.prepare.0.js"],
 				},
 			},
 		};

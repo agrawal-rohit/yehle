@@ -620,12 +620,12 @@ describe("buildRegistry", () => {
 	});
 
 	it.each([
-		["nested/path.json", String.raw`single path segment`],
-		["..", String.raw`single path segment`],
-		[".", String.raw`single path segment`],
+		["nested/path.json", "single path segment"],
+		["..", "single path segment"],
+		[".", "single path segment"],
 		["catalog.txt", 'must end with ".json"'],
-		["", String.raw`single path segment`],
-		["   ", String.raw`single path segment`],
+		["", "single path segment"],
+		["   ", "single path segment"],
 	])("rejects invalid registryFileName %j", async (registryFileName, message) => {
 		await expect(
 			buildRegistry({
@@ -705,8 +705,8 @@ describe("buildRegistry", () => {
 	});
 
 	it.each([
-		["nested/path.json", String.raw`single path segment`],
-		["..", String.raw`single path segment`],
+		["nested/path.json", "single path segment"],
+		["..", "single path segment"],
 		["item.txt", 'must end with ".json"'],
 	])("rejects invalid itemManifestFileName %j", async (itemManifestFileName, message) => {
 		await expect(
@@ -719,9 +719,9 @@ describe("buildRegistry", () => {
 	});
 
 	it.each([
-		["nested/out", String.raw`single path segment`],
-		["..", String.raw`single path segment`],
-		["", String.raw`single path segment`],
+		["nested/out", "single path segment"],
+		["..", "single path segment"],
+		["", "single path segment"],
 	])("rejects invalid compiledDirName %j", async (compiledDirName, message) => {
 		await expect(
 			buildRegistry({
@@ -761,12 +761,12 @@ describe("buildRegistry", () => {
 				title: "Bad core",
 				description: "Imports core at runtime",
 				type: "configuration",
-				beforeInstall: "handler.ts",
+				prepare: "handler.ts",
 			},
 			{
 				"handler.ts": `
 import { parseWithSchema } from "@tuckshop/core";
-export default async function beforeInstall() {
+export default async function prepare() {
   void parseWithSchema;
   return { files: [{ target: "X", content: "x" }] };
 }
@@ -792,12 +792,12 @@ export default async function beforeInstall() {
 				title: "Banned",
 				description: "Imports a configured external",
 				type: "configuration",
-				beforeInstall: "handler.ts",
+				prepare: "handler.ts",
 			},
 			{
 				"handler.ts": `
 import value from "acme-registry-runtime";
-export default async function beforeInstall() {
+export default async function prepare() {
   void value;
   return { files: [{ target: "X", content: "x" }] };
 }
@@ -898,11 +898,11 @@ export default async function beforeInstall() {
 				title: "License",
 				description: "SPDX license",
 				type: "configuration",
-				beforeInstall: "handler.ts",
+				prepare: "handler.ts",
 			},
 			{
 				"handler.ts": `
-export default async function beforeInstall() {
+export default async function prepare() {
   return { files: [{ target: "LICENSE", content: "MIT" }] };
 }
 `,
@@ -936,19 +936,25 @@ export default {
 			title: "License",
 			description: "SPDX license",
 			type: "configuration",
-			beforeInstall: ["r/license.beforeInstall.0.js"],
+			prepare: ["r/license.prepare.0.js"],
 		});
 		expect(document.items.license).not.toHaveProperty("source");
 		expect(document.conditions?.language.handler).toBe(
 			"r/_handlers/language.handler.js",
 		);
-		expect(
-			fs.existsSync(path.join(tempDir, "r/license.beforeInstall.0.js")),
-		).toBe(true);
+		expect(fs.existsSync(path.join(tempDir, "r/license.prepare.0.js"))).toBe(
+			true,
+		);
 		expect(
 			fs.existsSync(path.join(tempDir, "r/_handlers/language.handler.js")),
 		).toBe(true);
 		expect(fs.existsSync(path.join(tempDir, "r/license.json"))).toBe(false);
+		expect(document.scriptIntegrity?.["r/license.prepare.0.js"]).toMatch(
+			/^sha256-/,
+		);
+		expect(
+			document.scriptIntegrity?.["r/_handlers/language.handler.js"],
+		).toMatch(/^sha256-/);
 	});
 
 	it("writes a payload for a script item that declares packages", async () => {
@@ -960,7 +966,7 @@ export default {
 				title: "With packages",
 				description: "Install script plus packages",
 				type: "configuration",
-				beforeInstall: "handler.ts",
+				prepare: "handler.ts",
 				dependencies: {
 					npm: {
 						runtime: ["left-pad"],
@@ -969,7 +975,7 @@ export default {
 			},
 			{
 				"handler.ts": `
-export default async function beforeInstall() {
+export default async function prepare() {
   return { files: [{ target: "X", content: "x" }] };
 }
 `,
@@ -982,7 +988,7 @@ export default async function beforeInstall() {
 			description: "Install script plus packages",
 			type: "configuration",
 			source: "r/with-pkgs.json",
-			beforeInstall: ["r/with-pkgs.beforeInstall.0.js"],
+			prepare: ["r/with-pkgs.prepare.0.js"],
 		});
 
 		const payload = JSON.parse(
@@ -996,9 +1002,9 @@ export default async function beforeInstall() {
 				},
 			},
 		});
-		expect(
-			fs.existsSync(path.join(tempDir, "r/with-pkgs.beforeInstall.0.js")),
-		).toBe(true);
+		expect(fs.existsSync(path.join(tempDir, "r/with-pkgs.prepare.0.js"))).toBe(
+			true,
+		);
 	});
 
 	it("rejects install scripts that runtime-import @tuckshop/core", async () => {
@@ -1010,12 +1016,12 @@ export default async function beforeInstall() {
 				title: "Bad",
 				description: "Imports core at runtime",
 				type: "configuration",
-				beforeInstall: "handler.ts",
+				prepare: "handler.ts",
 			},
 			{
 				"handler.ts": `
 import { parseWithSchema } from "@tuckshop/core";
-export default async function beforeInstall() {
+export default async function prepare() {
   void parseWithSchema;
   return { files: [{ target: "X", content: "x" }] };
 }
@@ -1035,7 +1041,7 @@ export default async function beforeInstall() {
 				title: "Missing script",
 				description: "Points at a missing script",
 				type: "configuration",
-				beforeInstall: "handler.ts",
+				prepare: "handler.ts",
 				files: [{ source: "a.txt", target: "a.txt" }],
 			},
 			{
@@ -1055,11 +1061,11 @@ export default async function beforeInstall() {
 				title: "Syntax error",
 				description: "Invalid TypeScript install script",
 				type: "configuration",
-				beforeInstall: "handler.ts",
+				prepare: "handler.ts",
 			},
 			{
 				"handler.ts":
-					"export default async function beforeInstall() { return [[[; };\n",
+					"export default async function prepare() { return [[[; };\n",
 			},
 		);
 
@@ -1167,7 +1173,7 @@ export default async function beforeInstall() {
 		).toBe(true);
 	});
 
-	it("compiles item-level and pack-level afterInstall scripts", async () => {
+	it("compiles item-level and pack-level finalize scripts", async () => {
 		writeItem(
 			tempDir,
 			"configuration/lifecycle",
@@ -1176,38 +1182,38 @@ export default async function beforeInstall() {
 				title: "Lifecycle",
 				description: "Install lifecycle scripts",
 				type: "configuration",
-				afterInstall: "after.ts",
+				finalize: "after.ts",
 				packs: [
 					{
 						id: "pro",
 						title: "Pro",
-						afterInstall: "pro-after.ts",
+						finalize: "pro-after.ts",
 						files: [{ source: "pro.txt", target: "pro.txt" }],
 					},
 				],
 			},
 			{
-				"after.ts": `export default async function afterInstall() {}\n`,
-				"pro-after.ts": `export default async function afterInstall() {}\n`,
+				"after.ts": `export default async function finalize() {}\n`,
+				"pro-after.ts": `export default async function finalize() {}\n`,
 				"pro.txt": "pro\n",
 			},
 		);
 
 		const document = await runBuild();
-		expect(document.items.lifecycle.afterInstall).toEqual([
-			"r/lifecycle.afterInstall.0.js",
+		expect(document.items.lifecycle.finalize).toEqual([
+			"r/lifecycle.finalize.0.js",
 		]);
 		expect(document.items.lifecycle.packs).toEqual([
 			expect.objectContaining({
 				id: "pro",
-				afterInstall: ["r/lifecycle/pro.afterInstall.0.js"],
+				finalize: ["r/lifecycle/pro.finalize.0.js"],
 			}),
 		]);
+		expect(fs.existsSync(path.join(tempDir, "r/lifecycle.finalize.0.js"))).toBe(
+			true,
+		);
 		expect(
-			fs.existsSync(path.join(tempDir, "r/lifecycle.afterInstall.0.js")),
-		).toBe(true);
-		expect(
-			fs.existsSync(path.join(tempDir, "r/lifecycle/pro.afterInstall.0.js")),
+			fs.existsSync(path.join(tempDir, "r/lifecycle/pro.finalize.0.js")),
 		).toBe(true);
 	});
 
@@ -1220,54 +1226,52 @@ export default async function beforeInstall() {
 				title: "Button",
 				description: "Button component",
 				type: "component",
-				beforeInstall: "shared.ts",
+				prepare: "shared.ts",
 				packs: [
 					{
 						id: "react",
 						title: "React",
-						beforeInstall: "react.ts",
+						prepare: "react.ts",
 						files: [{ source: "react.tsx", target: "button.tsx" }],
 					},
 					{
 						id: "vue",
 						title: "Vue",
-						beforeInstall: "vue.ts",
+						prepare: "vue.ts",
 						files: [{ source: "vue.vue", target: "button.vue" }],
 					},
 				],
 			},
 			{
-				"shared.ts": `export default async function beforeInstall() { return { files: [] }; }\n`,
-				"react.ts": `export default async function beforeInstall() { return { files: [] }; }\n`,
-				"vue.ts": `export default async function beforeInstall() { return { files: [] }; }\n`,
+				"shared.ts": `export default async function prepare() { return { files: [] }; }\n`,
+				"react.ts": `export default async function prepare() { return { files: [] }; }\n`,
+				"vue.ts": `export default async function prepare() { return { files: [] }; }\n`,
 				"react.tsx": "export {}\n",
 				"vue.vue": "<template></template>\n",
 			},
 		);
 
 		const document = await runBuild();
-		expect(document.items.button.beforeInstall).toEqual([
-			"r/button.beforeInstall.0.js",
-		]);
+		expect(document.items.button.prepare).toEqual(["r/button.prepare.0.js"]);
 		expect(document.items.button.packs).toEqual([
 			expect.objectContaining({
 				id: "react",
-				beforeInstall: ["r/button/react.beforeInstall.0.js"],
+				prepare: ["r/button/react.prepare.0.js"],
 			}),
 			expect.objectContaining({
 				id: "vue",
-				beforeInstall: ["r/button/vue.beforeInstall.0.js"],
+				prepare: ["r/button/vue.prepare.0.js"],
 			}),
 		]);
+		expect(fs.existsSync(path.join(tempDir, "r/button.prepare.0.js"))).toBe(
+			true,
+		);
 		expect(
-			fs.existsSync(path.join(tempDir, "r/button.beforeInstall.0.js")),
+			fs.existsSync(path.join(tempDir, "r/button/react.prepare.0.js")),
 		).toBe(true);
-		expect(
-			fs.existsSync(path.join(tempDir, "r/button/react.beforeInstall.0.js")),
-		).toBe(true);
-		expect(
-			fs.existsSync(path.join(tempDir, "r/button/vue.beforeInstall.0.js")),
-		).toBe(true);
+		expect(fs.existsSync(path.join(tempDir, "r/button/vue.prepare.0.js"))).toBe(
+			true,
+		);
 	});
 
 	it("copies dependsOn into the index without treating them as scripts", async () => {
@@ -1289,8 +1293,8 @@ export default async function beforeInstall() {
 		expect(document.items["react-app"]).toMatchObject({
 			dependsOn: ["license-configuration", "git-init"],
 		});
-		expect(document.items["react-app"]).not.toHaveProperty("beforeInstall");
-		expect(document.items["react-app"]).not.toHaveProperty("afterInstall");
+		expect(document.items["react-app"]).not.toHaveProperty("prepare");
+		expect(document.items["react-app"]).not.toHaveProperty("finalize");
 	});
 
 	it("writes a base payload when an item declares commands without files", async () => {
@@ -1302,11 +1306,11 @@ export default async function beforeInstall() {
 				title: "Scripts only",
 				description: "Commands without files",
 				type: "configuration",
-				afterInstall: "after.ts",
+				finalize: "after.ts",
 				commands: { npm: { test: "vitest run" } },
 			},
 			{
-				"after.ts": `export default async function afterInstall() {}\n`,
+				"after.ts": `export default async function finalize() {}\n`,
 			},
 		);
 
@@ -1330,11 +1334,11 @@ export default async function beforeInstall() {
 				title: "Secrets only",
 				description: "Secrets without files",
 				type: "configuration",
-				afterInstall: "after.ts",
+				finalize: "after.ts",
 				secrets: ["GH_ADMIN_TOKEN"],
 			},
 			{
-				"after.ts": `export default async function afterInstall() {}\n`,
+				"after.ts": `export default async function finalize() {}\n`,
 			},
 		);
 

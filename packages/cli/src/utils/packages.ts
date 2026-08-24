@@ -62,7 +62,22 @@ export async function installDeclaredPackages(
 ): Promise<string[]> {
 	if (packageDeclarations.length === 0) return [];
 
+	const packageNames = [
+		...new Set(
+			packageDeclarations.flatMap((declaration) => {
+				const npm = declaration[RegistryEcosystem.NPM];
+				if (!npm) return [];
+				return [...(npm.runtime ?? []), ...(npm.dev ?? [])];
+			}),
+		),
+	].sort((a, b) => a.localeCompare(b));
+
 	console.log();
+	if (packageNames.length > 0) {
+		console.log("Packages to install:");
+		for (const name of packageNames) console.log(`  - ${name}`);
+	}
+
 	const shouldInstall = await confirmInput(
 		"Would you like to install the required dependencies?",
 		{},

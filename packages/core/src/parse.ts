@@ -63,9 +63,9 @@ function messageForCustomIssue(
 		"invalid_script:": () =>
 			`${fieldLabel} must be a relative path under the registry (no absolute paths, URLs, or "..").`,
 		missing_files_or_packs: () =>
-			`${label} must declare files, an install script (beforeInstall/afterInstall), or at least one pack.`,
+			`${label} must declare files, an install script (prepare/finalize), or at least one pack.`,
 		missing_source_or_packs: () =>
-			`${label} must declare source, an install script (beforeInstall/afterInstall), or at least one pack.`,
+			`${label} must declare source, an install script (prepare/finalize), or at least one pack.`,
 		select_requires_values: () => `${label} must declare at least one value.`,
 		text_with_values: () => `${label} of kind "text" cannot declare values.`,
 		boolean_with_values: () =>
@@ -464,5 +464,9 @@ export function parseRegistryDocument(raw: unknown): Registry {
 		...(conditions ? { conditions } : {}),
 		types,
 		items,
+		...(source.scriptIntegrity
+			? { scriptIntegrity: source.scriptIntegrity }
+			: {}),
+		...(source.itemIntegrity ? { itemIntegrity: source.itemIntegrity } : {}),
 	};
 }

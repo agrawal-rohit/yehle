@@ -116,7 +116,7 @@ describe("registry/parse", () => {
 				}),
 			),
 		).toThrow(
-			'Registry items["button"] must declare source, an install script (beforeInstall/afterInstall), or at least one pack.',
+			'Registry items["button"] must declare source, an install script (prepare/finalize), or at least one pack.',
 		);
 	});
 
@@ -655,7 +655,7 @@ describe("registry/parse", () => {
 								description: "License file",
 								requires: ["authorName"],
 								packs: undefined,
-								beforeInstall: ["r/license.beforeInstall.0.js"],
+								prepare: ["r/license.prepare.0.js"],
 							}),
 						},
 					}),
@@ -934,13 +934,13 @@ describe("registry/parse", () => {
 						title: "License",
 						description: "License",
 						type: "configuration",
-						beforeInstall: "/abs/handler.ts",
+						prepare: "/abs/handler.ts",
 						files: [{ source: "a.txt", target: "a.txt" }],
 					},
 					"Registry item",
 				),
 			).toThrow(
-				'Registry item.beforeInstall must be a relative path under the registry (no absolute paths, URLs, or "..").',
+				'Registry item.prepare must be a relative path under the registry (no absolute paths, URLs, or "..").',
 			);
 		});
 
@@ -957,7 +957,7 @@ describe("registry/parse", () => {
 					"Registry item",
 				),
 			).toThrow(
-				"Registry item must declare files, an install script (beforeInstall/afterInstall), or at least one pack.",
+				"Registry item must declare files, an install script (prepare/finalize), or at least one pack.",
 			);
 		});
 
@@ -971,13 +971,11 @@ describe("registry/parse", () => {
 						description: "License",
 						type: "configuration",
 						files: [{ source: "a.txt", target: "a.txt" }],
-						afterInstall: ["cleanup.ts", "cleanup.ts"],
+						finalize: ["cleanup.ts", "cleanup.ts"],
 					},
 					"Registry item",
 				),
-			).toThrow(
-				'Registry item lists "cleanup.ts" more than once in afterInstall.',
-			);
+			).toThrow('Registry item lists "cleanup.ts" more than once in finalize.');
 		});
 
 		it("rejects min on a non-multiselect condition", () => {

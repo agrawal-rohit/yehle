@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import path from "node:path";
+import { unwrapModuleExport } from "./cjs-export";
 import {
 	policyForConditionKind,
 	type RegistryContext,
@@ -20,9 +21,29 @@ import type {
 	RegistryEcosystemCommands,
 	RegistryEcosystemDependencies,
 } from "./schema";
+import type { ScriptExecutor } from "./scripts";
 import { isAbsoluteHttpUrl, joinRelativePathUnderRoot } from "./urls";
 
 const requireScript = createRequire(__filename);
+
+/** Active script loader (in-process by default; CLI may install a sandboxed executor). */
+let activeScriptExecutor: ScriptExecutor | undefined;
+
+/**
+ * Install the script executor used by install and condition hooks.
+ * @param executor - Executor to use for subsequent script loads, or undefined to reset.
+ */
+export function setScriptExecutor(executor: ScriptExecutor | undefined): void {
+	activeScriptExecutor = executor;
+}
+
+/**
+ * Read the active script executor, if one was installed.
+ * @returns Active executor or undefined when using the built-in in-process loader.
+ */
+export function getScriptExecutor(): ScriptExecutor | undefined {
+	return activeScriptExecutor;
+}
 
 /** One option offered by a select prompt. */
 export interface HandlerSelectOption extends RegistryConditionValue {
@@ -85,22 +106,28 @@ export interface PromptHost {
 	) => Promise<boolean>;
 }
 
-/** Shared filesystem and process helpers available to install and infer scripts. */
+/**
+ * Shared filesystem and process helpers available to install and infer scripts.
+ *
+ * `isFile` / `readFile` only accept paths under {@link HandlerRuntime.projectDir}.
+ * Scripts should use these helpers instead of Node builtins; sandboxed execution
+ * denies direct filesystem, network, and child_process access outside `ctx`.
+ */
 export interface HandlerRuntime {
 	/** Absolute project root receiving the install. */
 	projectDir: string;
 	/**
-	 * Check whether a path is an existing file.
-	 * @param filePath - Absolute or project-relative path.
+	 * Check whether a path is an existing file under the project root.
+	 * @param filePath - Project-relative path, or absolute path under `projectDir`.
 	 */
 	isFile: (filePath: string) => Promise<boolean>;
 	/**
-	 * Read a UTF-8 text file.
-	 * @param filePath - Absolute or project-relative path.
+	 * Read a UTF-8 text file under the project root.
+	 * @param filePath - Project-relative path, or absolute path under `projectDir`.
 	 */
 	readFile: (filePath: string) => Promise<string>;
 	/**
-	 * Run a shell command in the project directory.
+	 * Run a shell command in the project directory (parent-mediated; sanitized env).
 	 * @param command - Command string.
 	 */
 	run: (command: string) => Promise<string>;
@@ -133,8 +160,8 @@ export interface InstallHookContext extends HandlerRuntime {
 	compiledItem: CompiledItem;
 }
 
-/** Optional result from a `beforeInstall` script. */
-export interface BeforeInstallHookResult {
+/** Optional result from a `prepare` script. */
+export interface PrepareInstallHookResult {
 	/** Files to upsert into the working compiled item by `target`. */
 	files?: CompiledItemFile[];
 	/** Target paths to remove from the working compiled item. */
@@ -150,12 +177,12 @@ export interface BeforeInstallHookResult {
 }
 
 /** Install hook script invoked before files are written. */
-export type BeforeInstallHook = (
+export type PrepareInstallHook = (
 	ctx: InstallHookContext,
-) => Promise<BeforeInstallHookResult | undefined>;
+) => Promise<PrepareInstallHookResult | undefined>;
 
 /** Install hook script invoked after files are written. */
-export type AfterInstallHook = (ctx: InstallHookContext) => Promise<void>;
+export type FinalizeInstallHook = (ctx: InstallHookContext) => Promise<void>;
 
 /** Context passed to condition `infer` hooks. */
 export interface ConditionHandlerContext extends HandlerRuntime {
@@ -187,7 +214,7 @@ export interface ConditionHandler {
 /**
  * Upsert returned files into the working list by target path.
  * @param files - Current working file list.
- * @param upserts - Files returned from a beforeInstall hook.
+ * @param upserts - Files returned from a prepare hook.
  * @returns Updated file list.
  */
 function upsertCompiledItemFiles(
@@ -220,7 +247,7 @@ function removeCompiledItemFiles(
 /**
  * Join a index-relative script URI to an absolute local file path (rejects remote registries, absolute paths, URLs, and parent-directory escapes).
  * @param indexLocation - Absolute path or HTTPS URL of registry.json.
- * @param scriptUri - Catalog script URI such as `r/item.beforeInstall.0.js`.
+ * @param scriptUri - Catalog script URI such as `r/item.prepare.0.js`.
  * @returns Absolute path to the script module.
  * @throws Error when the index is remote or the URI is unsafe.
  */
@@ -263,29 +290,29 @@ async function loadScriptModule<T>(
 	isValid: (value: unknown) => value is T,
 	errorMessage: string,
 ): Promise<T> {
+	if (activeScriptExecutor)
+		return activeScriptExecutor.loadModule(
+			indexLocation,
+			scriptUri,
+			isValid,
+			errorMessage,
+		);
+
 	const absolutePath = localScriptPath(indexLocation, scriptUri);
 	// Delete the script from the require cache so rebuilt scripts are picked up in long-lived processes.
 	Reflect.deleteProperty(requireScript.cache, absolutePath);
-	const imported = requireScript(absolutePath) as Record<string, unknown>;
-	// Accept either `export default fn` or `module.exports = fn`.
-	const script =
-		imported !== null &&
-		typeof imported === "object" &&
-		"default" in imported &&
-		imported.default !== undefined
-			? imported.default
-			: imported;
+	const script = unwrapModuleExport(requireScript(absolutePath));
 	if (!isValid(script)) throw new Error(errorMessage);
 	return script;
 }
 
 /**
- * Apply a beforeInstall hook result onto the working install state.
+ * Apply a prepare hook result onto the working install state.
  * @param state - Current files, bindings, and optional payload fields.
  * @param result - Hook return value.
  * @returns Updated install state.
  */
-function applyBeforeInstallResult(
+function applyPrepareInstallResult(
 	state: {
 		files: CompiledItemFile[];
 		bindings: Record<string, string>;
@@ -293,7 +320,7 @@ function applyBeforeInstallResult(
 		dependencies?: RegistryEcosystemDependencies;
 		secrets?: string[];
 	},
-	result: BeforeInstallHookResult,
+	result: PrepareInstallHookResult,
 ): {
 	files: CompiledItemFile[];
 	bindings: Record<string, string>;
@@ -334,14 +361,14 @@ function applyBeforeInstallResult(
 }
 
 /**
- * Run one compiled `beforeInstall` script.
+ * Run one compiled `prepare` script.
  * @param indexLocation - Absolute local path to registry.json.
  * @param scriptUri - Catalog script URI.
  * @param runtime - Shared handler runtime.
  * @param options - Item identity, payload, and install state.
  * @returns Updated files, bindings, and merged payload fields.
  */
-export async function runBeforeInstallHook(
+export async function runPrepareInstallHook(
 	indexLocation: string,
 	scriptUri: string,
 	runtime: HandlerRuntime,
@@ -356,8 +383,8 @@ export async function runBeforeInstallHook(
 	const hook = await loadScriptModule(
 		indexLocation,
 		scriptUri,
-		(script): script is BeforeInstallHook => typeof script === "function",
-		`Script at "${scriptUri}" must export a \`beforeInstall\` hook function.`,
+		(script): script is PrepareInstallHook => typeof script === "function",
+		`Script at "${scriptUri}" must export a \`prepare\` hook function.`,
 	);
 	let state: {
 		files: CompiledItemFile[];
@@ -383,8 +410,8 @@ export async function runBeforeInstallHook(
 		compiledItem: { ...options.compiledItem, files: state.files },
 	};
 
-	const result: BeforeInstallHookResult | undefined = await hook(ctx);
-	if (result) state = applyBeforeInstallResult(state, result);
+	const result: PrepareInstallHookResult | undefined = await hook(ctx);
+	if (result) state = applyPrepareInstallResult(state, result);
 
 	return {
 		files: state.files,
@@ -396,13 +423,13 @@ export async function runBeforeInstallHook(
 }
 
 /**
- * Run one compiled `afterInstall` script.
+ * Run one compiled `finalize` script.
  * @param indexLocation - Absolute local path to registry.json.
  * @param scriptUri - Catalog script URI.
  * @param runtime - Shared handler runtime.
  * @param options - Item identity, payload, and install state.
  */
-export async function runAfterInstallHook(
+export async function runFinalizeInstallHook(
 	indexLocation: string,
 	scriptUri: string,
 	runtime: HandlerRuntime,
@@ -411,8 +438,8 @@ export async function runAfterInstallHook(
 	const hook = await loadScriptModule(
 		indexLocation,
 		scriptUri,
-		(script): script is AfterInstallHook => typeof script === "function",
-		`Script at "${scriptUri}" must export an afterInstall hook function.`,
+		(script): script is FinalizeInstallHook => typeof script === "function",
+		`Script at "${scriptUri}" must export a \`finalize\` hook function.`,
 	);
 	const ctx: InstallHookContext = {
 		...runtime,
@@ -440,13 +467,35 @@ export function createHandlerRuntime(
 		run: (command: string) => Promise<string>;
 	},
 ): HandlerRuntime {
-	const absolutePath = (filePath: string) =>
-		path.isAbsolute(filePath) ? filePath : path.join(projectDir, filePath);
+	const resolvedRoot = path.resolve(projectDir);
+
+	/**
+	 * Resolve a handler path and reject escapes outside the project root.
+	 * @param filePath - Project-relative or absolute path.
+	 * @returns Absolute path under `projectDir`.
+	 */
+	const confinedPath = (filePath: string): string => {
+		if (path.isAbsolute(filePath)) {
+			const resolved = path.resolve(filePath);
+			const relative = path.relative(resolvedRoot, resolved);
+			if (relative.startsWith("..") || path.isAbsolute(relative))
+				throw new Error(
+					`Handler path "${filePath}" escapes the project directory.`,
+				);
+			return resolved;
+		}
+		return joinRelativePathUnderRoot(
+			resolvedRoot,
+			filePath,
+			"Handler path",
+			"project directory",
+		);
+	};
 
 	return {
-		projectDir,
-		isFile: (filePath) => helpers.isFile(absolutePath(filePath)),
-		readFile: (filePath) => helpers.readFile(absolutePath(filePath)),
+		projectDir: resolvedRoot,
+		isFile: (filePath) => helpers.isFile(confinedPath(filePath)),
+		readFile: (filePath) => helpers.readFile(confinedPath(filePath)),
 		run: helpers.run,
 	};
 }

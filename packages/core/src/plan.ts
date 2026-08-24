@@ -52,10 +52,10 @@ export interface InstallNode {
 	packIds?: string[];
 	/** Compiled item URIs from the index entry, joined against the index location when fetched. */
 	sources?: string[];
-	/** Compiled `beforeInstall` script URIs for this item. */
-	beforeInstallScripts?: string[];
-	/** Compiled `afterInstall` script URIs for this item. */
-	afterInstallScripts?: string[];
+	/** Compiled `prepare` script URIs for this item. */
+	prepareScripts?: string[];
+	/** Compiled `finalize` script URIs for this item. */
+	finalizeScripts?: string[];
 }
 
 /** Result of selecting installable sources (base and optional packs) for one index item. */
@@ -121,7 +121,7 @@ type ItemListField = InstallPhase | "dependsOn";
  * Collect item-level and selected-pack values for one list field.
  * @param item - Index item with optional packs.
  * @param packIds - Selected pack ids when packs exist.
- * @param field - List field to read (`beforeInstall`, `afterInstall`, or `dependsOn`).
+ * @param field - List field to read (`prepare`, `finalize`, or `dependsOn`).
  * @returns Combined entry list.
  */
 function collectItemField<K extends ItemListField>(
@@ -147,22 +147,20 @@ function withItemScripts(
 	item: IndexItem,
 	selection: { packIds?: string[]; sources?: string[] },
 ): RegistryItemSelection {
-	const beforeInstall = collectItemField(
+	const prepare = collectItemField(
 		item,
 		selection.packIds ?? [],
-		InstallPhase.BeforeInstall,
+		InstallPhase.PREPARE,
 	);
-	const afterInstall = collectItemField(
+	const finalize = collectItemField(
 		item,
 		selection.packIds ?? [],
-		InstallPhase.AfterInstall,
+		InstallPhase.FINALIZE,
 	);
 	return {
 		...selection,
-		...(beforeInstall.length > 0
-			? { beforeInstallScripts: beforeInstall }
-			: {}),
-		...(afterInstall.length > 0 ? { afterInstallScripts: afterInstall } : {}),
+		...(prepare.length > 0 ? { prepareScripts: prepare } : {}),
+		...(finalize.length > 0 ? { finalizeScripts: finalize } : {}),
 	};
 }
 
@@ -182,8 +180,8 @@ function selectPackLessItem(
 	if (pinnedPackId !== undefined)
 		throw new Error(`Registry item "${itemId}" has no packs.`);
 	const hasInstallPhases =
-		collectItemField(item, [], InstallPhase.BeforeInstall).length > 0 ||
-		collectItemField(item, [], InstallPhase.AfterInstall).length > 0;
+		collectItemField(item, [], InstallPhase.PREPARE).length > 0 ||
+		collectItemField(item, [], InstallPhase.FINALIZE).length > 0;
 	// Scripts-only items (no compiled item source) are still installable.
 	if (!item.source && !hasInstallPhases)
 		throw new Error(
@@ -406,11 +404,11 @@ function installNodeFromSelection(
 		itemId: id,
 		...(selection.packIds ? { packIds: selection.packIds } : {}),
 		...(selection.sources ? { sources: selection.sources } : {}),
-		...(selection.beforeInstallScripts
-			? { beforeInstallScripts: selection.beforeInstallScripts }
+		...(selection.prepareScripts
+			? { prepareScripts: selection.prepareScripts }
 			: {}),
-		...(selection.afterInstallScripts
-			? { afterInstallScripts: selection.afterInstallScripts }
+		...(selection.finalizeScripts
+			? { finalizeScripts: selection.finalizeScripts }
 			: {}),
 	};
 }

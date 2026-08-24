@@ -22,6 +22,7 @@ describe("package entry", () => {
 		expect(typeof core.mergeDependencySet).toBe("function");
 		expect(typeof core.mergeCommandSet).toBe("function");
 		expect(typeof core.buildPackageInstallCommands).toBe("function");
+		expect(typeof core.collectDeclaredScriptUris).toBe("function");
 		expect(typeof core.joinRelativePathUnderRoot).toBe("function");
 		expect(typeof core.detectPackageManagerFromLockfile).toBe("function");
 		expect(typeof core.selectNpmPackageManager).toBe("function");
@@ -29,8 +30,8 @@ describe("package entry", () => {
 		expect(typeof core.isNpmPackageManager).toBe("function");
 		expect(core.PACKAGE_MANAGER_KEY).toBe("packageManager");
 		expect(typeof core.policyForConditionKind).toBe("function");
-		expect(typeof core.runBeforeInstallHook).toBe("function");
-		expect(typeof core.runAfterInstallHook).toBe("function");
+		expect(typeof core.runPrepareInstallHook).toBe("function");
+		expect(typeof core.runFinalizeInstallHook).toBe("function");
 		expect(typeof core.inferConditionDefault).toBe("function");
 		expect(typeof core.buildInterpolationContext).toBe("function");
 		expect(typeof core.interpolateCompiledItem).toBe("function");

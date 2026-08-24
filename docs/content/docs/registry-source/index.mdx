@@ -26,7 +26,7 @@ Authors learn four things, in this order:
 | Answers that fill `{{keys}}` | Shared `requires` and/or item `conditions` |
 | Optional or language-specific file sets | `packs` with `when` (union match) |
 | Packages, scripts, secrets, or other items first | `dependencies`, `commands`, `secrets`, `dependsOn` |
-| Generated content from answers | `beforeInstall` / `afterInstall` (local registry) |
+| Generated content from answers | `prepare` / `finalize` (local registry) |
 
 ## Compiling a registry
 
@@ -130,7 +130,7 @@ Pin `item@pack` force-includes that pack and does not drop other matches.
 
 ## Interpolation
 
-After `beforeInstall`, Mustache runs on file contents and command values. The view is typed:
+After `prepare`, Mustache runs on file contents and command values. The view is typed:
 
 1. Captured conditions (booleans stay boolean, arrays stay arrays)
 2. Select option `bindings` for the chosen value
@@ -142,26 +142,26 @@ GitHub Actions expressions (`${{ ... }}`) are left untouched. HTML escaping is d
 
 | Phase | When it runs | Typical use |
 | --- | --- | --- |
-| `beforeInstall` | Before planned files are written | Generate or upsert files from conditions |
-| write | After `beforeInstall` | Static `files` plus hook upserts |
-| `afterInstall` | After files exist on disk | `git init`, format |
+| `prepare` | Before planned files are written | Generate or upsert files from conditions |
+| write | After `prepare` | Static `files` plus hook upserts |
+| `finalize` | After files exist on disk | `git init`, format |
 
 Hooks do **not** prompt. Put questions in conditions. Use `import type` from `@tuckshop/core` (do not runtime-import the package):
 
 ```ts
-import type { BeforeInstallHook } from "@tuckshop/core";
+import type { PrepareInstallHook } from "@tuckshop/core";
 
-const beforeInstall: BeforeInstallHook = async (ctx) => {
+const prepare: PrepareInstallHook = async (ctx) => {
 	const licenseId = ctx.conditions.licenseId;
 	return {
 		files: [{ target: "LICENSE", content: String(licenseId) }],
 	};
 };
 
-export default beforeInstall;
+export default prepare;
 ```
 
-`beforeInstall` may return:
+`prepare` may return:
 
 - `files` — **upsert by target** (replace matching targets, append new ones)
 - `removeFiles` — drop targets from the working compiled item
@@ -178,7 +178,19 @@ Remote HTTPS registries cannot execute custom scripts or condition `infer` handl
 | Static files / packs | Yes | Yes |
 | Conditions prompts | Yes | Yes |
 | Condition `infer` handlers | Yes | No |
-| `beforeInstall` / `afterInstall` | Yes | No |
+| `prepare` / `finalize` | Yes | No |
+
+
+
+## Script security
+
+Install hooks and condition `infer` handlers are treated as executable code:
+
+- **Bundled registry** (shipped with the CLI): scripts run by default.
+- **Other local registries** (`--registry`, cwd `registry.json`, saved config): scripts require confirmation.
+- **Remote HTTPS registries**: scripts never run.
+
+Compiled registries include `scriptIntegrity` and `itemIntegrity` maps (`sha256-<base64>`). The CLI verifies digests before loading scripts or compiled items. Hooks run in a permissioned child process (Node's permission model denies filesystem writes and child_process; network denial depends on the Node version). `ctx.isFile` / `ctx.readFile` are confined to the project directory, and `ctx.run` is parent-mediated with a sanitized environment.
 
 ## Validating compiled items
 
