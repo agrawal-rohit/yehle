@@ -144,72 +144,32 @@ describe("cli/config", () => {
 		);
 	});
 
-	it("throws when the config root is not a JSON object", async () => {
+	it.each([
+		{ label: "a JSON array", contents: '["array"]\n' },
+		{ label: "JSON null", contents: "null\n" },
+		{ label: "a JSON primitive", contents: "42\n" },
+	])("throws when the config root is $label", async ({ contents }) => {
 		const root = await makeTempRoot();
 		const env = { XDG_CONFIG_HOME: root };
 		const filePath = configPath(env);
 		await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-		await fs.promises.writeFile(filePath, '["array"]\n', "utf8");
+		await fs.promises.writeFile(filePath, contents, "utf8");
 
 		await expect(readConfig(env)).rejects.toThrow(
 			`Malformed tuckshop config at ${filePath}: Config root must be a JSON object.`,
 		);
 	});
 
-	it("throws when the config root is JSON null", async () => {
+	it.each([
+		{ label: "not a string", contents: '{"registry":42}\n' },
+		{ label: "an empty string", contents: '{"registry":""}\n' },
+		{ label: "whitespace only", contents: '{"registry":"   "}\n' },
+	])("throws when registry is $label", async ({ contents }) => {
 		const root = await makeTempRoot();
 		const env = { XDG_CONFIG_HOME: root };
 		const filePath = configPath(env);
 		await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-		await fs.promises.writeFile(filePath, "null\n", "utf8");
-
-		await expect(readConfig(env)).rejects.toThrow(
-			`Malformed tuckshop config at ${filePath}: Config root must be a JSON object.`,
-		);
-	});
-
-	it("throws when the config root is a JSON primitive", async () => {
-		const root = await makeTempRoot();
-		const env = { XDG_CONFIG_HOME: root };
-		const filePath = configPath(env);
-		await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-		await fs.promises.writeFile(filePath, "42\n", "utf8");
-
-		await expect(readConfig(env)).rejects.toThrow(
-			`Malformed tuckshop config at ${filePath}: Config root must be a JSON object.`,
-		);
-	});
-
-	it("throws when registry is not a string", async () => {
-		const root = await makeTempRoot();
-		const env = { XDG_CONFIG_HOME: root };
-		const filePath = configPath(env);
-		await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-		await fs.promises.writeFile(filePath, '{"registry":42}\n', "utf8");
-
-		await expect(readConfig(env)).rejects.toThrow(
-			`Malformed tuckshop config at ${filePath}: "registry" must be a non-empty string URL or file path.`,
-		);
-	});
-
-	it("throws when registry is an empty string", async () => {
-		const root = await makeTempRoot();
-		const env = { XDG_CONFIG_HOME: root };
-		const filePath = configPath(env);
-		await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-		await fs.promises.writeFile(filePath, '{"registry":""}\n', "utf8");
-
-		await expect(readConfig(env)).rejects.toThrow(
-			`Malformed tuckshop config at ${filePath}: "registry" must be a non-empty string URL or file path.`,
-		);
-	});
-
-	it("throws when registry is whitespace only", async () => {
-		const root = await makeTempRoot();
-		const env = { XDG_CONFIG_HOME: root };
-		const filePath = configPath(env);
-		await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-		await fs.promises.writeFile(filePath, '{"registry":"   "}\n', "utf8");
+		await fs.promises.writeFile(filePath, contents, "utf8");
 
 		await expect(readConfig(env)).rejects.toThrow(
 			`Malformed tuckshop config at ${filePath}: "registry" must be a non-empty string URL or file path.`,

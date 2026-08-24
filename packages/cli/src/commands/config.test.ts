@@ -82,34 +82,28 @@ describe("commands/config", () => {
 			expect(path.isAbsolute(saved.registry)).toBe(true);
 		});
 
-		it("rejects HTTP URLs", async () => {
+		it.each([
+			{
+				label: "HTTP URLs",
+				source: "http://example.com/registry.json",
+				message: "Remote registries must use HTTPS",
+			},
+			{
+				label: "localhost registry URLs",
+				source: "https://localhost/registry.json",
+				message: "Remote registries cannot target localhost.",
+			},
+			{
+				label: "registry URLs with credentials",
+				source: "https://user:secret@example.com/registry.json",
+				message: "Remote registries must not include credentials.",
+			},
+		])("rejects $label", async ({ source, message }) => {
 			const root = await makeTempRoot();
 			const env = { XDG_CONFIG_HOME: root };
 			vi.spyOn(console, "log").mockImplementation(() => {});
 
-			await expect(
-				configSetCommand("http://example.com/registry.json", env),
-			).rejects.toThrow("Remote registries must use HTTPS");
-		});
-
-		it("rejects localhost registry URLs", async () => {
-			const root = await makeTempRoot();
-			const env = { XDG_CONFIG_HOME: root };
-			vi.spyOn(console, "log").mockImplementation(() => {});
-
-			await expect(
-				configSetCommand("https://localhost/registry.json", env),
-			).rejects.toThrow("Remote registries cannot target localhost.");
-		});
-
-		it("rejects registry URLs with credentials", async () => {
-			const root = await makeTempRoot();
-			const env = { XDG_CONFIG_HOME: root };
-			vi.spyOn(console, "log").mockImplementation(() => {});
-
-			await expect(
-				configSetCommand("https://user:secret@example.com/registry.json", env),
-			).rejects.toThrow("Remote registries must not include credentials.");
+			await expect(configSetCommand(source, env)).rejects.toThrow(message);
 		});
 
 		it("prompts for a source when omitted", async () => {
