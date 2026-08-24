@@ -8,20 +8,24 @@ import {
 	mergeDependencySet,
 	mergeEcosystemMaps,
 	mergeSecretNames,
+	PACKAGE_MANAGER_KEY,
+	packageManagerBindings,
 	parseWithSchema,
 	type Registry,
 	type RegistryConditionValue,
 	type RegistryContext,
 	type RegistryEcosystemDependencies,
+	type RegistryPackageManager,
 	type RegistryPayload,
 	type RegistryPayloadFile,
 	registryPayloadSchema,
 	runAfterInstallHook,
 	runBeforeInstallHook,
+	selectNpmPackageManager,
 } from "@tuckshop/core";
 import chalk from "chalk";
 import { defaultText, primaryText } from "../cli/labels";
-import { groupedMultiselectInput } from "../cli/prompts";
+import { groupedMultiselectInput, selectInput } from "../cli/prompts";
 import { runWithTasks } from "../cli/tasks";
 import {
 	captureItemLocalConditionsForPlan,
@@ -232,6 +236,7 @@ async function runBeforeInstallScripts(
 	catalogLocation: string,
 	runtime: HandlerRuntime,
 	conditions: RegistryContext,
+	packageManager: RegistryPackageManager,
 	installItems: InstallPlanItem[],
 ): Promise<{ items: InstallPlanItem[]; bindings: Record<string, string> }> {
 	const bindings: Record<string, string> = {};
@@ -246,6 +251,7 @@ async function runBeforeInstallScripts(
 					itemId: item.node.itemId,
 					...(item.node.packIds ? { packIds: item.node.packIds } : {}),
 					conditions,
+					packageManager,
 					bindings,
 					payload,
 				}),
@@ -350,15 +356,29 @@ export async function addCommand(
 
 	const runtime = createProjectHandlerRuntime(projectDir);
 
+	const packageManager = await selectNpmPackageManager(projectDir, {
+		select: selectInput,
+	});
+	const pmBindings = {
+		[PACKAGE_MANAGER_KEY]: packageManager,
+		...packageManagerBindings(packageManager),
+	};
+
 	let conditions = await captureRequiredConditions(
 		registry,
 		catalogLocation,
 		projectDir,
 		items,
 		runtime,
+		packageManager,
 	);
 
-	let plan = buildInstallPlan(items, registry.items, conditions);
+	let plan = buildInstallPlan(
+		items,
+		registry.items,
+		conditions,
+		packageManager,
+	);
 	if (plan.length === 0)
 		throw new Error("No registry items were selected for installation.");
 
@@ -369,6 +389,7 @@ export async function addCommand(
 		plan,
 		conditions,
 		runtime,
+		packageManager,
 	));
 
 	console.log();
@@ -392,12 +413,13 @@ export async function addCommand(
 		catalogLocation,
 		runtime,
 		conditions,
+		packageManager,
 		preparedItems,
 	);
 
 	const interpolationValues = buildInterpolationContext(
 		conditions,
-		bindings,
+		{ ...pmBindings, ...bindings },
 		interpolationOptionValues(registry, plan),
 	);
 	const installItems = afterHooks.map((item) => ({
@@ -427,6 +449,7 @@ export async function addCommand(
 				itemId: item.node.itemId,
 				...(item.node.packIds ? { packIds: item.node.packIds } : {}),
 				conditions,
+				packageManager,
 				bindings,
 				payload: item.payload,
 			});
@@ -436,7 +459,7 @@ export async function addCommand(
 	const pendingInstallCommands = await installDeclaredPackages(
 		packageDeclarations,
 		projectDir,
-		conditions,
+		packageManager,
 	);
 
 	const itemWord = installItems.length === 1 ? "item" : "items";

@@ -43,13 +43,18 @@ export {
 	buildPackageInstallCommands,
 	detectPackageManagerFromLockfile,
 	ecosystemManagers,
+	isNpmPackageManager,
 	mergeCommandSet,
 	mergeDependencySet,
 	mergeEcosystemMaps,
 	mergeSecretNames,
 	NpmPackageManager,
+	PACKAGE_MANAGER_KEY,
+	type PackageManagerBindings,
 	type PackageManagerSpec,
+	packageManagerBindings,
 	type RegistryPackageManager,
+	selectNpmPackageManager,
 } from "./packages";
 export { parseRegistryDocument, parseWithSchema } from "./parse";
 export {

@@ -4,8 +4,7 @@
 	"description": "Mutation testing configuration for catching weak tests.",
 	"type": "configuration",
 	"requires": [
-		"language",
-		"packageManager"
+		"language"
 	],
 	"packs": [
 		{

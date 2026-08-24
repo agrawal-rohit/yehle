@@ -36,11 +36,7 @@ vi.mock("@tuckshop/core", async () => {
 	};
 });
 
-import {
-	installDeclaredPackages,
-	mergeProjectCommands,
-	npmPackageManagerFromConditions,
-} from "./packages";
+import { installDeclaredPackages, mergeProjectCommands } from "./packages";
 
 describe("utils/packages", () => {
 	beforeEach(() => {
@@ -66,27 +62,9 @@ describe("utils/packages", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("npmPackageManagerFromConditions reads a supported manager from conditions", () => {
-		expect(npmPackageManagerFromConditions({ packageManager: "pnpm" })).toBe(
-			NpmPackageManager.PNPM,
-		);
-	});
-
-	it("npmPackageManagerFromConditions fails when the condition is missing", () => {
-		expect(() => npmPackageManagerFromConditions({})).toThrow(
-			'Missing condition "packageManager"',
-		);
-	});
-
-	it("npmPackageManagerFromConditions fails when the manager is unknown", () => {
-		expect(() =>
-			npmPackageManagerFromConditions({ packageManager: "pip" }),
-		).toThrow('Unknown packageManager "pip"');
-	});
-
 	it("returns early when there are no package declarations", async () => {
 		await expect(
-			installDeclaredPackages([], "/project", { packageManager: "npm" }),
+			installDeclaredPackages([], "/project", NpmPackageManager.NPM),
 		).resolves.toEqual([]);
 		expect(mockConfirmInput).not.toHaveBeenCalled();
 	});
@@ -98,19 +76,19 @@ describe("utils/packages", () => {
 			installDeclaredPackages(
 				[{ npm: { [RegistryDependencyKind.RUNTIME]: [] } }],
 				"/project",
-				{ packageManager: "npm" },
+				NpmPackageManager.NPM,
 			),
 		).resolves.toEqual([]);
 		expect(mockConfirmInput).toHaveBeenCalled();
 		expect(mockBuildPackageInstallCommands).not.toHaveBeenCalled();
 	});
 
-	it("installs with the packageManager condition and does not prompt for a manager", async () => {
+	it("installs with the selected package manager and does not prompt for a manager", async () => {
 		await expect(
 			installDeclaredPackages(
 				[{ npm: { [RegistryDependencyKind.DEV]: ["vitest@^3"] } }],
 				"/project",
-				{ packageManager: "npm" },
+				NpmPackageManager.NPM,
 			),
 		).resolves.toEqual([]);
 
@@ -126,7 +104,7 @@ describe("utils/packages", () => {
 		);
 	});
 
-	it("uses the packageManager condition for next-step commands when install is declined", async () => {
+	it("uses the selected package manager for next-step commands when install is declined", async () => {
 		mockConfirmInput.mockResolvedValue(false);
 		mockBuildPackageInstallCommands.mockReturnValue(["pnpm add -D vitest@^3"]);
 
@@ -134,7 +112,7 @@ describe("utils/packages", () => {
 			installDeclaredPackages(
 				[{ npm: { [RegistryDependencyKind.DEV]: ["vitest@^3"] } }],
 				"/project",
-				{ packageManager: "pnpm" },
+				NpmPackageManager.PNPM,
 			),
 		).resolves.toEqual(["pnpm add -D vitest@^3"]);
 

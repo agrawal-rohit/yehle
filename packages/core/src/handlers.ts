@@ -10,6 +10,7 @@ import {
 	mergeDependencySet,
 	mergeEcosystemMaps,
 	mergeSecretNames,
+	type RegistryPackageManager,
 } from "./packages";
 import type { RequiredCondition } from "./plan";
 import type {
@@ -110,6 +111,8 @@ export interface RunInstallHookOptions {
 	itemId: string;
 	packIds?: string[];
 	conditions: RegistryContext;
+	/** Selected npm package manager for this install. */
+	packageManager: RegistryPackageManager;
 	bindings?: Record<string, string>;
 	payload: RegistryPayload;
 }
@@ -122,6 +125,8 @@ export interface InstallHookContext extends HandlerRuntime {
 	packIds?: string[];
 	/** Condition values captured from the install plan. */
 	conditions: RegistryContext;
+	/** Selected npm package manager for this install. */
+	packageManager: RegistryPackageManager;
 	/** Bindings collected from earlier install scripts in this run. */
 	bindings: Record<string, string>;
 	/** Working install payload (files may be empty before scripts run). */
@@ -372,6 +377,7 @@ export async function runBeforeInstallHook(
 		itemId: options.itemId,
 		...(options.packIds ? { packIds: options.packIds } : {}),
 		conditions: options.conditions,
+		packageManager: options.packageManager,
 		bindings: state.bindings,
 		payload: { ...options.payload, files: state.files },
 	};
@@ -412,6 +418,7 @@ export async function runAfterInstallHook(
 		itemId: options.itemId,
 		...(options.packIds ? { packIds: options.packIds } : {}),
 		conditions: options.conditions,
+		packageManager: options.packageManager,
 		bindings: { ...options.bindings },
 		payload: options.payload,
 	};

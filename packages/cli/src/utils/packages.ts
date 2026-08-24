@@ -5,8 +5,6 @@ import {
 	mergeCommandSet,
 	mergeDependencySet,
 	mergeEcosystemMaps,
-	NpmPackageManager,
-	type RegistryContext,
 	RegistryEcosystem,
 	type RegistryEcosystemDependencies,
 	type RegistryPackageManager,
@@ -19,39 +17,15 @@ import { confirmInput } from "../cli/prompts";
 import { runWithTasks } from "../cli/tasks";
 
 /**
- * Read the npm package manager from the captured `packageManager` condition.
- * @param conditions - Install condition context.
- * @returns Selected npm package manager.
- * @throws Error when the condition is missing or not a supported manager id.
- */
-export function npmPackageManagerFromConditions(
-	conditions: RegistryContext,
-): RegistryPackageManager {
-	const value = conditions.packageManager;
-	if (typeof value !== "string")
-		throw new Error(
-			'Missing condition "packageManager". Items that declare npm dependencies or commands must require it.',
-		);
-
-	const managers = Object.values(NpmPackageManager) as string[];
-	if (!managers.includes(value))
-		throw new Error(
-			`Unknown packageManager "${value}". Expected one of: ${managers.join(", ")}.`,
-		);
-
-	return value as RegistryPackageManager;
-}
-
-/**
  * Build install commands for merged package declarations.
  * @param packageDeclarations - Per-payload package maps from the install plan.
- * @param conditions - Captured install conditions (must include packageManager for npm).
+ * @param packageManager - Selected npm package manager.
  * @param shouldInstall - When true, return runnable commands; otherwise next-step suggestions.
  * @returns Commands to run now and commands to suggest as next steps.
  */
 async function collectPackageInstallCommands(
 	packageDeclarations: RegistryEcosystemDependencies[],
-	conditions: RegistryContext,
+	packageManager: RegistryPackageManager,
 	shouldInstall: boolean,
 ): Promise<{ installCommands: string[]; pendingCommands: string[] }> {
 	const merged = mergeEcosystemMaps(mergeDependencySet, ...packageDeclarations);
@@ -65,7 +39,7 @@ async function collectPackageInstallCommands(
 		commands.push(
 			...buildPackageInstallCommands(
 				RegistryEcosystem.NPM,
-				npmPackageManagerFromConditions(conditions),
+				packageManager,
 				npmPackages,
 			),
 		);
@@ -78,13 +52,13 @@ async function collectPackageInstallCommands(
  * Optionally run package install commands from payload declarations.
  * @param packageDeclarations - Per-payload package maps collected during writes.
  * @param projectDir - Absolute project root.
- * @param conditions - Captured install conditions.
+ * @param packageManager - Selected npm package manager.
  * @returns Commands still left for the user when installation was skipped.
  */
 export async function installDeclaredPackages(
 	packageDeclarations: RegistryEcosystemDependencies[],
 	projectDir: string,
-	conditions: RegistryContext,
+	packageManager: RegistryPackageManager,
 ): Promise<string[]> {
 	if (packageDeclarations.length === 0) return [];
 
@@ -97,7 +71,7 @@ export async function installDeclaredPackages(
 	const { installCommands, pendingCommands } =
 		await collectPackageInstallCommands(
 			packageDeclarations,
-			conditions,
+			packageManager,
 			shouldInstall,
 		);
 

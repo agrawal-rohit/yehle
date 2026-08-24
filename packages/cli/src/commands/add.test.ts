@@ -57,16 +57,6 @@ function makeRegistry(): Registry {
 				label: "Language",
 				values: [{ value: "typescript", label: "TypeScript" }],
 			},
-			packageManager: {
-				kind: RegistryConditionKind.SELECT,
-				label: "Package manager",
-				values: [
-					{ value: "npm", label: "npm" },
-					{ value: "pnpm", label: "pnpm" },
-					{ value: "yarn", label: "Yarn" },
-					{ value: "bun", label: "Bun" },
-				],
-			},
 		},
 		items: {
 			"pr-template-configuration": {
@@ -87,6 +77,7 @@ describe("commands/add", () => {
 
 	beforeEach(() => {
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-command-"));
+		fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
 		vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 		consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 		vi.clearAllMocks();
@@ -318,7 +309,8 @@ describe("commands/add", () => {
 		expect(mockBuildInstallPlan).toHaveBeenCalledWith(
 			["pr-template-configuration", "code-quality-workflow"],
 			groupedRegistry.items,
-			expect.any(Object),
+			{},
+			"pnpm",
 		);
 		expect(consoleLogSpy).toHaveBeenCalledWith(
 			expect.stringContaining("Installed 2 items."),
@@ -428,14 +420,12 @@ describe("commands/add", () => {
 			items: {
 				"pr-template-configuration": {
 					...registry.items["pr-template-configuration"],
-					requires: ["packageManager"],
 				},
 				other: {
 					title: "Other",
 					description: "Other item",
 					type: "configuration",
 					source: "r/other.json",
-					requires: ["packageManager"],
 				},
 			},
 		};
@@ -491,7 +481,7 @@ describe("commands/add", () => {
 
 		expect(mockRunAsync).toHaveBeenCalledTimes(1);
 		expect(mockRunAsync).toHaveBeenCalledWith(
-			expect.stringContaining("npm install -D vitest@^3 zod"),
+			expect.stringContaining("pnpm add -D vitest@^3 zod"),
 			expect.objectContaining({ cwd: tempDir, stdio: "inherit" }),
 		);
 	});
@@ -1097,17 +1087,94 @@ module.exports = async function afterInstall(ctx) {
 		);
 	});
 
-	it("installs npm packages using the packageManager condition", async () => {
+	it("installs npm packages using the selected package manager", async () => {
+		fs.rmSync(path.join(tempDir, "pnpm-lock.yaml"));
+		fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}\n");
 		fs.writeFileSync(path.join(tempDir, "package.json"), "{}\n");
-		const packageRegistry: Registry = {
-			...registry,
-			items: {
-				"pr-template-configuration": {
-					...registry.items["pr-template-configuration"],
-					requires: ["packageManager"],
-				},
-			},
-		};
+		mockLoadRegistryPayloads.mockResolvedValue(
+			new Map([
+				[
+					"r/pr-template-configuration.json",
+					{
+						files: [
+							{
+								target: ".github/pull_request_template.md",
+								content: "# PR Template",
+							},
+						],
+						dependencies: {
+							npm: {
+								dev: ["vitest@^3"],
+							},
+						},
+					},
+				],
+			]),
+		);
+		mockConfirmInput.mockResolvedValue(true);
+
+		await addCommand(registry, catalogLocation, {
+			items: ["pr-template-configuration"],
+			overwrite: true,
+		});
+
+		expect(mockConfirmInput).toHaveBeenCalledWith(
+			"Would you like to install the required dependencies?",
+			{},
+			true,
+		);
+		expect(mockSelectInput).not.toHaveBeenCalledWith(
+			"Which package manager should be used for the project?",
+			expect.anything(),
+			expect.anything(),
+		);
+		expect(mockRunAsync).toHaveBeenCalledWith(
+			expect.stringContaining("npm install -D vitest@^3"),
+			expect.objectContaining({ cwd: tempDir, stdio: "inherit" }),
+		);
+	});
+
+	it("uses the selected package manager for next-step commands when install is declined", async () => {
+		fs.writeFileSync(path.join(tempDir, "package.json"), "{}\n");
+		mockLoadRegistryPayloads.mockResolvedValue(
+			new Map([
+				[
+					"r/pr-template-configuration.json",
+					{
+						files: [
+							{
+								target: ".github/pull_request_template.md",
+								content: "# PR Template",
+							},
+						],
+						dependencies: {
+							npm: {
+								dev: ["vitest@^3"],
+							},
+						},
+					},
+				],
+			]),
+		);
+		mockConfirmInput.mockResolvedValue(false);
+
+		await addCommand(registry, catalogLocation, {
+			items: ["pr-template-configuration"],
+			overwrite: true,
+		});
+
+		expect(mockRunAsync).not.toHaveBeenCalled();
+		expect(consoleLogSpy).toHaveBeenCalledWith(
+			expect.stringContaining("Next steps"),
+		);
+		expect(consoleLogSpy).toHaveBeenCalledWith(
+			expect.stringContaining("pnpm add -D vitest@^3"),
+		);
+	});
+
+	it("prompts for a package manager when no lockfile is present", async () => {
+		fs.rmSync(path.join(tempDir, "pnpm-lock.yaml"));
+		fs.writeFileSync(path.join(tempDir, "package.json"), "{}\n");
 		mockLoadRegistryPayloads.mockResolvedValue(
 			new Map([
 				[
@@ -1131,110 +1198,25 @@ module.exports = async function afterInstall(ctx) {
 		mockSelectInput.mockResolvedValue("npm");
 		mockConfirmInput.mockResolvedValue(true);
 
-		await addCommand(packageRegistry, catalogLocation, {
+		await addCommand(registry, catalogLocation, {
 			items: ["pr-template-configuration"],
 			overwrite: true,
 		});
 
-		expect(mockConfirmInput).toHaveBeenCalledWith(
-			"Would you like to install the required dependencies?",
-			{},
-			true,
-		);
 		expect(mockSelectInput).toHaveBeenCalledWith(
-			"Package manager",
+			"Which package manager should be used for the project?",
 			expect.objectContaining({
 				options: expect.arrayContaining([
 					{ label: "npm", value: "npm" },
 					{ label: "Bun", value: "bun" },
 				]),
 			}),
-			undefined,
+			"npm",
 		);
 		expect(mockRunAsync).toHaveBeenCalledWith(
 			expect.stringContaining("npm install -D vitest@^3"),
 			expect.objectContaining({ cwd: tempDir, stdio: "inherit" }),
 		);
-	});
-
-	it("uses the packageManager condition for next-step commands when install is declined", async () => {
-		fs.writeFileSync(path.join(tempDir, "package.json"), "{}\n");
-		const packageRegistry: Registry = {
-			...registry,
-			items: {
-				"pr-template-configuration": {
-					...registry.items["pr-template-configuration"],
-					requires: ["packageManager"],
-				},
-			},
-		};
-		mockLoadRegistryPayloads.mockResolvedValue(
-			new Map([
-				[
-					"r/pr-template-configuration.json",
-					{
-						files: [
-							{
-								target: ".github/pull_request_template.md",
-								content: "# PR Template",
-							},
-						],
-						dependencies: {
-							npm: {
-								dev: ["vitest@^3"],
-							},
-						},
-					},
-				],
-			]),
-		);
-		mockSelectInput.mockResolvedValue("pnpm");
-		mockConfirmInput.mockResolvedValue(false);
-
-		await addCommand(packageRegistry, catalogLocation, {
-			items: ["pr-template-configuration"],
-			overwrite: true,
-		});
-
-		expect(mockRunAsync).not.toHaveBeenCalled();
-		expect(consoleLogSpy).toHaveBeenCalledWith(
-			expect.stringContaining("Next steps"),
-		);
-		expect(consoleLogSpy).toHaveBeenCalledWith(
-			expect.stringContaining("pnpm add -D vitest@^3"),
-		);
-	});
-
-	it("fails when npm packages are declared without a packageManager condition", async () => {
-		fs.writeFileSync(path.join(tempDir, "package.json"), "{}\n");
-		mockLoadRegistryPayloads.mockResolvedValue(
-			new Map([
-				[
-					"r/pr-template-configuration.json",
-					{
-						files: [
-							{
-								target: ".github/pull_request_template.md",
-								content: "# PR Template",
-							},
-						],
-						dependencies: {
-							npm: {
-								dev: ["vitest@^3"],
-							},
-						},
-					},
-				],
-			]),
-		);
-		mockConfirmInput.mockResolvedValue(true);
-
-		await expect(
-			addCommand(registry, catalogLocation, {
-				items: ["pr-template-configuration"],
-				overwrite: true,
-			}),
-		).rejects.toThrow('Missing condition "packageManager"');
 	});
 
 	it("runs a local beforeInstall script before writing files", async () => {
@@ -1556,19 +1538,11 @@ module.exports = async function beforeInstall() {
 
 		const handlerRegistry: Registry = {
 			types: { configuration: { label: "Configurations" } },
-			conditions: {
-				packageManager: {
-					kind: RegistryConditionKind.SELECT,
-					label: "Package manager",
-					values: [{ value: "npm", label: "npm" }],
-				},
-			},
 			items: {
 				hello: {
 					title: "Hello",
 					description: "Hook deps",
 					type: "configuration",
-					requires: ["packageManager"],
 					beforeInstall: ["r/hello.beforeInstall.0.js"],
 				},
 			},
@@ -1632,22 +1606,10 @@ module.exports = async function beforeInstall() {
 							kind: RegistryConditionKind.TEXT,
 							label: "Author",
 						},
-						packageManager: {
-							kind: RegistryConditionKind.SELECT,
-							label: "Package manager",
-							values: [
-								{
-									value: "pnpm",
-									label: "pnpm",
-									bindings: { pmRun: "pnpm" },
-								},
-							],
-						},
 					},
 				},
 			},
 		};
-		mockSelectInput.mockResolvedValue("pnpm");
 
 		await addCommand(localRegistry, catalogLocation, {
 			items: ["hello"],

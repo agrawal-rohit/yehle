@@ -14,7 +14,7 @@ npx tuckshop add testing-configuration --overwrite
 npx tuckshop add
 ```
 
-When item ids are omitted, `add` prompts with a multiselect. Shared registry conditions use local condition handlers for prompt defaults when available, then prompt for the rest. Payload files are fetched from the catalog location, item handlers may generate or transform files, and packages are installed using the captured `packageManager` condition after confirming whether to install now.
+When item ids are omitted, `add` prompts with a multiselect. Shared registry conditions use local condition handlers for prompt defaults when available, then prompt for the rest. Payload files are fetched from the catalog location, item handlers may generate or transform files, and packages are installed using the project’s selected package manager (lockfile detection, otherwise a prompt) after confirming whether to install now.
 
 ### `list`
 

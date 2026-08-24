@@ -94,6 +94,7 @@ describe("core/handlers", () => {
 				runBeforeInstallHook(catalog, "r/item.beforeInstall.0.js", runtime(), {
 					itemId: "item",
 					conditions: {},
+					packageManager: "npm",
 					payload: { files: [] },
 				}),
 			).resolves.toEqual({ files: [], bindings: {} });
@@ -112,6 +113,7 @@ describe("core/handlers", () => {
 				runBeforeInstallHook(catalog, "r/item.beforeInstall.0.js", runtime(), {
 					itemId: "item",
 					conditions: {},
+					packageManager: "npm",
 					payload: { files: [] },
 				}),
 			).resolves.toEqual({ files: [], bindings: {} });
@@ -127,6 +129,7 @@ describe("core/handlers", () => {
 				runBeforeInstallHook(catalog, "r/bad.beforeInstall.0.js", runtime(), {
 					itemId: "item",
 					conditions: {},
+					packageManager: "npm",
 					payload: { files: [] },
 				}),
 			).rejects.toThrow("must export a `beforeInstall` hook function");
@@ -152,6 +155,7 @@ describe("core/handlers", () => {
 						{
 							itemId: "item",
 							conditions: {},
+							packageManager: "npm",
 							payload: { files: [] },
 						},
 					),
@@ -682,6 +686,7 @@ module.exports = async function beforeInstall(ctx) {
 				itemId: "item",
 				packIds: ["default"],
 				conditions: {},
+				packageManager: "npm",
 				bindings: { prior: "Ada" },
 				payload: { files: [{ target: "EXISTING", content: "x" }] },
 			},
@@ -721,6 +726,7 @@ module.exports = async function beforeInstall() {
 			{
 				itemId: "item",
 				conditions: {},
+				packageManager: "npm",
 				payload: {
 					files: [
 						{ target: "KEEP", content: "old" },
@@ -761,6 +767,7 @@ module.exports = async function beforeInstall() {
 			{
 				itemId: "item",
 				conditions: {},
+				packageManager: "npm",
 				payload: {
 					files: [],
 					commands: { npm: { test: "vitest run" } },
@@ -810,6 +817,7 @@ module.exports = async function beforeInstall(ctx) {
 			{
 				itemId: "item",
 				conditions: {},
+				packageManager: "npm",
 				payload: { files: [{ target: "KEEP", content: "yes" }] },
 			},
 		);
@@ -850,6 +858,7 @@ module.exports = async function beforeInstall(ctx) {
 			itemId: "item",
 			packIds: ["v1"],
 			conditions: {},
+			packageManager: "npm",
 			payload: { files: [] },
 		});
 
@@ -887,6 +896,7 @@ module.exports = async function afterInstall(ctx) {
 			itemId: "item",
 			packIds: ["v1"],
 			conditions: {},
+			packageManager: "npm",
 			bindings: {},
 			payload: { files: [] },
 		});
@@ -925,6 +935,7 @@ module.exports = async function afterInstall() {
 		await runAfterInstallHook(catalog, "r/item.afterInstall.0.js", runtime, {
 			itemId: "item",
 			conditions: {},
+			packageManager: "npm",
 			bindings,
 			payload: { files },
 		});
@@ -955,6 +966,7 @@ module.exports = async function afterInstall() {
 			{
 				itemId: "item",
 				conditions: {},
+				packageManager: "npm",
 				payload: { files: [] },
 			},
 		);
@@ -996,6 +1008,7 @@ module.exports = async function afterInstall(ctx) {
 		const options = {
 			itemId: "item",
 			conditions: {},
+			packageManager: "npm",
 			payload: { files: [{ target: "KEEP", content: "yes" }] },
 		};
 

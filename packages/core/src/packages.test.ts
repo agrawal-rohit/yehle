@@ -1,5 +1,5 @@
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	buildPackageInstallCommands,
 	detectPackageManagerFromLockfile,
@@ -9,6 +9,8 @@ import {
 	mergeEcosystemMaps,
 	mergeSecretNames,
 	NpmPackageManager,
+	packageManagerBindings,
+	selectNpmPackageManager,
 } from "./packages";
 import { RegistryEcosystem } from "./schema";
 
@@ -161,6 +163,54 @@ describe("core/packages", () => {
 					RegistryEcosystem.NPM,
 				),
 			).toEqual({ manager: "pnpm", lockfile: "pnpm-lock.yaml" });
+		});
+	});
+
+	describe("packageManagerBindings", () => {
+		it("returns interpolation bindings for a manager", () => {
+			expect(packageManagerBindings(NpmPackageManager.PNPM)).toEqual({
+				pmRun: "pnpm",
+				pmExec: "pnpm exec",
+				pmInstall: "pnpm install --ignore-scripts --frozen-lockfile",
+				pmPublish:
+					"pnpm -r publish --provenance --access public --no-git-checks",
+			});
+		});
+	});
+
+	describe("selectNpmPackageManager", () => {
+		it("returns the lockfile manager without prompting", async () => {
+			const select = vi.fn();
+			await expect(
+				selectNpmPackageManager("/project", { select }, (absolutePath) =>
+					absolutePath.endsWith("pnpm-lock.yaml"),
+				),
+			).resolves.toBe(NpmPackageManager.PNPM);
+			expect(select).not.toHaveBeenCalled();
+		});
+
+		it("prompts when no lockfile matches", async () => {
+			const select = vi.fn().mockResolvedValue(NpmPackageManager.YARN);
+			await expect(
+				selectNpmPackageManager("/project", { select }, () => false),
+			).resolves.toBe(NpmPackageManager.YARN);
+			expect(select).toHaveBeenCalledWith(
+				"Which package manager should be used for the project?",
+				expect.objectContaining({
+					options: expect.arrayContaining([
+						{ label: "npm", value: "npm" },
+						{ label: "Yarn", value: "yarn" },
+					]),
+				}),
+				NpmPackageManager.NPM,
+			);
+		});
+
+		it("rejects an unknown prompted manager", async () => {
+			const select = vi.fn().mockResolvedValue("pip");
+			await expect(
+				selectNpmPackageManager("/project", { select }, () => false),
+			).rejects.toThrow('Unknown packageManager "pip"');
 		});
 	});
 

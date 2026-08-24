@@ -1067,20 +1067,20 @@ describe("core/schema", () => {
 					type: "configuration",
 					source: "r/testing.json",
 					conditions: {
-						packageManager: {
-							label: "Package manager",
+						toolchain: {
+							label: "Toolchain",
 							kind: "select",
 							values: [
 								{
 									value: "pnpm",
 									label: "pnpm",
-									bindings: { packageManager: "pnpm" },
+									bindings: { toolchain: "pnpm" },
 								},
 							],
 						},
 					},
 				}),
-			).toBe("binding_parent_key:packageManager");
+			).toBe("binding_parent_key:toolchain");
 		});
 
 		it("rejects an item with neither source, packs, nor install scripts", () => {

@@ -5,7 +5,6 @@
 	"type": "workflow",
 	"requires": [
 		"language",
-		"packageManager",
 		"nodeVersion"
 	],
 	"packs": [

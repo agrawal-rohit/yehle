@@ -14,17 +14,18 @@ import { buildRegistry } from "@tuckshop/core";
 await buildRegistry({
 	sourceDir: "/path/to/my-registry/registry",
 	outDir: "/path/to/my-registry",
+	registryFileName: "catalog.json",
 });
 ```
 
-That writes a fixed artefact layout under `outDir` (authors only control the `sourceDir` tree):
+That writes a fixed artefact layout under `outDir` (authors only control the `sourceDir` tree; the catalog basename defaults to `registry.json` and can be overridden via `registryFileName`):
 
-- `registry.json` — compact catalog index (identity is the `items` map key; each item may declare `source`, `variants`, and/or `beforeInstall` / `afterInstall`)
+- `registry.json` (or `registryFileName`) — compact catalog index (identity is the `items` map key; each item may declare `source`, `variants`, and/or `beforeInstall` / `afterInstall`)
 - `r/{itemId}.json` or `r/{itemId}/{variantId}.json` — compact install payloads with `target`, inlined template `content`, and `dependencies` keyed by ecosystem
 - `r/{itemId}.beforeInstall.{index}.js` / `r/{itemId}.afterInstall.{index}.js` — bundled install scripts (local catalogs only at install time)
 - `r/_handlers/{key}.handler.js` — bundled condition handlers
 
-Consumers join catalog `source` values against the catalog location with `joinCatalogSource`. Install scripts are loaded by `runBeforeInstallHook` / `runAfterInstallHook`.
+Consumers join catalog `source` values against the catalog location with `joinCatalogSource`. Install scripts are loaded by `runBeforeInstallHook` / `runAfterInstallHook`. The npm package manager is selected by core at install time (lockfile detection, otherwise a prompt) and passed explicitly into planning, interpolation (`packageManager`, `pmRun`, `pmExec`, `pmInstall`, `pmPublish`), hooks, and installs — registries must not declare a `packageManager` condition.
 
 ## Validate artefacts
 

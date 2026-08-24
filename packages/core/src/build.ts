@@ -15,6 +15,7 @@ import {
 	mergeDependencySet,
 	mergeEcosystemMaps,
 	mergeSecretNames,
+	PACKAGE_MANAGER_KEY,
 } from "./packages";
 import {
 	parseKeyedRecord,
@@ -30,7 +31,6 @@ import {
 	InstallPhase,
 	type Registry,
 	type RegistryCondition,
-	RegistryEcosystem,
 	type RegistryEcosystemCommands,
 	type RegistryEcosystemDependencies,
 	type RegistryFile,
@@ -46,8 +46,10 @@ import { joinRelativePathUnderRoot } from "./urls";
 export interface BuildRegistryOptions {
 	/** Absolute path to the authoring tree: item folders, `types.json`, and optional `conditions/conditions.json`. */
 	sourceDir: string;
-	/** Absolute path where compiled artefacts are written: `registry.json` and `r/{itemId}.json` or `r/{itemId}/{variantId}.json`. */
+	/** Absolute path where compiled artefacts are written: catalog JSON and `r/{itemId}.json` or `r/{itemId}/{variantId}.json`. */
 	outDir: string;
+	/** Basename of the catalog file written under `outDir`. */
+	registryFileName?: string;
 }
 
 /** Authored item paired with its source folder. */
@@ -178,28 +180,13 @@ async function materializePayloadFiles(
 	);
 }
 
-function assertPackageManagerRequired(item: AuthoredRegistryItem): void {
-	const layers = [item, ...(item.packs ?? [])];
-	const needsPackageManager = layers.some(
-		(layer) =>
-			layer.dependencies?.[RegistryEcosystem.NPM] !== undefined ||
-			layer.commands?.[RegistryEcosystem.NPM] !== undefined,
-	);
-	if (!needsPackageManager) return;
-	if (item.requires?.includes("packageManager")) return;
-
-	throw new Error(
-		`Registry item "${item.id}" declares npm dependencies or commands but does not require "packageManager".`,
-	);
-}
-
 /**
- * Load and validate every authored registry item under the source tree.
+ * Fetch and validate every authored registry item under the source tree.
  * @param sourceDir - Absolute authoring root.
  * @returns Authored items with their folders.
  * @throws Error when an item is invalid or an id is duplicated.
  */
-async function loadAuthoredItems(
+async function fetchAuthoredItems(
 	sourceDir: string,
 ): Promise<AuthoredItemEntry[]> {
 	const authoredItems: AuthoredItemEntry[] = [];
@@ -212,7 +199,6 @@ async function loadAuthoredItems(
 		);
 
 		const item = parseWithSchema(registryItemSchema, raw, "Registry item");
-		assertPackageManagerRequired(item);
 
 		if (seenItemIds.has(item.id))
 			throw new Error(`Duplicate registry item id: "${item.id}".`);
@@ -592,12 +578,12 @@ async function buildCatalogItems(
 }
 
 /**
- * Read optional conditions and required types from the authoring root.
+ * Fetch optional conditions and required types from the authoring root.
  * @param sourceDir - Absolute authoring root.
  * @returns Parsed conditions (optional) and types (required).
  * @throws Error when `types.json` is missing or either file is invalid.
  */
-async function readTypesAndConditions(sourceDir: string): Promise<{
+async function fetchTypesAndConditions(sourceDir: string): Promise<{
 	conditions: Record<string, RegistryCondition> | undefined;
 	types: Record<string, RegistryItemTypeDefinition>;
 }> {
@@ -628,6 +614,10 @@ async function readTypesAndConditions(sourceDir: string): Promise<{
 		(key) => `Registry condition "${key}"`,
 	);
 	assertConditionMapBindingKeys(conditions);
+	if (conditions?.[PACKAGE_MANAGER_KEY] !== undefined)
+		throw new Error(
+			`Registry condition "${PACKAGE_MANAGER_KEY}" collides with the core-owned package manager.`,
+		);
 
 	return {
 		conditions,
@@ -636,21 +626,35 @@ async function readTypesAndConditions(sourceDir: string): Promise<{
 }
 
 /**
- * Compile a registry authoring tree into `registry.json` and install payloads under `r/`.
- * @param options - Absolute `sourceDir` (authoring) and `outDir` (compiled artefacts).
+ * Compile a registry authoring tree into a catalog JSON file and install payloads under `r/`.
+ * @param options - Absolute `sourceDir` (authoring), `outDir` (compiled artefacts), and optional `registryFileName`.
  * @returns The compiled registry document that was written to disk.
- * @throws Error when an item is invalid, a source is missing, or types are absent.
+ * @throws Error when `registryFileName` is invalid, an item is invalid, a source is missing, or types are absent.
  */
 export async function buildRegistry(
 	options: BuildRegistryOptions,
 ): Promise<Registry> {
 	const sourceDir = path.resolve(options.sourceDir);
 	const outDir = path.resolve(options.outDir);
-	const registryPath = path.join(outDir, "registry.json");
+	const registryFileName = (options.registryFileName ?? "registry.json").trim();
 
-	// Validate authoring inputs before mutating the output tree.
-	const authoredItems = await loadAuthoredItems(sourceDir);
-	const { conditions, types } = await readTypesAndConditions(sourceDir);
+	// Validate the registry file name.
+	if (
+		!registryFileName ||
+		registryFileName === "." ||
+		registryFileName === ".." ||
+		registryFileName.includes("/") ||
+		registryFileName.includes("\\")
+	)
+		throw new Error(
+			String.raw`registryFileName must be a single path segment (no "/", "\", or "..").`,
+		);
+	if (!registryFileName.endsWith(".json"))
+		throw new Error('registryFileName must end with ".json".');
+	const registryPath = path.join(outDir, registryFileName);
+
+	const authoredItems = await fetchAuthoredItems(sourceDir);
+	const { conditions, types } = await fetchTypesAndConditions(sourceDir);
 
 	await writeItemPayloads(authoredItems, sourceDir, outDir);
 

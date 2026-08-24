@@ -14,6 +14,7 @@ import {
 	RegistryConditionKind,
 	type RegistryContext,
 	type RegistryContextValue,
+	type RegistryPackageManager,
 	type RequiredCondition,
 	readFileAsync,
 	runAsync,
@@ -296,6 +297,7 @@ export async function captureRequiredConditions(
 	projectDir: string,
 	items: string[],
 	runtime = createProjectHandlerRuntime(projectDir),
+	packageManager?: RegistryPackageManager,
 ): Promise<RegistryContext> {
 	const context = assumeContextFromSelectedItems(
 		items,
@@ -309,7 +311,12 @@ export async function captureRequiredConditions(
 		runtime,
 		context,
 		(current) =>
-			collectRequiredConditions(dependencies, registry.conditions, current),
+			collectRequiredConditions(
+				dependencies,
+				registry.conditions,
+				current,
+				packageManager,
+			),
 	);
 }
 
@@ -321,6 +328,7 @@ export async function captureRequiredConditions(
  * @param plan - Ordered install nodes from the latest plan.
  * @param context - Shared conditions already captured.
  * @param runtime - Shared handler runtime.
+ * @param packageManager - Selected npm package manager for pack `when`.
  * @returns Context and plan after local conditions are settled.
  */
 export async function captureItemLocalConditionsForPlan(
@@ -330,6 +338,7 @@ export async function captureItemLocalConditionsForPlan(
 	plan: InstallNode[],
 	context: RegistryContext,
 	runtime: HandlerRuntime,
+	packageManager?: RegistryPackageManager,
 ): Promise<{ context: RegistryContext; plan: InstallNode[] }> {
 	let nextPlan = plan;
 
@@ -342,11 +351,16 @@ export async function captureItemLocalConditionsForPlan(
 				const item = registry.items[node.itemId];
 				return item ? [{ itemId: node.itemId, item }] : [];
 			});
-			return collectItemLocalConditions(entries, current);
+			return collectItemLocalConditions(entries, current, packageManager);
 		},
 		(current) => {
 			// Newly matching packs may add dependsOn items with their own local conditions.
-			nextPlan = buildInstallPlan(items, registry.items, current);
+			nextPlan = buildInstallPlan(
+				items,
+				registry.items,
+				current,
+				packageManager,
+			);
 		},
 	);
 

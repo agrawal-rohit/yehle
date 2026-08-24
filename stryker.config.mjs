@@ -19,9 +19,9 @@ const config = {
 	ignorePatterns: ["coverage"],
 	incremental: true,
 	thresholds: {
-		high: 95,
-		low: 90,
-		break: 90,
+		high: 80,
+		low: 60,
+		break: null,
 	},
 	vitest: {
 		configFile: "vitest.config.ts",

@@ -5,8 +5,7 @@
 	"type": "workflow",
 	"requires": [
 		"language",
-		"defaultBranch",
-		"packageManager"
+		"defaultBranch"
 	],
 	"dependsOn": [
 		"setup-workspace-workflow"

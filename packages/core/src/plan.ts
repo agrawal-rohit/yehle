@@ -5,6 +5,7 @@ import {
 	type RegistryContextValue,
 	type RegistryWhenValue,
 } from "./condition-kind";
+import { PACKAGE_MANAGER_KEY, type RegistryPackageManager } from "./packages";
 import {
 	type CatalogItem,
 	InstallPhase,
@@ -96,16 +97,19 @@ export interface RequiredCondition {
  * Check whether a `when` map matches the runtime context.
  * @param when - Condition matcher from a catalog item, pack, or condition.
  * @param context - Condition values already captured for this install.
+ * @param packageManager - Selected npm package manager for `when.packageManager`.
  * @returns True when every `when` key equals the context value.
  */
 export function whenMatchesContext(
 	when: Record<string, RegistryWhenValue> | undefined,
 	context: RegistryContext,
+	packageManager?: RegistryPackageManager,
 ): boolean {
 	if (!when) return true;
 
 	for (const [key, expected] of Object.entries(when)) {
-		if (!contextValueMatchesWhen(context[key], expected)) return false;
+		const actual = key === PACKAGE_MANAGER_KEY ? packageManager : context[key];
+		if (!contextValueMatchesWhen(actual, expected)) return false;
 	}
 	return true;
 }
@@ -198,6 +202,7 @@ function selectPackLessItem(
  * @param packs - Non-empty pack list from the catalog item.
  * @param context - Condition values already captured for this install.
  * @param pinnedPackId - Optional pack id from `id@pack`.
+ * @param packageManager - Selected npm package manager for pack `when`.
  * @returns Base source plus every matching/pinned pack source.
  * @throws Error when a pinned pack id is missing.
  */
@@ -206,11 +211,13 @@ function selectMatchingPacks(
 	item: CatalogItem,
 	packs: NonNullable<CatalogItem["packs"]>,
 	context: RegistryContext,
-	pinnedPackId?: string,
+	pinnedPackId: string | undefined,
+	packageManager: RegistryPackageManager | undefined,
 ): RegistryItemSelection {
 	const matchingPacks = packs.filter(
 		(pack) =>
-			pinnedPackId === pack.id || whenMatchesContext(pack.when, context),
+			pinnedPackId === pack.id ||
+			whenMatchesContext(pack.when, context, packageManager),
 	);
 	if (
 		pinnedPackId !== undefined &&
@@ -234,6 +241,7 @@ function selectMatchingPacks(
  * @param item - Catalog item whose packs are considered.
  * @param context - Condition values already captured for this install.
  * @param pinnedPackId - Optional explicit pack id (from `id@pack`).
+ * @param packageManager - Selected npm package manager for pack `when`.
  * @returns Selected pack ids, payload source URIs, and optional install script URIs.
  */
 export function selectRegistryPacks(
@@ -241,10 +249,18 @@ export function selectRegistryPacks(
 	item: CatalogItem,
 	context: RegistryContext,
 	pinnedPackId?: string,
+	packageManager?: RegistryPackageManager,
 ): RegistryItemSelection {
 	const packs = item.packs ?? [];
 	if (packs.length === 0) return selectPackLessItem(itemId, item, pinnedPackId);
-	return selectMatchingPacks(itemId, item, packs, context, pinnedPackId);
+	return selectMatchingPacks(
+		itemId,
+		item,
+		packs,
+		context,
+		pinnedPackId,
+		packageManager,
+	);
 }
 
 /**
@@ -404,6 +420,7 @@ function installNodeFromSelection(
  * @param parsed - Parsed item id, optionally pinned to one pack.
  * @param catalogItems - Catalog items keyed by id.
  * @param context - Install context for pack selection.
+ * @param packageManager - Selected npm package manager for pack `when`.
  * @param state - Shared visit state for cycle detection and ordering.
  * @throws Error when an item is missing, a cycle is detected, or pack pins conflict.
  */
@@ -411,6 +428,7 @@ function visitInstallNode(
 	parsed: ParsedItemId,
 	catalogItems: Record<string, CatalogItem>,
 	context: RegistryContext,
+	packageManager: RegistryPackageManager | undefined,
 	state: InstallPlanState,
 ): void {
 	const { id, packId: pinnedPackId } = parsed;
@@ -427,14 +445,26 @@ function visitInstallNode(
 	if (!catalogItem) throw new Error(`Registry item not found: "${id}".`);
 
 	state.visiting.add(id);
-	const selection = selectRegistryPacks(id, catalogItem, context, pinnedPackId);
+	const selection = selectRegistryPacks(
+		id,
+		catalogItem,
+		context,
+		pinnedPackId,
+		packageManager,
+	);
 
 	for (const dependency of collectItemField(
 		catalogItem,
 		selection.packIds ?? [],
 		"dependsOn",
 	))
-		visitInstallNode(parseItemId(dependency), catalogItems, context, state);
+		visitInstallNode(
+			parseItemId(dependency),
+			catalogItems,
+			context,
+			packageManager,
+			state,
+		);
 
 	state.visiting.delete(id);
 	state.visited.add(id);
@@ -498,15 +528,18 @@ function selectableValuesForCondition(
 /**
  * Collect conditions still missing from the context, with prompt-ready options.
  * Includes keys from pack `when` and from item-level `requires` lists.
+ * Skips `packageManager`, which is selected by core at install time.
  * @param entries - Catalog entries in the install set.
  * @param conditions - Shared condition definitions from the registry.
  * @param context - Condition values already captured.
+ * @param packageManager - Selected npm package manager for condition `when` clauses.
  * @returns Required conditions the CLI should prompt for, sorted by key.
  */
 export function collectRequiredConditions(
 	entries: CatalogEntry[],
 	conditions: Record<string, RegistryCondition> | undefined,
 	context: RegistryContext,
+	packageManager?: RegistryPackageManager,
 ): RequiredCondition[] {
 	const presentWhenValues = collectPresentWhenValues(entries);
 	const requiredKeys = new Set<string>(presentWhenValues.keys());
@@ -518,13 +551,15 @@ export function collectRequiredConditions(
 
 	for (const key of [...requiredKeys].sort((a, b) => a.localeCompare(b))) {
 		if (context[key] !== undefined) continue;
+		// Runtime matcher owned by core — not a registry condition to prompt.
+		if (key === PACKAGE_MANAGER_KEY) continue;
 
 		const condition = conditions?.[key];
 		if (!condition)
 			throw new Error(`Install plan references undeclared condition "${key}".`);
 
 		// Prompt only when the condition's own `when` is absent or already satisfied.
-		if (!whenMatchesContext(condition.when, context)) continue;
+		if (!whenMatchesContext(condition.when, context, packageManager)) continue;
 
 		const { kind, requiresValues } = policyForConditionKind(condition.kind);
 		const values = requiresValues
@@ -540,12 +575,14 @@ export function collectRequiredConditions(
  * Collect item-level conditions still missing from context.
  * @param entries - Planned catalog entries (install set).
  * @param context - Condition values already captured (shared + prior items).
+ * @param packageManager - Selected npm package manager for condition `when` clauses.
  * @returns Conditions to prompt for, sorted by key.
  * @throws Error when a local condition key collides with a shared condition.
  */
 export function collectItemLocalConditions(
 	entries: CatalogEntry[],
 	context: RegistryContext,
+	packageManager?: RegistryPackageManager,
 ): RequiredCondition[] {
 	const pending = new Map<string, RegistryCondition>();
 
@@ -556,7 +593,8 @@ export function collectItemLocalConditions(
 		for (const [key, condition] of Object.entries(local)) {
 			if (context[key] !== undefined) continue;
 			// Prompt only when the condition's own `when` is absent or already satisfied.
-			if (!whenMatchesContext(condition.when, context)) continue;
+			if (!whenMatchesContext(condition.when, context, packageManager))
+				continue;
 			pending.set(key, condition);
 		}
 	}
@@ -577,6 +615,7 @@ export function collectItemLocalConditions(
 
 /**
  * Seed context from pinned pack `when` maps on selected items.
+ * Does not seed `packageManager` — that value is selected by core at install time.
  * @param items - Selected items (`id` or `id@pack`).
  * @param catalogItems - Catalog items keyed by id.
  * @param conditions - Shared condition definitions used to coerce seeded values.
@@ -598,11 +637,14 @@ export function assumeContextFromSelectedItems(
 		const when = catalogItem.packs?.find((entry) => entry.id === packId)?.when;
 		if (!when) continue;
 
+		const pinLabel = `${id}@${packId}`;
 		for (const [key, value] of Object.entries(when)) {
+			if (key === PACKAGE_MANAGER_KEY) continue;
+
 			const condition = conditions?.[key];
 			if (!condition)
 				throw new Error(
-					`Pinned pack "${id}@${packId}" references undeclared condition "${key}".`,
+					`Pinned pack "${pinLabel}" references undeclared condition "${key}".`,
 				);
 			policyForConditionKind(condition.kind).seedContext(context, key, value);
 		}
@@ -616,6 +658,7 @@ export function assumeContextFromSelectedItems(
  * @param items - Selected registry items (`id` or `id@pack`).
  * @param catalogItems - Catalog items keyed by id.
  * @param context - Install context for pack selection.
+ * @param packageManager - Selected npm package manager for pack `when`.
  * @returns Ordered install nodes with base and matching pack sources per item id.
  * @throws Error when an item is missing, a cycle is detected, or pack pins conflict.
  */
@@ -623,6 +666,7 @@ export function buildInstallPlan(
 	items: string[],
 	catalogItems: Record<string, CatalogItem>,
 	context: RegistryContext,
+	packageManager?: RegistryPackageManager,
 ): InstallNode[] {
 	const state: InstallPlanState = {
 		visiting: new Set<string>(),
@@ -632,7 +676,13 @@ export function buildInstallPlan(
 	};
 
 	for (const item of items)
-		visitInstallNode(parseItemId(item), catalogItems, context, state);
+		visitInstallNode(
+			parseItemId(item),
+			catalogItems,
+			context,
+			packageManager,
+			state,
+		);
 
 	return state.ordered;
 }

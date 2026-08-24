@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type ZodType, z } from "zod";
 import { conditionKindPolicy, RegistryConditionKind } from "./condition-kind";
+import { PACKAGE_MANAGER_KEY } from "./packages";
 import {
 	parseKeyedRecord,
 	parseRegistryDocument,
@@ -24,6 +25,10 @@ function parseRegistryConditions(raw: unknown) {
 		(key) => `Registry condition "${key}"`,
 	);
 	assertConditionMapBindingKeys(parsed);
+	if (parsed?.[PACKAGE_MANAGER_KEY] !== undefined)
+		throw new Error(
+			`Registry condition "${PACKAGE_MANAGER_KEY}" collides with the core-owned package manager.`,
+		);
 	return parsed;
 }
 
@@ -476,20 +481,34 @@ describe("registry/parse", () => {
 		it("rejects option bindings that reuse the condition key", () => {
 			expect(() =>
 				parseRegistryConditions({
-					packageManager: {
+					toolchain: {
 						kind: "select",
-						label: "Package manager",
+						label: "Toolchain",
 						values: [
 							{
 								value: "pnpm",
 								label: "pnpm",
-								bindings: { packageManager: "pnpm" },
+								bindings: { toolchain: "pnpm" },
 							},
 						],
 					},
 				}),
 			).toThrow(
-				'Registry condition "packageManager" value "pnpm" cannot declare bindings.packageManager (collides with the condition key).',
+				'Registry condition "toolchain" value "pnpm" cannot declare bindings.toolchain (collides with the condition key).',
+			);
+		});
+
+		it("rejects a condition key reserved for the core-owned package manager", () => {
+			expect(() =>
+				parseRegistryConditions({
+					packageManager: {
+						kind: "select",
+						label: "Package manager",
+						values: [{ value: "pnpm", label: "pnpm" }],
+					},
+				}),
+			).toThrow(
+				'Registry condition "packageManager" collides with the core-owned package manager.',
 			);
 		});
 
@@ -644,6 +663,60 @@ describe("registry/parse", () => {
 				),
 			).toThrow(
 				'Registry item "license" requires unknown condition "authorName".',
+			);
+		});
+
+		it("rejects requiring the core-owned package manager", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						items: {
+							button: validCatalogItem({
+								requires: ["packageManager"],
+							}),
+						},
+					}),
+				),
+			).toThrow(
+				'Registry item "button" requires "packageManager" which is selected by core at install time.',
+			);
+		});
+
+		it("allows pack when to reference the built-in packageManager key", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						items: {
+							button: validCatalogItem({
+								packs: [
+									validCatalogPack({
+										when: { packageManager: "pnpm" },
+									}),
+								],
+							}),
+						},
+					}),
+				),
+			).not.toThrow();
+		});
+
+		it("rejects an invalid built-in packageManager when value", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						items: {
+							button: validCatalogItem({
+								packs: [
+									validCatalogPack({
+										when: { packageManager: "pip" },
+									}),
+								],
+							}),
+						},
+					}),
+				),
+			).toThrow(
+				'Registry item "button" pack "react" uses undeclared when value "pip" for key "packageManager".',
 			);
 		});
 
@@ -909,14 +982,14 @@ describe("registry/parse", () => {
 						type: "configuration",
 						source: "r/testing.json",
 						conditions: {
-							packageManager: {
-								label: "Package manager",
+							toolchain: {
+								label: "Toolchain",
 								kind: "select",
 								values: [
 									{
 										value: "pnpm",
 										label: "pnpm",
-										bindings: { packageManager: "pnpm" },
+										bindings: { toolchain: "pnpm" },
 									},
 								],
 							},
@@ -925,7 +998,7 @@ describe("registry/parse", () => {
 					'Registry items["testing"]',
 				),
 			).toThrow(
-				'Registry condition "packageManager" option bindings cannot reuse the condition key "packageManager".',
+				'Registry condition "toolchain" option bindings cannot reuse the condition key "toolchain".',
 			);
 		});
 
@@ -946,14 +1019,14 @@ describe("registry/parse", () => {
 		it("rejects empty option bindings with a readable message", () => {
 			expect(() =>
 				parseRegistryConditions({
-					packageManager: {
+					toolchain: {
 						kind: "select",
-						label: "Package manager",
+						label: "Toolchain",
 						values: [{ value: "pnpm", label: "pnpm", bindings: {} }],
 					},
 				}),
 			).toThrow(
-				'Registry condition "packageManager" values[0].bindings must declare at least one binding.',
+				'Registry condition "toolchain" values[0].bindings must declare at least one binding.',
 			);
 		});
 

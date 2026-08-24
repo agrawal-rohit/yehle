@@ -4,8 +4,7 @@
 	"description": "Local hooks that run lint, format, and commit checks before changes land.",
 	"type": "configuration",
 	"requires": [
-		"language",
-		"packageManager"
+		"language"
 	],
 	"packs": [
 		{

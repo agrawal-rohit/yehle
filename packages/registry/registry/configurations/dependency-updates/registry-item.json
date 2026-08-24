@@ -5,8 +5,7 @@
 	"type": "configuration",
 	"requires": [
 		"language",
-		"defaultBranch",
-		"packageManager"
+		"defaultBranch"
 	],
 	"packs": [
 		{

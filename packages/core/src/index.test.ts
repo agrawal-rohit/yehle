@@ -24,6 +24,10 @@ describe("package entry", () => {
 		expect(typeof core.buildPackageInstallCommands).toBe("function");
 		expect(typeof core.joinRelativePathUnderRoot).toBe("function");
 		expect(typeof core.detectPackageManagerFromLockfile).toBe("function");
+		expect(typeof core.selectNpmPackageManager).toBe("function");
+		expect(typeof core.packageManagerBindings).toBe("function");
+		expect(typeof core.isNpmPackageManager).toBe("function");
+		expect(core.PACKAGE_MANAGER_KEY).toBe("packageManager");
 		expect(typeof core.policyForConditionKind).toBe("function");
 		expect(typeof core.runBeforeInstallHook).toBe("function");
 		expect(typeof core.runAfterInstallHook).toBe("function");

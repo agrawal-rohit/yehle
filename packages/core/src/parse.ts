@@ -1,5 +1,9 @@
 import { type ZodType, z } from "zod";
-import { policyForConditionKind } from "./condition-kind";
+import {
+	policyForConditionKind,
+	type RegistryWhenValue,
+} from "./condition-kind";
+import { isNpmPackageManager, PACKAGE_MANAGER_KEY } from "./packages";
 import {
 	assertConditionMapBindingKeys,
 	type CatalogItem,
@@ -11,6 +15,20 @@ import {
 	registryDocumentFieldsSchema,
 	registryItemTypeSchema,
 } from "./schema";
+
+/**
+ * Fail when a shared condition is named `packageManager` (owned by core at install time).
+ * @param conditions - Shared condition definitions.
+ * @throws Error when `packageManager` is declared as a registry condition.
+ */
+function assertNoPackageManagerCondition(
+	conditions: Record<string, RegistryCondition> | undefined,
+): void {
+	if (conditions?.[PACKAGE_MANAGER_KEY] !== undefined)
+		throw new Error(
+			`Registry condition "${PACKAGE_MANAGER_KEY}" collides with the core-owned package manager.`,
+		);
+}
 
 /**
  * Append a Zod issue path to a parse label.
@@ -275,7 +293,26 @@ function remapWhenAssertionError(
 }
 
 /**
- * Validate a single `when` map against declared conditions.
+ * Validate a pack `when.packageManager` value against known npm managers.
+ * @param subject - Error label naming the item or pack.
+ * @param value - Matcher value from the `when` map.
+ * @throws Error when the value is not a supported manager id.
+ */
+function validatePackageManagerWhenValue(
+	subject: string,
+	value: RegistryWhenValue,
+): void {
+	const entries = Array.isArray(value) ? value : [value];
+	for (const entry of entries) {
+		if (typeof entry !== "string" || !isNpmPackageManager(entry))
+			throw new Error(
+				`${subject} uses undeclared when value "${String(entry)}" for key "${PACKAGE_MANAGER_KEY}".`,
+			);
+	}
+}
+
+/**
+ * Validate a single `when` map against declared conditions and the package-manager matcher.
  * @param subject - Error label naming the item or pack.
  * @param when - Condition matcher to validate.
  * @param conditions - Shared and item-local condition definitions in scope.
@@ -287,6 +324,11 @@ function validateWhenEntries(
 	conditions: Record<string, RegistryCondition> | undefined,
 ): void {
 	for (const [key, value] of Object.entries(when ?? {})) {
+		if (key === PACKAGE_MANAGER_KEY) {
+			validatePackageManagerWhenValue(subject, value);
+			continue;
+		}
+
 		const condition = conditions?.[key];
 		if (!condition)
 			throw new Error(`${subject} references unknown when key "${key}".`);
@@ -317,6 +359,10 @@ function assertItemConditionOwnership(
 	localOwners: Map<string, string>,
 ): void {
 	for (const key of item.requires ?? []) {
+		if (key === PACKAGE_MANAGER_KEY)
+			throw new Error(
+				`Registry item "${itemId}" requires "${PACKAGE_MANAGER_KEY}" which is selected by core at install time.`,
+			);
 		if (!conditions?.[key])
 			throw new Error(
 				`Registry item "${itemId}" requires unknown condition "${key}".`,
@@ -324,6 +370,10 @@ function assertItemConditionOwnership(
 	}
 
 	for (const key of Object.keys(item.conditions ?? {})) {
+		if (key === PACKAGE_MANAGER_KEY)
+			throw new Error(
+				`Registry item "${itemId}" condition "${PACKAGE_MANAGER_KEY}" collides with the core-owned package manager.`,
+			);
 		if (conditions?.[key])
 			throw new Error(
 				`Registry item "${itemId}" condition "${key}" collides with a shared condition.`,
@@ -418,6 +468,7 @@ export function parseRegistryDocument(raw: unknown): Registry {
 		(key) => `Registry condition "${key}"`,
 	);
 	assertConditionMapBindingKeys(conditions);
+	assertNoPackageManagerCondition(conditions);
 	crossValidateWhen(items, conditions);
 
 	const types = parseKeyedRecord(

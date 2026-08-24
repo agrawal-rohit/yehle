@@ -83,7 +83,6 @@ describe("buildRegistry", () => {
 				title: "Button",
 				description: "A button",
 				type: "component",
-				requires: ["packageManager"],
 				packs: [
 					{
 						id: "react",
@@ -130,14 +129,6 @@ describe("buildRegistry", () => {
 			},
 		);
 
-		writeRegistryJson(tempDir, "conditions/conditions.json", {
-			packageManager: {
-				kind: "select",
-				label: "Package manager",
-				values: [{ value: "pnpm", label: "pnpm" }],
-			},
-		});
-
 		const document = await runBuild();
 		const written = JSON.parse(
 			fs.readFileSync(path.join(tempDir, "registry.json"), "utf8"),
@@ -152,7 +143,6 @@ describe("buildRegistry", () => {
 			title: "Button",
 			description: "A button",
 			type: "component",
-			requires: ["packageManager"],
 			packs: [
 				{
 					id: "react",
@@ -595,6 +585,57 @@ describe("buildRegistry", () => {
 		expect(fs.existsSync(path.join(sourceDir, "registry.json"))).toBe(false);
 	});
 
+	it("writes the catalog under a custom registryFileName", async () => {
+		writeItem(
+			tempDir,
+			"component/button",
+			{
+				id: "button",
+				title: "Button",
+				description: "A button",
+				type: "component",
+				packs: [
+					{
+						id: "default",
+						title: "Default",
+						files: [{ source: "a.txt", target: "a.txt" }],
+					},
+				],
+			},
+			{ "a.txt": "a\n" },
+		);
+
+		const document = await buildRegistry({
+			sourceDir: path.join(tempDir, "registry"),
+			outDir: tempDir,
+			registryFileName: "catalog.json",
+		});
+
+		expect(document.items.button).toBeDefined();
+		expect(fs.existsSync(path.join(tempDir, "catalog.json"))).toBe(true);
+		expect(fs.existsSync(path.join(tempDir, "registry.json"))).toBe(false);
+		expect(fs.existsSync(path.join(tempDir, "r/button/default.json"))).toBe(
+			true,
+		);
+	});
+
+	it.each([
+		["nested/path.json", String.raw`single path segment`],
+		["..", String.raw`single path segment`],
+		[".", String.raw`single path segment`],
+		["catalog.txt", 'must end with ".json"'],
+		["", String.raw`single path segment`],
+		["   ", String.raw`single path segment`],
+	])("rejects invalid registryFileName %j", async (registryFileName, message) => {
+		await expect(
+			buildRegistry({
+				sourceDir: path.join(tempDir, "registry"),
+				outDir: tempDir,
+				registryFileName,
+			}),
+		).rejects.toThrow(message);
+	});
+
 	it("moves dependencies into payloads and keeps dependsOn in the catalog", async () => {
 		writeItem(
 			tempDir,
@@ -604,7 +645,6 @@ describe("buildRegistry", () => {
 				title: "Testing",
 				description: "Tests",
 				type: "configuration",
-				requires: ["packageManager"],
 				dependsOn: ["setup-workspace"],
 				dependencies: {
 					npm: {
@@ -636,11 +676,6 @@ describe("buildRegistry", () => {
 				label: "Language",
 				values: [{ value: "typescript", label: "TypeScript" }],
 			},
-			packageManager: {
-				kind: "select",
-				label: "Package manager",
-				values: [{ value: "pnpm", label: "pnpm" }],
-			},
 		});
 
 		const document = await runBuild();
@@ -648,7 +683,6 @@ describe("buildRegistry", () => {
 			title: "Testing",
 			description: "Tests",
 			type: "configuration",
-			requires: ["packageManager"],
 			source: "r/testing.json",
 			dependsOn: ["setup-workspace"],
 			packs: [
@@ -748,7 +782,6 @@ export default {
 				title: "With packages",
 				description: "Install script plus packages",
 				type: "configuration",
-				requires: ["packageManager"],
 				beforeInstall: "handler.ts",
 				dependencies: {
 					npm: {
@@ -765,20 +798,11 @@ export default async function beforeInstall() {
 			},
 		);
 
-		writeRegistryJson(tempDir, "conditions/conditions.json", {
-			packageManager: {
-				kind: "select",
-				label: "Package manager",
-				values: [{ value: "pnpm", label: "pnpm" }],
-			},
-		});
-
 		const document = await runBuild();
 		expect(document.items["with-pkgs"]).toEqual({
 			title: "With packages",
 			description: "Install script plus packages",
 			type: "configuration",
-			requires: ["packageManager"],
 			source: "r/with-pkgs.json",
 			beforeInstall: ["r/with-pkgs.beforeInstall.0.js"],
 		});
@@ -899,7 +923,6 @@ export default async function beforeInstall() {
 				title: "Scripts",
 				description: "Commands and secrets",
 				type: "configuration",
-				requires: ["packageManager"],
 				commands: { npm: { test: "vitest run" } },
 				secrets: ["GH_ADMIN_TOKEN"],
 				packs: [
@@ -914,13 +937,6 @@ export default async function beforeInstall() {
 			},
 			{ "a.txt": "ok\n" },
 		);
-		writeRegistryJson(tempDir, "conditions/conditions.json", {
-			packageManager: {
-				kind: "select",
-				label: "Package manager",
-				values: [{ value: "pnpm", label: "pnpm" }],
-			},
-		});
 
 		await runBuild();
 		const payload = JSON.parse(
@@ -1100,13 +1116,6 @@ export default async function beforeInstall() {
 	});
 
 	it("writes a base payload when an item declares commands without files", async () => {
-		writeRegistryJson(tempDir, "conditions/conditions.json", {
-			packageManager: {
-				kind: "select",
-				label: "Package manager",
-				values: [{ value: "pnpm", label: "pnpm" }],
-			},
-		});
 		writeItem(
 			tempDir,
 			"configuration/scripts-only",
@@ -1115,7 +1124,6 @@ export default async function beforeInstall() {
 				title: "Scripts only",
 				description: "Commands without files",
 				type: "configuration",
-				requires: ["packageManager"],
 				afterInstall: "after.ts",
 				commands: { npm: { test: "vitest run" } },
 			},
@@ -1163,7 +1171,7 @@ export default async function beforeInstall() {
 		});
 	});
 
-	it("rejects npm dependencies that do not require packageManager", async () => {
+	it("allows npm dependencies without a packageManager condition", async () => {
 		writeItem(
 			tempDir,
 			"component/button",
@@ -1182,8 +1190,39 @@ export default async function beforeInstall() {
 			{ "a.txt": "ok\n" },
 		);
 
+		const document = await runBuild();
+		expect(document.items.button.source).toBe("r/button.json");
+		const payload = JSON.parse(
+			fs.readFileSync(path.join(tempDir, "r/button.json"), "utf8"),
+		) as RegistryPayload;
+		expect(payload.dependencies).toEqual({
+			npm: { runtime: ["react"] },
+		});
+	});
+
+	it("rejects declaring packageManager as a shared condition", async () => {
+		writeItem(
+			tempDir,
+			"component/button",
+			{
+				id: "button",
+				title: "Button",
+				description: "A button",
+				type: "component",
+				files: [{ source: "a.txt", target: "a.txt" }],
+			},
+			{ "a.txt": "ok\n" },
+		);
+		writeRegistryJson(tempDir, "conditions/conditions.json", {
+			packageManager: {
+				kind: "select",
+				label: "Package manager",
+				values: [{ value: "pnpm", label: "pnpm" }],
+			},
+		});
+
 		await expect(runBuild()).rejects.toThrow(
-			'Registry item "button" declares npm dependencies or commands but does not require "packageManager".',
+			'Registry condition "packageManager" collides with the core-owned package manager.',
 		);
 	});
 

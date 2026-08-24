@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { RegistryConditionKind } from "./condition-kind";
+import { NpmPackageManager } from "./packages";
 import {
 	assumeContextFromSelectedItems,
 	buildInstallPlan,
@@ -1182,6 +1183,31 @@ describe("core/plan", () => {
 			expect(whenMatchesContext({ enableCi: "true" }, { enableCi: true })).toBe(
 				false,
 			);
+		});
+
+		it("matches when.packageManager against the runtime manager", () => {
+			expect(
+				whenMatchesContext(
+					{ packageManager: "pnpm" },
+					{},
+					NpmPackageManager.PNPM,
+				),
+			).toBe(true);
+			expect(
+				whenMatchesContext(
+					{ packageManager: ["npm", "yarn"] },
+					{},
+					NpmPackageManager.NPM,
+				),
+			).toBe(true);
+			expect(
+				whenMatchesContext(
+					{ packageManager: "pnpm" },
+					{},
+					NpmPackageManager.NPM,
+				),
+			).toBe(false);
+			expect(whenMatchesContext({ packageManager: "pnpm" }, {})).toBe(false);
 		});
 	});
 
