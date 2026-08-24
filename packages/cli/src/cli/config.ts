@@ -3,15 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { isErrnoCode } from "./errors";
 
-/** Persisted tuckshop CLI settings. */
-export interface TuckshopConfig {
-	/** Default registry URL or local path. */
+/** Persisted tuckshop CLI settings (`registry` = default URL or local path). */
+export type TuckshopConfig = {
 	registry?: string;
-}
+};
 
 /**
  * Return the absolute path to the global tuckshop config file.
- * Prefers `$XDG_CONFIG_HOME/tuckshop/config.json`, otherwise `~/.config/tuckshop/config.json`.
  * @param env - Environment used for `XDG_CONFIG_HOME`. Defaults to `process.env`.
  * @returns Absolute config file path.
  */
@@ -25,7 +23,6 @@ export function configPath(env: NodeJS.ProcessEnv = process.env): string {
 
 /**
  * Read the global tuckshop config.
- * Missing files are treated as an empty config; malformed JSON fails fast with the file path.
  * @param env - Environment used for config path resolution. Defaults to `process.env`.
  * @returns Parsed config object.
  * @throws Error when the config file exists but cannot be parsed as JSON.
@@ -92,7 +89,6 @@ export async function writeConfig(
 
 /**
  * Remove the saved registry key from the global config.
- * Deletes the config file entirely when no keys remain; no-ops when unset.
  * @param env - Environment used for config path resolution. Defaults to `process.env`.
  * @returns True when a previously saved registry was cleared.
  */

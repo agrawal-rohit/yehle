@@ -2,7 +2,7 @@ import type { CAC } from "cac";
 import { animatedIntro } from "../cli/animated-intro";
 import { runCliCommand } from "../cli/errors";
 import { getBooleanOption, pickStringOptions } from "../cli/options";
-import type { LoadedRegistry } from "../registry/load";
+import type { LoadedRegistry } from "../utils/registry";
 import { addCommand } from "./add";
 import {
 	configGetCommand,
@@ -12,8 +12,7 @@ import {
 import { listCommand } from "./list";
 
 /**
- * Register CLI commands. Registry-dependent commands load the registry lazily
- * in their action so config commands never need one.
+ * Register CLI commands and their options.
  * @param app - CAC application instance.
  * @param loadRegistry - Loader used by commands that need registry data.
  */

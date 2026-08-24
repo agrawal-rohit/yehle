@@ -18,7 +18,7 @@ vi.mock("./commands", () => ({
 	registerCommandsCli: vi.fn(async () => {}),
 }));
 
-vi.mock("./registry/load", () => ({
+vi.mock("./utils/registry", () => ({
 	loadRuntimeRegistry: vi.fn(async () => ({
 		registry: { items: {} },
 		catalogLocation: "/bundle/registry.json",
@@ -33,7 +33,7 @@ import cac from "cac";
 import { readConfig } from "./cli/config";
 import { registerCommandsCli } from "./commands";
 import run from "./index";
-import { loadRuntimeRegistry } from "./registry/load";
+import { loadRuntimeRegistry } from "./utils/registry";
 
 /** Default shape returned by cac's `parse(..., { run: false })`. */
 function emptyParseResult() {

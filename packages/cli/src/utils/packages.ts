@@ -76,7 +76,6 @@ async function collectPackageInstallCommands(
 
 /**
  * Optionally run package install commands from payload declarations.
- * Uses `conditions.packageManager` for the npm ecosystem (no second prompt).
  * @param packageDeclarations - Per-payload package maps collected during writes.
  * @param projectDir - Absolute project root.
  * @param conditions - Captured install conditions.

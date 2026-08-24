@@ -17,9 +17,9 @@ vi.mock("../cli/prompts", () => ({
 import {
 	captureItemLocalConditionsForPlan,
 	captureRequiredConditions,
-} from "./add-conditions";
+} from "./conditions";
 
-describe("commands/add-conditions", () => {
+describe("utils/conditions", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockTextInput.mockResolvedValue("Ada");
@@ -136,7 +136,7 @@ describe("commands/add-conditions", () => {
 		);
 	});
 
-	it("captures optional boolean conditions via Yes/No/Skip", async () => {
+	it("captures optional boolean conditions via Yes/No/None", async () => {
 		mockSelectInput.mockResolvedValue("true");
 		const registry: Registry = {
 			types: { configuration: { label: "Configurations" } },
@@ -173,7 +173,7 @@ describe("commands/add-conditions", () => {
 			"true",
 		);
 
-		mockSelectInput.mockResolvedValue("__tuckshop_skip__");
+		mockSelectInput.mockResolvedValue("None");
 		const skipRegistry: Registry = {
 			types: { configuration: { label: "Configurations" } },
 			conditions: {
@@ -240,7 +240,7 @@ describe("commands/add-conditions", () => {
 	});
 
 	it("omits skipped optional select conditions from context", async () => {
-		mockSelectInput.mockResolvedValue("__tuckshop_skip__");
+		mockSelectInput.mockResolvedValue("None");
 		const registry: Registry = {
 			types: { configuration: { label: "Configurations" } },
 			conditions: {

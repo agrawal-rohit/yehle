@@ -40,9 +40,9 @@ import {
 	installDeclaredPackages,
 	mergeProjectCommands,
 	npmPackageManagerFromConditions,
-} from "./add-packages";
+} from "./packages";
 
-describe("commands/add-packages", () => {
+describe("utils/packages", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.spyOn(console, "log").mockImplementation(() => {});

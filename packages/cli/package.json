@@ -1,7 +1,7 @@
 {
 	"name": "tuckshop",
 	"version": "0.2.1",
-	"description": "A CLI for building and consuming tuckshop code registries.",
+	"description": "A CLI for consuming tuckshop code registries.",
 	"license": "MIT",
 	"bin": {
 		"tuckshop": "./bin/cli.mjs"

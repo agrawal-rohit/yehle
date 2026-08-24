@@ -136,7 +136,6 @@ async function promptOverwriteConfirmations(
 
 /**
  * Prompt before overwriting payload targets that already exist on disk.
- * Rejects targets that already exist as directories.
  * @param projectDir - Absolute project root.
  * @param payloads - Parsed install payloads whose files may collide with existing paths.
  * @param overwrite - Skip overwrite prompts when true.

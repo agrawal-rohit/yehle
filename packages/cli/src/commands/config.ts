@@ -74,7 +74,6 @@ async function toPersistedRegistrySource(source: string): Promise<string> {
 
 /**
  * Persist a default registry source to the global config.
- * Prompts for a source when omitted. Accepts HTTPS URLs, or local paths that point to an existing file.
  * @param source - Optional registry URL or local path from the CLI.
  * @param env - Environment used for config path resolution. Defaults to `process.env`.
  * @returns Absolute path of the config file that was written.

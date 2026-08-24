@@ -1,13 +1,25 @@
+import path from "node:path";
 import {
 	assertSafeRemoteUrl,
 	InvalidJsonError,
 	isAbsoluteHttpUrl,
+	isFileAsync,
 	joinCatalogSource,
 	parseRegistryDocument,
 	type Registry,
 	readJsonFileAsync,
 } from "@tuckshop/core";
-import { locateRegistry } from "./source";
+
+export interface LocateRegistryOptions {
+	/** Explicit registry flag value from the CLI. */
+	registry?: string;
+	/** Registry source persisted via `tuckshop config set`. */
+	savedRegistry?: string;
+	/** Absolute path to the packaged default registry.json. */
+	bundledRegistryPath?: string;
+	/** Additional absolute registry.json paths to probe before failing. */
+	fallbackRegistryPaths?: string[];
+}
 
 /** Parsed registry catalog paired with the location it was loaded from. */
 export interface LoadedRegistry {
@@ -15,6 +27,49 @@ export interface LoadedRegistry {
 	registry: Registry;
 	/** Absolute path or HTTPS URL of the catalog document. */
 	catalogLocation: string;
+}
+
+/**
+ * Locate which registry catalog the CLI should use.
+ * @param options - Inputs from CLI flags, env, and package defaults.
+ * @returns Absolute local path or HTTPS URL to the catalog.
+ * @throws Error when no local or bundled registry can be found, or an explicit URL is unsafe.
+ */
+export async function locateRegistry(
+	options: LocateRegistryOptions = {},
+): Promise<string> {
+	const bundledRegistryPath =
+		options.bundledRegistryPath ??
+		path.resolve(__dirname, "../../", "registry.json");
+	const fallbackRegistryPaths = options.fallbackRegistryPaths ?? [
+		path.resolve(__dirname, "../../../registry/registry.json"),
+	];
+
+	// Source reading order: CLI flag > env > saved config > bundled.
+	const source =
+		options.registry ?? process.env.TUCKSHOP_REGISTRY ?? options.savedRegistry;
+
+	// If a source is explicitly provided, use it.
+	if (source) {
+		if (isAbsoluteHttpUrl(source)) {
+			assertSafeRemoteUrl(new URL(source));
+			return source;
+		}
+		return path.resolve(process.cwd(), source);
+	}
+
+	const candidates = [
+		path.resolve(process.cwd(), "registry.json"),
+		...fallbackRegistryPaths,
+		bundledRegistryPath,
+	];
+
+	for (const candidate of candidates)
+		if (await isFileAsync(candidate)) return candidate;
+
+	throw new Error(
+		"Registry not found (registry.json). Run `pnpm run build:registry` before using tuckshop.",
+	);
 }
 
 /**

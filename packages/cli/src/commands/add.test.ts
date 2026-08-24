@@ -29,7 +29,7 @@ vi.mock("../cli/prompts", () => ({
 	textInput: (...args: unknown[]) => mockTextInput(...args),
 }));
 
-vi.mock("../registry/load", () => ({
+vi.mock("../utils/registry", () => ({
 	loadRegistryPayloads: (...args: unknown[]) =>
 		mockLoadRegistryPayloads(...args),
 }));

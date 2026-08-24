@@ -1,7 +1,7 @@
 import cac from "cac";
 import { readConfig } from "./cli/config";
 import { registerCommandsCli } from "./commands";
-import { loadRuntimeRegistry } from "./registry/load";
+import { loadRuntimeRegistry } from "./utils/registry";
 
 export { printError } from "./cli/errors";
 

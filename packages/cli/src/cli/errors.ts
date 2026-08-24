@@ -35,7 +35,6 @@ export function isErrnoCode(error: unknown, code: string): boolean {
 
 /**
  * Print an error message with a red background prefix.
- * Does not exit the process; callers own process lifetime.
  * @param message - The error message to display.
  */
 export function printError(message: string): void {
@@ -46,7 +45,6 @@ export function printError(message: string): void {
 
 /**
  * Print a cancel message (non-fatal styling).
- * Does not exit the process; callers own process lifetime.
  * @param message - The cancel message to display.
  */
 export function printCancel(message: string): void {

@@ -15,7 +15,7 @@
         "count": 1
       }
     },
-    "packages/cli/src/registry/load.ts": {
+    "packages/cli/src/utils/registry.ts": {
       "complexity_high": {
         "count": 1
       },

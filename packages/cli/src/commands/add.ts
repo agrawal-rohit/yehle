@@ -23,14 +23,17 @@ import chalk from "chalk";
 import { defaultText, primaryText } from "../cli/labels";
 import { groupedMultiselectInput } from "../cli/prompts";
 import { runWithTasks } from "../cli/tasks";
-import { loadRegistryPayloads } from "../registry/load";
 import {
 	captureItemLocalConditionsForPlan,
 	captureRequiredConditions,
 	createProjectHandlerRuntime,
-} from "./add-conditions";
-import { confirmFileOverwrites, writePayloadFiles } from "./add-files";
-import { installDeclaredPackages, mergeProjectCommands } from "./add-packages";
+} from "../utils/conditions";
+import { confirmFileOverwrites, writePayloadFiles } from "../utils/files";
+import {
+	installDeclaredPackages,
+	mergeProjectCommands,
+} from "../utils/packages";
+import { loadRegistryPayloads } from "../utils/registry";
 
 /** Options accepted by the add command. */
 interface AddCommandOptions {

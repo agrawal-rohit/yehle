@@ -25,9 +25,6 @@ import {
 	textInput,
 } from "../cli/prompts";
 
-/** Select option value used when the user skips an optional condition. */
-const OPTIONAL_SKIP_VALUE = "__tuckshop_skip__";
-
 /**
  * Build shared handler runtime helpers for the current project.
  * @param projectDir - Absolute project root.
@@ -89,7 +86,7 @@ async function promptMultiselectCondition(
  * @param condition - Select condition to capture.
  * @param promptMessage - Message shown to the user.
  * @param inferred - Optional default from a condition handler.
- * @returns Selected value, or undefined when the user chooses Skip on an optional condition.
+ * @returns Selected value, or undefined when the user chooses None on an optional condition.
  */
 async function promptSelectCondition(
 	condition: RequiredCondition,
@@ -101,10 +98,7 @@ async function promptSelectCondition(
 		return condition.values[0].value;
 
 	const options = optional
-		? [
-				...conditionSelectOptions(condition),
-				{ label: "Skip", value: OPTIONAL_SKIP_VALUE },
-			]
+		? [...conditionSelectOptions(condition), { label: "None", value: "None" }]
 		: conditionSelectOptions(condition);
 
 	const selected = await selectInput<string>(
@@ -113,12 +107,12 @@ async function promptSelectCondition(
 		typeof inferred === "string" ? inferred : undefined,
 	);
 
-	if (optional && selected === OPTIONAL_SKIP_VALUE) return undefined;
+	if (optional && selected === "None") return undefined;
 	return selected;
 }
 
 /**
- * Capture an optional boolean via Yes / No / Skip (confirm cannot represent unset).
+ * Capture an optional boolean via Yes / No / None (confirm cannot represent unset).
  * @param promptMessage - Message shown to the user.
  * @param inferred - Optional default from a condition handler.
  * @returns Captured boolean, or undefined when skipped.
@@ -133,13 +127,13 @@ async function promptOptionalBooleanCondition(
 			options: [
 				{ label: "Yes", value: "true" },
 				{ label: "No", value: "false" },
-				{ label: "Skip", value: OPTIONAL_SKIP_VALUE },
+				{ label: "None", value: "None" },
 			],
 		},
 		typeof inferred === "boolean" ? String(inferred) : undefined,
 	);
 
-	if (selected === OPTIONAL_SKIP_VALUE) return undefined;
+	if (selected === "None") return undefined;
 	return selected === "true";
 }
 
@@ -186,7 +180,6 @@ async function promptTextCondition(
 
 /**
  * Prompt (or auto-select) a value for one condition.
- * Optional conditions may be skipped, leaving the key unset.
  * @param condition - Condition the install plan still needs.
  * @param inferred - Optional default from a condition handler.
  * @returns Captured context value, or undefined when an optional condition is skipped.
@@ -208,16 +201,19 @@ async function promptConditionValue(
 			return promptBooleanCondition(promptMessage, optional, inferred);
 		case RegistryConditionKind.TEXT:
 			return promptTextCondition(promptMessage, optional, inferred);
+		/* v8 ignore start */
+		// Stryker disable all: unreachable exhaustive default
 		default: {
 			const exhaustive: never = kind;
 			throw new Error(`Unsupported condition kind: ${String(exhaustive)}`);
 		}
+		// Stryker restore all
+		/* v8 ignore stop */
 	}
 }
 
 /**
- * Infer defaults and prompt for each pending condition, merging answers into context.
- * Skipped optional conditions leave their keys unset.
+ * Capture defaults and prompt for each pending condition, merging answers into context.
  * @param catalogLocation - Absolute path or HTTPS URL of the catalog document.
  * @param conditions - Conditions still missing from context.
  * @param runtime - Shared handler runtime for condition inference.

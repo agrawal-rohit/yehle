@@ -9,7 +9,6 @@ import { parseMultiValueOption } from "../cli/options";
 
 /**
  * Parse which item types to include from `--type`.
- * Defaults to every available type when `--type` is omitted.
  * @param typeOption - Raw `--type` value from the CLI.
  * @param availableTypes - Types present in the registry.
  * @returns Allowed item types.

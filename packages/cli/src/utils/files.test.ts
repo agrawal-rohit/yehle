@@ -23,12 +23,12 @@ import {
 	absoluteProjectTarget,
 	confirmFileOverwrites,
 	writePayloadFiles,
-} from "./add-files";
+} from "./files";
 
 /** Payload that omits `files` at runtime (parsed payloads always include it). */
 const payloadWithoutFiles = {} as RegistryPayload;
 
-describe("commands/add-files", () => {
+describe("utils/files", () => {
 	let tempDir: string;
 
 	beforeEach(() => {

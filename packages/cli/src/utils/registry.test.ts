@@ -1,28 +1,30 @@
+import path from "node:path";
 import type { Registry } from "@tuckshop/core";
 import { InvalidJsonError } from "@tuckshop/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mockLocateRegistry = vi.fn();
+const mockIsFileAsync = vi.fn<(candidate: string) => Promise<boolean>>();
 const mockReadJsonFileAsync = vi.fn();
 const mockParseRegistryDocument = vi.fn();
 const mockFetch = vi.fn();
-
-vi.mock("./source", () => ({
-	locateRegistry: (options: unknown) => mockLocateRegistry(options),
-}));
 
 vi.mock("@tuckshop/core", async () => {
 	const actual =
 		await vi.importActual<typeof import("@tuckshop/core")>("@tuckshop/core");
 	return {
 		...actual,
+		isFileAsync: (candidate: string) => mockIsFileAsync(candidate),
 		readJsonFileAsync: (location: string, label: string) =>
 			mockReadJsonFileAsync(location, label),
 		parseRegistryDocument: (raw: unknown) => mockParseRegistryDocument(raw),
 	};
 });
 
-import { loadRegistryPayloads, loadRuntimeRegistry } from "./load";
+import {
+	loadRegistryPayloads,
+	loadRuntimeRegistry,
+	locateRegistry,
+} from "./registry";
 
 const sampleRegistry: Registry = {
 	types: {},
@@ -33,14 +35,6 @@ const publicRegistryBody = JSON.stringify({
 	types: {},
 	items: {},
 });
-
-/**
- * Arrange a remote registry URL source for the next loadRuntimeRegistry call.
- * @param location - Absolute registry URL.
- */
-function mockRemoteSource(location: string): void {
-	mockLocateRegistry.mockResolvedValue(location);
-}
 
 interface MockFetchOptions {
 	status?: number;
@@ -76,12 +70,210 @@ function mockFetchOk(response: MockFetchOptions = {}): void {
 	});
 }
 
-describe("registry/load", () => {
+describe("locateRegistry", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.spyOn(process, "cwd").mockReturnValue("/workspace");
+		Reflect.deleteProperty(process.env, "TUCKSHOP_REGISTRY");
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.restoreAllMocks();
+	});
+
+	it("prefers an explicit URL registry override", async () => {
+		await expect(
+			locateRegistry({
+				registry: "https://example.com/registry.json",
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).resolves.toBe("https://example.com/registry.json");
+		expect(mockIsFileAsync).not.toHaveBeenCalled();
+	});
+
+	it("rejects an explicit HTTP registry override", async () => {
+		await expect(
+			locateRegistry({
+				registry: "http://example.com/registry.json",
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).rejects.toThrow("Remote registries must use HTTPS.");
+	});
+
+	it("rejects an explicit localhost registry override", async () => {
+		await expect(
+			locateRegistry({
+				registry: "https://localhost/registry.json",
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).rejects.toThrow("Remote registries cannot target localhost.");
+	});
+
+	it("rejects an explicit registry override with credentials", async () => {
+		await expect(
+			locateRegistry({
+				registry: "https://user:secret@example.com/registry.json",
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).rejects.toThrow("Remote registries must not include credentials.");
+	});
+
+	it("joins an explicit file override relative to cwd", async () => {
+		await expect(
+			locateRegistry({
+				registry: "./custom/registry.json",
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).resolves.toBe(path.resolve("/workspace", "./custom/registry.json"));
+	});
+
+	it("loads the current working directory registry before bundled fallbacks", async () => {
+		const cwdRegistry = path.resolve("/workspace", "registry.json");
+		mockIsFileAsync.mockImplementation(async (candidate: string) => {
+			return candidate === cwdRegistry;
+		});
+
+		await expect(
+			locateRegistry({
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).resolves.toBe(cwdRegistry);
+	});
+
+	it("falls back to the bundled registry.json when cwd has none", async () => {
+		const packagedRegistry = "/bundle/registry.json";
+		mockIsFileAsync.mockImplementation(async (candidate: string) => {
+			return candidate === packagedRegistry;
+		});
+
+		await expect(
+			locateRegistry({
+				bundledRegistryPath: packagedRegistry,
+			}),
+		).resolves.toBe(packagedRegistry);
+	});
+
+	it("uses fallback registry probe paths before the bundled copy", async () => {
+		const packagedRegistry = "/bundle/registry.json";
+		const fallbackRegistry = "/workspace/packages/registry/registry.json";
+		mockIsFileAsync.mockImplementation(async (candidate: string) => {
+			return candidate === packagedRegistry || candidate === fallbackRegistry;
+		});
+
+		await expect(
+			locateRegistry({
+				bundledRegistryPath: packagedRegistry,
+				fallbackRegistryPaths: [fallbackRegistry],
+			}),
+		).resolves.toBe(fallbackRegistry);
+	});
+
+	it("uses fallback registry probe paths when the bundled copy is absent", async () => {
+		const fallbackRegistry = "/workspace/packages/registry/registry.json";
+		mockIsFileAsync.mockImplementation(async (candidate: string) => {
+			return candidate === fallbackRegistry;
+		});
+
+		await expect(
+			locateRegistry({
+				bundledRegistryPath: "/bundle/registry.json",
+				fallbackRegistryPaths: [fallbackRegistry],
+			}),
+		).resolves.toBe(fallbackRegistry);
+	});
+
+	it("uses TUCKSHOP_REGISTRY from the environment when no flag is provided", async () => {
+		vi.stubEnv("TUCKSHOP_REGISTRY", "https://example.com/env-registry.json");
+
+		await expect(
+			locateRegistry({
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).resolves.toBe("https://example.com/env-registry.json");
+	});
+
+	it("uses a saved registry config when flag and env are absent", async () => {
+		await expect(
+			locateRegistry({
+				savedRegistry: "https://example.com/saved-registry.json",
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).resolves.toBe("https://example.com/saved-registry.json");
+	});
+
+	it("prefers TUCKSHOP_REGISTRY over a saved registry config", async () => {
+		vi.stubEnv("TUCKSHOP_REGISTRY", "https://example.com/env-registry.json");
+
+		await expect(
+			locateRegistry({
+				savedRegistry: "https://example.com/saved-registry.json",
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).resolves.toBe("https://example.com/env-registry.json");
+	});
+
+	it("prefers an explicit flag over env and saved registry config", async () => {
+		vi.stubEnv("TUCKSHOP_REGISTRY", "https://example.com/env-registry.json");
+
+		await expect(
+			locateRegistry({
+				registry: "https://example.com/flag-registry.json",
+				savedRegistry: "https://example.com/saved-registry.json",
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).resolves.toBe("https://example.com/flag-registry.json");
+	});
+
+	it("defaults bundledRegistryPath relative to the module when omitted", async () => {
+		const defaultBundledPath = path.resolve(
+			__dirname,
+			"../../",
+			"registry.json",
+		);
+		mockIsFileAsync.mockImplementation(async (candidate: string) => {
+			return candidate === defaultBundledPath;
+		});
+
+		await expect(locateRegistry()).resolves.toBe(defaultBundledPath);
+	});
+
+	it("defaults fallback registry paths relative to the workspace registry", async () => {
+		const defaultFallbackPath = path.resolve(
+			__dirname,
+			"../../../registry/registry.json",
+		);
+		mockIsFileAsync.mockImplementation(async (candidate: string) => {
+			return candidate === defaultFallbackPath;
+		});
+
+		await expect(
+			locateRegistry({
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).resolves.toBe(defaultFallbackPath);
+	});
+
+	it("throws a clear error when no registry source can be found", async () => {
+		mockIsFileAsync.mockResolvedValue(false);
+
+		await expect(
+			locateRegistry({
+				bundledRegistryPath: "/bundle/registry.json",
+			}),
+		).rejects.toThrow(
+			"Registry not found (registry.json). Run `pnpm run build:registry` before using tuckshop.",
+		);
+	});
+});
+
+describe("loadRuntimeRegistry", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.stubGlobal("fetch", mockFetch);
 		mockParseRegistryDocument.mockReturnValue(sampleRegistry);
 		mockFetchOk();
+		Reflect.deleteProperty(process.env, "TUCKSHOP_REGISTRY");
 	});
 
 	afterEach(() => {
@@ -90,10 +282,11 @@ describe("registry/load", () => {
 	});
 
 	it("loads local registry sources from disk", async () => {
-		mockLocateRegistry.mockResolvedValue("/workspace/registry.json");
 		mockReadJsonFileAsync.mockResolvedValue(sampleRegistry);
 
-		await expect(loadRuntimeRegistry()).resolves.toEqual({
+		await expect(
+			loadRuntimeRegistry("/workspace/registry.json"),
+		).resolves.toEqual({
 			registry: sampleRegistry,
 			catalogLocation: "/workspace/registry.json",
 		});
@@ -105,29 +298,10 @@ describe("registry/load", () => {
 		expect(mockFetch).not.toHaveBeenCalled();
 	});
 
-	it("forwards flag and saved registry sources to locateRegistry", async () => {
-		mockLocateRegistry.mockResolvedValue("/workspace/registry.json");
-		mockReadJsonFileAsync.mockResolvedValue(sampleRegistry);
-
-		await loadRuntimeRegistry(
-			"https://example.com/flag-registry.json",
-			"https://example.com/saved-registry.json",
-		);
-
-		expect(mockLocateRegistry).toHaveBeenCalledWith(
-			expect.objectContaining({
-				registry: "https://example.com/flag-registry.json",
-				savedRegistry: "https://example.com/saved-registry.json",
-			}),
-		);
-	});
-
 	it("rejects non-HTTPS remote registries", async () => {
-		mockRemoteSource("http://example.com/registry.json");
-
-		await expect(loadRuntimeRegistry()).rejects.toThrow(
-			"Remote registries must use HTTPS.",
-		);
+		await expect(
+			loadRuntimeRegistry("http://example.com/registry.json"),
+		).rejects.toThrow("Remote registries must use HTTPS.");
 		expect(mockFetch).not.toHaveBeenCalled();
 	});
 
@@ -137,9 +311,7 @@ describe("registry/load", () => {
 			"https://user@example.com/registry.json",
 			"https://:secret@example.com/registry.json",
 		]) {
-			mockRemoteSource(location);
-
-			await expect(loadRuntimeRegistry()).rejects.toThrow(
+			await expect(loadRuntimeRegistry(location)).rejects.toThrow(
 				"Remote registries must not include credentials.",
 			);
 			expect(mockFetch).not.toHaveBeenCalled();
@@ -152,9 +324,7 @@ describe("registry/load", () => {
 			"https://localhost./registry.json",
 			"https://registry.localhost/registry.json",
 		]) {
-			mockRemoteSource(location);
-
-			await expect(loadRuntimeRegistry()).rejects.toThrow(
+			await expect(loadRuntimeRegistry(location)).rejects.toThrow(
 				"Remote registries cannot target localhost.",
 			);
 			expect(mockFetch).not.toHaveBeenCalled();
@@ -163,9 +333,9 @@ describe("registry/load", () => {
 
 	it("rejects literal IPv4 registry hosts", async () => {
 		for (const host of ["127.0.0.1", "93.184.216.34", "192.168.0.1"]) {
-			mockRemoteSource(`https://${host}/registry.json`);
-
-			await expect(loadRuntimeRegistry()).rejects.toThrow(
+			await expect(
+				loadRuntimeRegistry(`https://${host}/registry.json`),
+			).rejects.toThrow(
 				"Remote registries must use a hostname, not an IP address.",
 			);
 			expect(mockFetch).not.toHaveBeenCalled();
@@ -174,9 +344,9 @@ describe("registry/load", () => {
 
 	it("rejects literal IPv6 registry hosts", async () => {
 		for (const host of ["[::1]", "[2001:db8::1]", "[::ffff:127.0.0.1]"]) {
-			mockRemoteSource(`https://${host}/registry.json`);
-
-			await expect(loadRuntimeRegistry()).rejects.toThrow(
+			await expect(
+				loadRuntimeRegistry(`https://${host}/registry.json`),
+			).rejects.toThrow(
 				"Remote registries must use a hostname, not an IP address.",
 			);
 			expect(mockFetch).not.toHaveBeenCalled();
@@ -184,10 +354,11 @@ describe("registry/load", () => {
 	});
 
 	it("fetches and validates remote registries over HTTPS", async () => {
-		mockRemoteSource("https://example.com/registry.json");
 		mockFetchOk();
 
-		await expect(loadRuntimeRegistry()).resolves.toEqual({
+		await expect(
+			loadRuntimeRegistry("https://example.com/registry.json"),
+		).resolves.toEqual({
 			registry: sampleRegistry,
 			catalogLocation: "https://example.com/registry.json",
 		});
@@ -203,20 +374,20 @@ describe("registry/load", () => {
 	});
 
 	it("rejects redirect responses from remote registries", async () => {
-		mockRemoteSource("https://example.com/redirect-registry.json");
 		const redirectError = new TypeError(
 			"fetch failed: redirect mode is set to error",
 		);
 		mockFetchOk({ rejectWith: redirectError });
 
-		await expect(loadRuntimeRegistry()).rejects.toMatchObject({
+		await expect(
+			loadRuntimeRegistry("https://example.com/redirect-registry.json"),
+		).rejects.toMatchObject({
 			message: "Remote registries must not redirect.",
 			cause: redirectError,
 		});
 	});
 
 	it("rejects failed remote registry HTTP responses", async () => {
-		mockRemoteSource("https://example.com/missing-registry.json");
 		mockFetchOk({
 			status: 500,
 			statusText: "Internal Server Error",
@@ -224,88 +395,85 @@ describe("registry/load", () => {
 			body: "server error",
 		});
 
-		await expect(loadRuntimeRegistry()).rejects.toThrow(
-			"Failed to fetch registry (500 Internal Server Error).",
-		);
+		await expect(
+			loadRuntimeRegistry("https://example.com/missing-registry.json"),
+		).rejects.toThrow("Failed to fetch registry (500 Internal Server Error).");
 	});
 
 	it("accepts Buffer bodies when reading a remote registry", async () => {
-		mockRemoteSource("https://example.com/buffer-registry.json");
 		mockFetchOk({
 			headers: {},
 			body: Buffer.from(publicRegistryBody),
 		});
 
-		await expect(loadRuntimeRegistry()).resolves.toEqual({
+		await expect(
+			loadRuntimeRegistry("https://example.com/buffer-registry.json"),
+		).resolves.toEqual({
 			registry: sampleRegistry,
 			catalogLocation: "https://example.com/buffer-registry.json",
 		});
 	});
 
 	it("rejects remote registries whose content-length exceeds the size limit", async () => {
-		mockRemoteSource("https://example.com/large-header-registry.json");
 		mockFetchOk({
 			headers: { "content-length": String(5_000_001) },
 			body: publicRegistryBody,
 		});
 
-		await expect(loadRuntimeRegistry()).rejects.toThrow(
-			"Remote registry is too large.",
-		);
+		await expect(
+			loadRuntimeRegistry("https://example.com/large-header-registry.json"),
+		).rejects.toThrow("Remote registry is too large.");
 	});
 
 	it("accepts remote registries whose content-length equals the size limit", async () => {
-		mockRemoteSource("https://example.com/exact-header-registry.json");
 		mockFetchOk({
 			headers: { "content-length": String(5_000_000) },
 			body: publicRegistryBody,
 		});
 
-		await expect(loadRuntimeRegistry()).resolves.toEqual({
+		await expect(
+			loadRuntimeRegistry("https://example.com/exact-header-registry.json"),
+		).resolves.toEqual({
 			registry: sampleRegistry,
 			catalogLocation: "https://example.com/exact-header-registry.json",
 		});
 	});
 
 	it("rejects remote registries whose body exceeds the size limit", async () => {
-		mockRemoteSource("https://example.com/large-body-registry.json");
 		mockFetchOk({
 			headers: {},
 			body: "x".repeat(5_000_001),
 		});
 
-		await expect(loadRuntimeRegistry()).rejects.toThrow(
-			"Remote registry is too large.",
-		);
+		await expect(
+			loadRuntimeRegistry("https://example.com/large-body-registry.json"),
+		).rejects.toThrow("Remote registry is too large.");
 	});
 
 	it("accepts remote registries whose body length equals the size limit", async () => {
 		const exactBody = "x".repeat(5_000_000);
-		mockRemoteSource("https://example.com/exact-body-registry.json");
 		mockFetchOk({
 			headers: {},
 			body: exactBody,
 		});
 
-		await expect(loadRuntimeRegistry()).rejects.toThrow(
-			"Remote registry returned invalid JSON:",
-		);
+		await expect(
+			loadRuntimeRegistry("https://example.com/exact-body-registry.json"),
+		).rejects.toThrow("Remote registry returned invalid JSON:");
 	});
 
 	it("rejects remote registries that return invalid JSON", async () => {
-		mockRemoteSource("https://example.com/invalid-registry.json");
 		mockFetchOk({
 			headers: { "content-length": "12" },
 			body: "{not-json",
 		});
 
-		await expect(loadRuntimeRegistry()).rejects.toThrow(
-			"Remote registry returned invalid JSON:",
-		);
+		await expect(
+			loadRuntimeRegistry("https://example.com/invalid-registry.json"),
+		).rejects.toThrow("Remote registry returned invalid JSON:");
 	});
 
 	it("stringifies non-Error JSON parse failures from remote registries", async () => {
-		mockRemoteSource("https://example.com/weird-json-registry.json");
 		mockFetchOk({
 			headers: { "content-length": "2" },
 			body: "{}",
@@ -314,18 +482,19 @@ describe("registry/load", () => {
 			throw "not-an-error";
 		});
 
-		await expect(loadRuntimeRegistry()).rejects.toThrow(
-			"Remote registry returned invalid JSON: not-an-error",
-		);
+		await expect(
+			loadRuntimeRegistry("https://example.com/weird-json-registry.json"),
+		).rejects.toThrow("Remote registry returned invalid JSON: not-an-error");
 	});
 
 	it("maps request timeouts to an actionable error", async () => {
-		mockRemoteSource("https://example.com/slow-registry.json");
 		const timeout = new Error("The operation was aborted");
 		timeout.name = "TimeoutError";
 		mockFetchOk({ rejectWith: timeout });
 
-		await expect(loadRuntimeRegistry()).rejects.toMatchObject({
+		await expect(
+			loadRuntimeRegistry("https://example.com/slow-registry.json"),
+		).rejects.toMatchObject({
 			message:
 				"Timed out fetching registry from https://example.com/slow-registry.json after 10s.",
 			cause: timeout,
@@ -333,12 +502,13 @@ describe("registry/load", () => {
 	});
 
 	it("maps abort errors to the same timeout message", async () => {
-		mockRemoteSource("https://example.com/aborted-registry.json");
 		const aborted = new Error("The operation was aborted");
 		aborted.name = "AbortError";
 		mockFetchOk({ rejectWith: aborted });
 
-		await expect(loadRuntimeRegistry()).rejects.toMatchObject({
+		await expect(
+			loadRuntimeRegistry("https://example.com/aborted-registry.json"),
+		).rejects.toMatchObject({
 			message:
 				"Timed out fetching registry from https://example.com/aborted-registry.json after 10s.",
 			cause: aborted,
@@ -346,11 +516,12 @@ describe("registry/load", () => {
 	});
 
 	it("wraps unexpected request failures with the registry URL", async () => {
-		mockRemoteSource("https://example.com/down-registry.json");
 		const failure = new Error("socket hang up");
 		mockFetchOk({ rejectWith: failure });
 
-		await expect(loadRuntimeRegistry()).rejects.toMatchObject({
+		await expect(
+			loadRuntimeRegistry("https://example.com/down-registry.json"),
+		).rejects.toMatchObject({
 			message:
 				"Failed to fetch registry from https://example.com/down-registry.json.",
 			cause: failure,
@@ -358,34 +529,50 @@ describe("registry/load", () => {
 	});
 
 	it("wraps local registry read failures with a labeled error", async () => {
-		mockLocateRegistry.mockResolvedValue("/workspace/registry.json");
 		const failure = new Error("ENOENT");
 		mockReadJsonFileAsync.mockRejectedValue(failure);
 
-		await expect(loadRuntimeRegistry()).rejects.toMatchObject({
+		await expect(
+			loadRuntimeRegistry("/workspace/registry.json"),
+		).rejects.toMatchObject({
 			message: "Failed to read registry at /workspace/registry.json: ENOENT",
 			cause: failure,
 		});
 	});
 
 	it("stringifies non-Error local registry read failures", async () => {
-		mockLocateRegistry.mockResolvedValue("/workspace/registry.json");
 		mockReadJsonFileAsync.mockRejectedValue("disk-full");
 
-		await expect(loadRuntimeRegistry()).rejects.toThrow(
+		await expect(
+			loadRuntimeRegistry("/workspace/registry.json"),
+		).rejects.toThrow(
 			"Failed to read registry at /workspace/registry.json: disk-full",
 		);
 	});
 
 	it("propagates labeled local registry JSON parse failures", async () => {
-		mockLocateRegistry.mockResolvedValue("/workspace/registry.json");
 		const failure = new InvalidJsonError(
 			"registry at /workspace/registry.json",
 			new SyntaxError("Unexpected token"),
 		);
 		mockReadJsonFileAsync.mockRejectedValue(failure);
 
-		await expect(loadRuntimeRegistry()).rejects.toBe(failure);
+		await expect(loadRuntimeRegistry("/workspace/registry.json")).rejects.toBe(
+			failure,
+		);
+	});
+});
+
+describe("loadRegistryPayloads", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.stubGlobal("fetch", mockFetch);
+		mockFetchOk();
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
 	});
 
 	it("loads unique payloads relative to the given catalog location", async () => {
