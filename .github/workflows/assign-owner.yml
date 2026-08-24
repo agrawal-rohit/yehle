@@ -3,7 +3,7 @@ name: Assign repository owner to unassigned issues and PRs
 on:
   issues:
     types: [opened, reopened]
-  pull_request_target:
+  pull_request:
     types: [opened, reopened, ready_for_review]
 
 permissions:
