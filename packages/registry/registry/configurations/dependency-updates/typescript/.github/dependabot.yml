@@ -1,14 +1,13 @@
 version: 2
 updates:
-  # Keep GitHub Actions current on main (trunk)
+  # Keep GitHub Actions current on the default branch
   - package-ecosystem: github-actions
     directory: /
-    target-branch: main
+    target-branch: {{defaultBranch}}
     schedule:
       interval: weekly
       day: monday
       time: "06:00"
-      timezone: Asia/Kolkata
     open-pull-requests-limit: 5
     cooldown:
       default-days: 7
@@ -19,15 +18,14 @@ updates:
       prefix: "ci"
       include: scope
 
-  # pnpm dependency updates flow into main (trunk)
+  # JS dependency updates (Dependabot uses the npm ecosystem for all Node package managers)
   - package-ecosystem: npm
     directory: /
-    target-branch: main
+    target-branch: {{defaultBranch}}
     schedule:
       interval: weekly
       day: monday
       time: "06:00"
-      timezone: Asia/Kolkata
     versioning-strategy: increase
     rebase-strategy: auto
     open-pull-requests-limit: 10
@@ -36,7 +34,7 @@ updates:
     labels:
       - dependencies
       - node
-      - pnpm
+      - {{packageManager}}
     commit-message:
       prefix: "fix" # for production/runtime deps
       prefix-development: "chore" # for dev-only deps

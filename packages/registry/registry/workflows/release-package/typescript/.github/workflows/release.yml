@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     branches:
-      - main
+      - {{defaultBranch}}
 
 concurrency:
   group: release-${{ github.ref }}
@@ -50,9 +50,9 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Build workspace
-        run: pnpm run build
+        run: {{pmRun}} build
 
       - name: Publish packages
         env:
           NPM_CONFIG_PROVENANCE: true
-        run: pnpm -r publish --provenance --access public --no-git-checks
+        run: {{pmPublish}}

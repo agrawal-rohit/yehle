@@ -1,22 +1,6 @@
 import type { BeforeInstallHook } from "@tuckshop/core";
 import * as spdxLicenseList from "spdx-license-list/full";
 
-/** Popular SPDX ids shown first in the license picker. */
-const POPULAR_IDS = [
-	"MIT",
-	"Apache-2.0",
-	"BSD-3-Clause",
-	"BSD-2-Clause",
-	"ISC",
-	"MPL-2.0",
-	"GPL-3.0-only",
-	"GPL-3.0-or-later",
-	"LGPL-3.0-only",
-	"AGPL-3.0-only",
-	"Unlicense",
-	"CC0-1.0",
-] as const;
-
 const licenses = spdxLicenseList as unknown as Record<
 	string,
 	{ name: string; licenseText: string }
@@ -26,44 +10,32 @@ const licenses = spdxLicenseList as unknown as Record<
 const COPYRIGHT_PLACEHOLDER =
 	/<year>|<copyright holders>|<owner>|<name of author>/;
 
-/** Prompt for an SPDX license and return a filled LICENSE file before install writes. */
+/**
+ * Fill SPDX license text from already-captured conditions and update LICENSE.
+ * @param ctx - Install hook context with license conditions captured.
+ * @returns LICENSE file to update in the working payload.
+ */
 const beforeInstall: BeforeInstallHook = async (ctx) => {
-	const popular = new Set<string>(POPULAR_IDS);
-	const options = [
-		...POPULAR_IDS.flatMap((id) => {
-			const entry = licenses[id];
-			return entry ? [{ label: entry.name, value: id, hint: id }] : [];
-		}),
-		...Object.keys(licenses)
-			.filter((id) => !popular.has(id))
-			.sort((a, b) => a.localeCompare(b))
-			.map((id) => ({
-				label: licenses[id].name,
-				value: id,
-				hint: id,
-			})),
-	];
+	const licenseId = ctx.conditions.licenseId;
+	if (typeof licenseId !== "string" || licenseId.length === 0)
+		throw new Error('Condition "licenseId" is required to generate LICENSE.');
 
-	const licenseId = await ctx.prompts.select(
-		"Which SPDX license should be added?",
-		{ options },
-		"MIT",
-	);
 	const entry = licenses[licenseId];
 	if (!entry) throw new Error(`Unknown SPDX license id "${licenseId}".`);
 
 	let licenseText = entry.licenseText;
 	if (COPYRIGHT_PLACEHOLDER.test(licenseText)) {
-		const authorName = ctx.conditions.authorName;
-		const holder =
-			typeof authorName === "string" && authorName.length > 0
-				? authorName
-				: await ctx.prompts.text("Copyright holder", { required: true });
-		const year = await ctx.prompts.text(
-			"Copyright year",
-			{ required: true },
-			String(new Date().getFullYear()),
-		);
+		const holder = ctx.conditions.authorName;
+		const year = ctx.conditions.copyrightYear;
+		if (typeof holder !== "string" || holder.length === 0)
+			throw new Error(
+				'Condition "authorName" is required for licenses with a copyright holder.',
+			);
+		if (typeof year !== "string" || year.length === 0)
+			throw new Error(
+				'Condition "copyrightYear" is required for licenses with a copyright year.',
+			);
+
 		licenseText = licenseText
 			.replaceAll("<year>", year)
 			.replaceAll("<copyright holders>", holder)
@@ -72,8 +44,7 @@ const beforeInstall: BeforeInstallHook = async (ctx) => {
 	}
 
 	return {
-		// Append so static payload files are kept unless the hook replaces ctx.files entirely.
-		files: [...ctx.files, { target: "LICENSE", content: licenseText }],
+		files: [{ target: "LICENSE", content: licenseText }],
 	};
 };
 

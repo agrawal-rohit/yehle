@@ -3,6 +3,34 @@
 	"title": "License",
 	"description": "License file to include in the project.",
 	"type": "configuration",
-	"uses": ["authorName"],
+	"requires": ["authorName"],
+	"conditions": {
+		"licenseId": {
+			"kind": "select",
+			"label": "SPDX license",
+			"description": "Which SPDX license should be added?",
+			"default": "MIT",
+			"values": [
+				{ "value": "MIT", "label": "MIT License" },
+				{ "value": "Apache-2.0", "label": "Apache License 2.0" },
+				{ "value": "BSD-3-Clause", "label": "BSD 3-Clause" },
+				{ "value": "BSD-2-Clause", "label": "BSD 2-Clause" },
+				{ "value": "ISC", "label": "ISC License" },
+				{ "value": "MPL-2.0", "label": "Mozilla Public License 2.0" },
+				{ "value": "GPL-3.0-only", "label": "GNU GPL v3.0 only" },
+				{ "value": "GPL-3.0-or-later", "label": "GNU GPL v3.0 or later" },
+				{ "value": "LGPL-3.0-only", "label": "GNU LGPL v3.0 only" },
+				{ "value": "AGPL-3.0-only", "label": "GNU AGPL v3.0 only" },
+				{ "value": "Unlicense", "label": "The Unlicense" },
+				{ "value": "CC0-1.0", "label": "Creative Commons Zero v1.0" }
+			]
+		},
+		"copyrightYear": {
+			"kind": "text",
+			"label": "Copyright year",
+			"description": "Year used in the license copyright notice.",
+			"handler": "copyright-year.ts"
+		}
+	},
 	"beforeInstall": "handler.ts"
 }

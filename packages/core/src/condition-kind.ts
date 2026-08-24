@@ -1,4 +1,4 @@
-/** How a shared condition is prompted. */
+/** How a shared or item-level condition is prompted. */
 export enum RegistryConditionKind {
 	TEXT = "text",
 	SELECT = "select",
@@ -17,6 +17,7 @@ export interface ConditionValueOption {
 /** Captured condition values keyed by condition name. */
 export type RegistryContextValue = string | string[] | boolean;
 export type RegistryContext = Record<string, RegistryContextValue | undefined>;
+export type RegistryWhenValue = string | string[] | boolean;
 
 /**
  * Kind-specific rules shared by schema validation, when parsing, prompting, and inference.
@@ -24,25 +25,29 @@ export type RegistryContext = Record<string, RegistryContextValue | undefined>;
 export interface ConditionKindPolicy {
 	/** Whether the condition declaration must include labelled values. */
 	requiresValues: boolean;
-	/** Whether this kind may appear in a variant `when` matcher. */
+	/** Whether this kind may appear in a pack or condition `when` matcher. */
 	allowsInWhen: boolean;
 	/**
-	 * Validate a `when` string against this kind's rules.
-	 * @param value - Matcher value from a variant `when` map.
+	 * Validate a `when` value against this kind's rules.
+	 * @param value - Matcher value from a pack or condition `when` map.
 	 * @param declaredValues - Declared select/multiselect values when present.
 	 * @throws Error description fragment when the value is invalid for this kind.
 	 */
 	assertWhenValue: (
-		value: string,
+		value: RegistryWhenValue,
 		declaredValues: ConditionValueOption[] | undefined,
 	) => void;
 	/**
-	 * Seed a context entry from a pinned-variant `when` value.
+	 * Seed a context entry from a pinned-pack `when` value.
 	 * @param context - Context being mutated.
 	 * @param key - Condition key.
-	 * @param value - `when` string value.
+	 * @param value - `when` match value.
 	 */
-	seedContext: (context: RegistryContext, key: string, value: string) => void;
+	seedContext: (
+		context: RegistryContext,
+		key: string,
+		value: RegistryWhenValue,
+	) => void;
 	/**
 	 * Normalize a handler-inferred default to a typed context value.
 	 * @param inferred - Raw value returned by a condition handler.
@@ -62,11 +67,15 @@ export interface ConditionKindPolicy {
  * @throws Error when the value is undeclared.
  */
 function assertDeclaredWhenValue(
-	value: string,
+	value: RegistryWhenValue,
 	declaredValues: ConditionValueOption[] | undefined,
 ): void {
-	if (!declaredValues?.some((entry) => entry.value === value))
-		throw new Error(`undeclared:${value}`);
+	const values = Array.isArray(value) ? value : [value];
+	if (values.some((entry) => typeof entry !== "string"))
+		throw new Error(`unexpected:${String(value)}`);
+	for (const entry of values)
+		if (!declaredValues?.some((option) => option.value === entry))
+			throw new Error(`undeclared:${entry}`);
 }
 
 /** Policy table keyed by {@link RegistryConditionKind}. */
@@ -79,7 +88,7 @@ export const conditionKindPolicy: Record<
 		allowsInWhen: true,
 		assertWhenValue: assertDeclaredWhenValue,
 		seedContext: (context, key, value) => {
-			context[key] = value;
+			if (typeof value === "string") context[key] = value;
 		},
 		normalizeInferred: (inferred, values) => {
 			if (typeof inferred !== "string") return undefined;
@@ -92,12 +101,20 @@ export const conditionKindPolicy: Record<
 		allowsInWhen: true,
 		assertWhenValue: assertDeclaredWhenValue,
 		seedContext: (context, key, value) => {
+			let seeded: string[] = [];
+			if (Array.isArray(value))
+				seeded = value.filter(
+					(entry): entry is string => typeof entry === "string",
+				);
+			else if (typeof value === "string") seeded = [value];
+			if (seeded.length === 0) return;
 			const existing = context[key];
 			if (!Array.isArray(existing)) {
-				context[key] = [value];
+				context[key] = seeded;
 				return;
 			}
-			if (!existing.includes(value)) existing.push(value);
+			for (const entry of seeded)
+				if (!existing.includes(entry)) existing.push(entry);
 		},
 		normalizeInferred: (inferred, values) => {
 			let candidates: string[] | null = null;
@@ -117,11 +134,11 @@ export const conditionKindPolicy: Record<
 		requiresValues: false,
 		allowsInWhen: true,
 		assertWhenValue: (value) => {
-			if (value !== "true" && value !== "false")
-				throw new Error(`boolean:${value}`);
+			if (typeof value === "boolean") return;
+			throw new Error(`boolean:${String(value)}`);
 		},
 		seedContext: (context, key, value) => {
-			context[key] = value === "true";
+			if (typeof value === "boolean") context[key] = value;
 		},
 		normalizeInferred: (inferred) => {
 			if (typeof inferred === "boolean") return inferred;
@@ -137,7 +154,7 @@ export const conditionKindPolicy: Record<
 			throw new Error("text_in_when");
 		},
 		seedContext: (context, key, value) => {
-			context[key] = value;
+			if (typeof value === "string") context[key] = value;
 		},
 		normalizeInferred: (inferred) => {
 			if (typeof inferred !== "string") return undefined;

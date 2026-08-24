@@ -74,7 +74,7 @@ describe("buildRegistry", () => {
 		fs.rmSync(tempDir, { recursive: true, force: true });
 	});
 
-	it("builds registry.json with install targets and per-variant payloads", async () => {
+	it("builds registry.json with install targets and per-pack payloads", async () => {
 		writeItem(
 			tempDir,
 			"component/button",
@@ -83,11 +83,11 @@ describe("buildRegistry", () => {
 				title: "Button",
 				description: "A button",
 				type: "component",
-				variants: [
+				requires: ["packageManager"],
+				packs: [
 					{
 						id: "react",
 						title: "React",
-						description: "React button",
 						dependencies: {
 							npm: {
 								runtime: ["react"],
@@ -112,11 +112,10 @@ describe("buildRegistry", () => {
 				title: "Build",
 				description: "Build workflow",
 				type: "configuration",
-				variants: [
+				packs: [
 					{
 						id: "github-actions",
 						title: "GitHub Actions",
-						description: "GHA build",
 						files: [
 							{
 								source: "github-actions/.github/workflows/build.yml",
@@ -130,6 +129,14 @@ describe("buildRegistry", () => {
 				"github-actions/.github/workflows/build.yml": "name: build\n",
 			},
 		);
+
+		writeRegistryJson(tempDir, "conditions/conditions.json", {
+			packageManager: {
+				kind: "select",
+				label: "Package manager",
+				values: [{ value: "pnpm", label: "pnpm" }],
+			},
+		});
 
 		const document = await runBuild();
 		const written = JSON.parse(
@@ -145,7 +152,8 @@ describe("buildRegistry", () => {
 			title: "Button",
 			description: "A button",
 			type: "component",
-			variants: [
+			requires: ["packageManager"],
+			packs: [
 				{
 					id: "react",
 					title: "React",
@@ -154,13 +162,9 @@ describe("buildRegistry", () => {
 			],
 		});
 		expect(written.items.button).not.toHaveProperty("id");
-		expect(written.items.button.variants?.[0]).not.toHaveProperty("files");
-		expect(written.items.button.variants?.[0]).not.toHaveProperty(
-			"description",
-		);
-		expect(written.items.button.variants?.[0]).not.toHaveProperty(
-			"dependencies",
-		);
+		expect(written.items.button.packs?.[0]).not.toHaveProperty("files");
+		expect(written.items.button.packs?.[0]).not.toHaveProperty("description");
+		expect(written.items.button.packs?.[0]).not.toHaveProperty("dependencies");
 
 		const payloadPath = path.join(tempDir, "r/button/react.json");
 		const payloadRaw = fs.readFileSync(payloadPath, "utf8");
@@ -179,11 +183,11 @@ describe("buildRegistry", () => {
 			},
 		});
 		expect(payload).not.toHaveProperty("id");
-		expect(payload).not.toHaveProperty("variantId");
+		expect(payload).not.toHaveProperty("packId");
 		expect(payloadRaw).toBe(`${JSON.stringify(payload)}\n`);
 	});
 
-	it("inlines item-level shared files into every variant payload", async () => {
+	it("inlines item-level shared files into every pack payload", async () => {
 		writeItem(
 			tempDir,
 			"configuration/git-hooks",
@@ -195,11 +199,10 @@ describe("buildRegistry", () => {
 				files: [
 					{ source: "commitlint.config.js", target: "commitlint.config.js" },
 				],
-				variants: [
+				packs: [
 					{
 						id: "typescript",
 						title: "TypeScript",
-						description: "TS hooks",
 						when: { language: "typescript" },
 						files: [
 							{
@@ -217,16 +220,18 @@ describe("buildRegistry", () => {
 		);
 		writeRegistryJson(tempDir, "conditions/conditions.json", {
 			language: {
+				kind: "select",
 				label: "Language",
 				values: [{ value: "typescript", label: "TypeScript" }],
 			},
 		});
 
 		const document = await runBuild();
+		expect(document.items["git-hooks"].source).toBe("r/git-hooks.json");
 		expect(document.items["git-hooks"]).not.toHaveProperty("id");
 		expect(document.items["git-hooks"]).not.toHaveProperty("files");
 		expect(document.items["git-hooks"]).not.toHaveProperty("when");
-		expect(document.items["git-hooks"].variants?.[0]).toEqual({
+		expect(document.items["git-hooks"].packs?.[0]).toEqual({
 			id: "typescript",
 			title: "TypeScript",
 			source: "r/git-hooks/typescript.json",
@@ -248,7 +253,7 @@ describe("buildRegistry", () => {
 		).toBe(true);
 	});
 
-	it("builds a variant-less item with a top-level payload", async () => {
+	it("builds a pack-less item with a top-level payload", async () => {
 		writeItem(
 			tempDir,
 			"workflow/assign-owner",
@@ -257,7 +262,7 @@ describe("buildRegistry", () => {
 				title: "Assign Owner",
 				description: "Assigns the repository owner",
 				type: "configuration",
-				registryDependencies: ["setup-workspace"],
+				dependsOn: ["setup-workspace"],
 				files: [
 					{
 						source: ".github/workflows/assign-owner.yml",
@@ -295,9 +300,9 @@ describe("buildRegistry", () => {
 			description: "Assigns the repository owner",
 			type: "configuration",
 			source: "r/assign-owner.json",
-			registryDependencies: ["setup-workspace"],
+			dependsOn: ["setup-workspace"],
 		});
-		expect(document.items["assign-owner"]).not.toHaveProperty("variants");
+		expect(document.items["assign-owner"]).not.toHaveProperty("packs");
 		expect(document.items["assign-owner"]).not.toHaveProperty("files");
 		expect(document.items["assign-owner"]).not.toHaveProperty("id");
 		expect(document.items["pr-template"]).toEqual({
@@ -306,9 +311,7 @@ describe("buildRegistry", () => {
 			type: "configuration",
 			source: "r/pr-template.json",
 		});
-		expect(document.items["pr-template"]).not.toHaveProperty(
-			"registryDependencies",
-		);
+		expect(document.items["pr-template"]).not.toHaveProperty("dependsOn");
 
 		const payload = JSON.parse(
 			fs.readFileSync(path.join(tempDir, "r/assign-owner.json"), "utf8"),
@@ -322,7 +325,7 @@ describe("buildRegistry", () => {
 			],
 		});
 		expect(payload).not.toHaveProperty("id");
-		expect(payload).not.toHaveProperty("variantId");
+		expect(payload).not.toHaveProperty("packId");
 	});
 
 	it("builds an empty items map and wipes a stale r/ tree", async () => {
@@ -353,11 +356,10 @@ describe("buildRegistry", () => {
 			title: "Button",
 			description: "A button",
 			type: "component",
-			variants: [
+			packs: [
 				{
 					id: "default",
 					title: "Default",
-					description: "Default",
 					files: [{ source: "button.tsx", target: "button.tsx" }],
 				},
 			],
@@ -374,7 +376,7 @@ describe("buildRegistry", () => {
 		);
 	});
 
-	it("throws on duplicate variant ids within an item", async () => {
+	it("throws on duplicate pack ids within an item", async () => {
 		writeItem(
 			tempDir,
 			"component/button",
@@ -383,17 +385,15 @@ describe("buildRegistry", () => {
 				title: "Button",
 				description: "A button",
 				type: "component",
-				variants: [
+				packs: [
 					{
 						id: "default",
 						title: "Default",
-						description: "One",
 						files: [{ source: "a.txt", target: "a.txt" }],
 					},
 					{
 						id: "default",
 						title: "Also default",
-						description: "Two",
 						files: [{ source: "b.txt", target: "b.txt" }],
 					},
 				],
@@ -402,7 +402,7 @@ describe("buildRegistry", () => {
 		);
 
 		await expect(runBuild()).rejects.toThrow(
-			'Registry item has duplicate variant id "default".',
+			'Registry item has duplicate pack id "default".',
 		);
 	});
 
@@ -412,11 +412,10 @@ describe("buildRegistry", () => {
 			title: "Button",
 			description: "A button",
 			type: "component",
-			variants: [
+			packs: [
 				{
 					id: "default",
 					title: "Default",
-					description: "Default",
 					files: [{ source: "missing.tsx", target: "button.tsx" }],
 				},
 			],
@@ -480,7 +479,7 @@ describe("buildRegistry", () => {
 		);
 	});
 
-	it("throws when an item file and a variant file share a target", async () => {
+	it("throws when an item file and a pack file share a target", async () => {
 		writeItem(
 			tempDir,
 			"configuration/git-hooks",
@@ -490,11 +489,10 @@ describe("buildRegistry", () => {
 				description: "Hooks",
 				type: "configuration",
 				files: [{ source: "shared.js", target: "config.js" }],
-				variants: [
+				packs: [
 					{
 						id: "typescript",
 						title: "TypeScript",
-						description: "TS hooks",
 						files: [{ source: "typescript/override.js", target: "config.js" }],
 					},
 				],
@@ -506,7 +504,7 @@ describe("buildRegistry", () => {
 		);
 
 		await expect(runBuild()).rejects.toThrow(
-			'Registry item "git-hooks" variant "typescript" declares duplicate file target "config.js".',
+			'Registry item "git-hooks" pack "typescript" declares duplicate file target "config.js".',
 		);
 	});
 
@@ -536,11 +534,10 @@ describe("buildRegistry", () => {
 				title: "Git Hooks",
 				description: "Hooks",
 				type: "configuration",
-				variants: [
+				packs: [
 					{
 						id: "typescript",
 						title: "TypeScript",
-						description: "TS",
 						when: { language: "typescript" },
 						files: [{ source: "a.txt", target: "a.txt" }],
 					},
@@ -550,7 +547,7 @@ describe("buildRegistry", () => {
 		);
 
 		await expect(runBuild()).rejects.toThrow(
-			'Registry item "git-hooks" variant "typescript" references unknown when key "language".',
+			'Registry item "git-hooks" pack "typescript" references unknown when key "language".',
 		);
 	});
 
@@ -573,11 +570,10 @@ describe("buildRegistry", () => {
 					title: "Button",
 					description: "A button",
 					type: "component",
-					variants: [
+					packs: [
 						{
 							id: "default",
 							title: "Default",
-							description: "Default",
 							files: [{ source: "a.txt", target: "a.txt" }],
 						},
 					],
@@ -599,7 +595,7 @@ describe("buildRegistry", () => {
 		expect(fs.existsSync(path.join(sourceDir, "registry.json"))).toBe(false);
 	});
 
-	it("moves dependencies into payloads and keeps registryDependencies in the catalog", async () => {
+	it("moves dependencies into payloads and keeps dependsOn in the catalog", async () => {
 		writeItem(
 			tempDir,
 			"configuration/testing",
@@ -608,20 +604,20 @@ describe("buildRegistry", () => {
 				title: "Testing",
 				description: "Tests",
 				type: "configuration",
-				registryDependencies: ["setup-workspace"],
+				requires: ["packageManager"],
+				dependsOn: ["setup-workspace"],
 				dependencies: {
 					npm: {
 						runtime: ["shared-lib"],
 						dev: ["vitest"],
 					},
 				},
-				variants: [
+				packs: [
 					{
 						id: "typescript",
 						title: "TypeScript",
-						description: "TS tests",
 						when: { language: "typescript" },
-						registryDependencies: ["setup-workspace-workflow"],
+						dependsOn: ["setup-workspace-workflow"],
 						dependencies: {
 							npm: {
 								runtime: ["react"],
@@ -636,8 +632,14 @@ describe("buildRegistry", () => {
 		);
 		writeRegistryJson(tempDir, "conditions/conditions.json", {
 			language: {
+				kind: "select",
 				label: "Language",
 				values: [{ value: "typescript", label: "TypeScript" }],
+			},
+			packageManager: {
+				kind: "select",
+				label: "Package manager",
+				values: [{ value: "pnpm", label: "pnpm" }],
 			},
 		});
 
@@ -646,14 +648,16 @@ describe("buildRegistry", () => {
 			title: "Testing",
 			description: "Tests",
 			type: "configuration",
-			registryDependencies: ["setup-workspace"],
-			variants: [
+			requires: ["packageManager"],
+			source: "r/testing.json",
+			dependsOn: ["setup-workspace"],
+			packs: [
 				{
 					id: "typescript",
 					title: "TypeScript",
 					source: "r/testing/typescript.json",
 					when: { language: "typescript" },
-					registryDependencies: ["setup-workspace-workflow"],
+					dependsOn: ["setup-workspace-workflow"],
 				},
 			],
 		});
@@ -669,8 +673,8 @@ describe("buildRegistry", () => {
 			},
 		});
 		expect(payload).not.toHaveProperty("id");
-		expect(payload).not.toHaveProperty("variantId");
-		expect(payload).not.toHaveProperty("registryDependencies");
+		expect(payload).not.toHaveProperty("packId");
+		expect(payload).not.toHaveProperty("dependsOn");
 	});
 
 	it("bundles item install scripts and condition handlers into r/", async () => {
@@ -708,6 +712,7 @@ export default {
 		);
 		writeRegistryJson(tempDir, "conditions/conditions.json", {
 			language: {
+				kind: "select",
 				label: "Language",
 				handler: "conditions/language.ts",
 				values: [{ value: "typescript", label: "TypeScript" }],
@@ -743,6 +748,7 @@ export default {
 				title: "With packages",
 				description: "Install script plus packages",
 				type: "configuration",
+				requires: ["packageManager"],
 				beforeInstall: "handler.ts",
 				dependencies: {
 					npm: {
@@ -759,11 +765,20 @@ export default async function beforeInstall() {
 			},
 		);
 
+		writeRegistryJson(tempDir, "conditions/conditions.json", {
+			packageManager: {
+				kind: "select",
+				label: "Package manager",
+				values: [{ value: "pnpm", label: "pnpm" }],
+			},
+		});
+
 		const document = await runBuild();
 		expect(document.items["with-pkgs"]).toEqual({
 			title: "With packages",
 			description: "Install script plus packages",
 			type: "configuration",
+			requires: ["packageManager"],
 			source: "r/with-pkgs.json",
 			beforeInstall: ["r/with-pkgs.beforeInstall.0.js"],
 		});
@@ -849,32 +864,116 @@ export default async function beforeInstall() {
 		await expect(runBuild()).rejects.toThrow("Failed to bundle");
 	});
 
-	it("preserves item uses in the catalog", async () => {
+	it("preserves item requires in the catalog", async () => {
 		writeRegistryJson(tempDir, "conditions/conditions.json", {
 			language: {
+				kind: "select",
 				label: "Language",
 				values: [{ value: "typescript", label: "TypeScript" }],
 			},
 		});
 		writeItem(
 			tempDir,
-			"configuration/uses-lang",
+			"configuration/requires-lang",
 			{
-				id: "uses-lang",
-				title: "Uses language",
-				description: "Declares uses",
+				id: "requires-lang",
+				title: "Requires language",
+				description: "Declares requires",
 				type: "configuration",
-				uses: ["language"],
+				requires: ["language"],
 				files: [{ source: "a.txt", target: "a.txt" }],
 			},
 			{ "a.txt": "hello\n" },
 		);
 
 		const document = await runBuild();
-		expect(document.items["uses-lang"].uses).toEqual(["language"]);
+		expect(document.items["requires-lang"].requires).toEqual(["language"]);
 	});
 
-	it("compiles item-level and variant-level afterInstall scripts", async () => {
+	it("folds item and pack commands and secrets into the payload", async () => {
+		writeItem(
+			tempDir,
+			"configuration/scripts",
+			{
+				id: "scripts",
+				title: "Scripts",
+				description: "Commands and secrets",
+				type: "configuration",
+				requires: ["packageManager"],
+				commands: { npm: { test: "vitest run" } },
+				secrets: ["GH_ADMIN_TOKEN"],
+				packs: [
+					{
+						id: "typescript",
+						title: "TypeScript",
+						commands: { npm: { cov: "vitest run --coverage" } },
+						secrets: ["SONAR_TOKEN"],
+						files: [{ source: "a.txt", target: "a.txt" }],
+					},
+				],
+			},
+			{ "a.txt": "ok\n" },
+		);
+		writeRegistryJson(tempDir, "conditions/conditions.json", {
+			packageManager: {
+				kind: "select",
+				label: "Package manager",
+				values: [{ value: "pnpm", label: "pnpm" }],
+			},
+		});
+
+		await runBuild();
+		const payload = JSON.parse(
+			fs.readFileSync(path.join(tempDir, "r/scripts/typescript.json"), "utf8"),
+		) as RegistryPayload;
+
+		expect(payload.commands).toEqual({
+			npm: { test: "vitest run", cov: "vitest run --coverage" },
+		});
+		expect(payload.secrets).toEqual(["GH_ADMIN_TOKEN", "SONAR_TOKEN"]);
+	});
+
+	it("compiles item-level condition handlers into r/_handlers/items", async () => {
+		writeItem(
+			tempDir,
+			"configuration/local-cond",
+			{
+				id: "local-cond",
+				title: "Local",
+				description: "Item condition handler",
+				type: "configuration",
+				conditions: {
+					coverageThreshold: {
+						kind: "text",
+						label: "Coverage",
+						handler: "coverage.ts",
+					},
+				},
+				files: [{ source: "a.txt", target: "a.txt" }],
+			},
+			{
+				"a.txt": "ok\n",
+				"coverage.ts": "export default { async infer() { return '45'; } };\n",
+			},
+		);
+
+		const document = await runBuild();
+		expect(document.items["local-cond"].conditions?.coverageThreshold).toEqual({
+			kind: "text",
+			label: "Coverage",
+			handler: "r/_handlers/items/local-cond/coverageThreshold.handler.js",
+		});
+		expect(
+			fs.existsSync(
+				path.join(
+					tempDir,
+					"r/_handlers/items/local-cond/coverageThreshold.handler.js",
+				),
+			),
+		).toBe(true);
+	});
+
+	it("compiles item-level and pack-level afterInstall scripts", async () => {
 		writeItem(
 			tempDir,
 			"configuration/lifecycle",
@@ -884,11 +983,10 @@ export default async function beforeInstall() {
 				description: "Install lifecycle scripts",
 				type: "configuration",
 				afterInstall: "after.ts",
-				variants: [
+				packs: [
 					{
 						id: "pro",
 						title: "Pro",
-						description: "Pro tier",
 						afterInstall: "pro-after.ts",
 						files: [{ source: "pro.txt", target: "pro.txt" }],
 					},
@@ -905,7 +1003,7 @@ export default async function beforeInstall() {
 		expect(document.items.lifecycle.afterInstall).toEqual([
 			"r/lifecycle.afterInstall.0.js",
 		]);
-		expect(document.items.lifecycle.variants).toEqual([
+		expect(document.items.lifecycle.packs).toEqual([
 			expect.objectContaining({
 				id: "pro",
 				afterInstall: ["r/lifecycle/pro.afterInstall.0.js"],
@@ -919,7 +1017,7 @@ export default async function beforeInstall() {
 		).toBe(true);
 	});
 
-	it("namespaces variant install scripts under r/{itemId}/{variantId}", async () => {
+	it("namespaces pack install scripts under r/{itemId}/{packId}", async () => {
 		writeItem(
 			tempDir,
 			"component/button",
@@ -929,18 +1027,16 @@ export default async function beforeInstall() {
 				description: "Button component",
 				type: "component",
 				beforeInstall: "shared.ts",
-				variants: [
+				packs: [
 					{
 						id: "react",
 						title: "React",
-						description: "React button",
 						beforeInstall: "react.ts",
 						files: [{ source: "react.tsx", target: "button.tsx" }],
 					},
 					{
 						id: "vue",
 						title: "Vue",
-						description: "Vue button",
 						beforeInstall: "vue.ts",
 						files: [{ source: "vue.vue", target: "button.vue" }],
 					},
@@ -959,7 +1055,7 @@ export default async function beforeInstall() {
 		expect(document.items.button.beforeInstall).toEqual([
 			"r/button.beforeInstall.0.js",
 		]);
-		expect(document.items.button.variants).toEqual([
+		expect(document.items.button.packs).toEqual([
 			expect.objectContaining({
 				id: "react",
 				beforeInstall: ["r/button/react.beforeInstall.0.js"],
@@ -980,7 +1076,7 @@ export default async function beforeInstall() {
 		).toBe(true);
 	});
 
-	it("copies registryDependencies into the catalog without treating them as scripts", async () => {
+	it("copies dependsOn into the catalog without treating them as scripts", async () => {
 		writeItem(
 			tempDir,
 			"template/react-app",
@@ -989,7 +1085,7 @@ export default async function beforeInstall() {
 				title: "React App",
 				description: "React template",
 				type: "component",
-				registryDependencies: ["license-configuration", "git-init"],
+				dependsOn: ["license-configuration", "git-init"],
 				files: [{ source: "README.md", target: "README.md" }],
 			},
 			{ "README.md": "# App\n" },
@@ -997,10 +1093,98 @@ export default async function beforeInstall() {
 
 		const document = await runBuild();
 		expect(document.items["react-app"]).toMatchObject({
-			registryDependencies: ["license-configuration", "git-init"],
+			dependsOn: ["license-configuration", "git-init"],
 		});
 		expect(document.items["react-app"]).not.toHaveProperty("beforeInstall");
 		expect(document.items["react-app"]).not.toHaveProperty("afterInstall");
+	});
+
+	it("writes a base payload when an item declares commands without files", async () => {
+		writeRegistryJson(tempDir, "conditions/conditions.json", {
+			packageManager: {
+				kind: "select",
+				label: "Package manager",
+				values: [{ value: "pnpm", label: "pnpm" }],
+			},
+		});
+		writeItem(
+			tempDir,
+			"configuration/scripts-only",
+			{
+				id: "scripts-only",
+				title: "Scripts only",
+				description: "Commands without files",
+				type: "configuration",
+				requires: ["packageManager"],
+				afterInstall: "after.ts",
+				commands: { npm: { test: "vitest run" } },
+			},
+			{
+				"after.ts": `export default async function afterInstall() {}\n`,
+			},
+		);
+
+		const document = await runBuild();
+		expect(document.items["scripts-only"].source).toBe("r/scripts-only.json");
+		const payload = JSON.parse(
+			fs.readFileSync(path.join(tempDir, "r/scripts-only.json"), "utf8"),
+		) as RegistryPayload;
+		expect(payload).toEqual({
+			files: [],
+			commands: { npm: { test: "vitest run" } },
+		});
+	});
+
+	it("writes a base payload when an item declares secrets without files", async () => {
+		writeItem(
+			tempDir,
+			"configuration/secrets-only",
+			{
+				id: "secrets-only",
+				title: "Secrets only",
+				description: "Secrets without files",
+				type: "configuration",
+				afterInstall: "after.ts",
+				secrets: ["GH_ADMIN_TOKEN"],
+			},
+			{
+				"after.ts": `export default async function afterInstall() {}\n`,
+			},
+		);
+
+		const document = await runBuild();
+		expect(document.items["secrets-only"].source).toBe("r/secrets-only.json");
+		const payload = JSON.parse(
+			fs.readFileSync(path.join(tempDir, "r/secrets-only.json"), "utf8"),
+		) as RegistryPayload;
+		expect(payload).toEqual({
+			files: [],
+			secrets: ["GH_ADMIN_TOKEN"],
+		});
+	});
+
+	it("rejects npm dependencies that do not require packageManager", async () => {
+		writeItem(
+			tempDir,
+			"component/button",
+			{
+				id: "button",
+				title: "Button",
+				description: "A button",
+				type: "component",
+				files: [{ source: "a.txt", target: "a.txt" }],
+				dependencies: {
+					npm: {
+						runtime: ["react"],
+					},
+				},
+			},
+			{ "a.txt": "ok\n" },
+		);
+
+		await expect(runBuild()).rejects.toThrow(
+			'Registry item "button" declares npm dependencies or commands but does not require "packageManager".',
+		);
 	});
 
 	it("rethrows non-ENOENT errors while walking the authoring tree", async () => {

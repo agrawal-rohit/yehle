@@ -1,12 +1,20 @@
 import {
 	buildInstallPlan,
+	buildInterpolationContext,
 	type HandlerRuntime,
 	type InstallNode,
+	interpolatePayload,
+	mergeCommandSet,
+	mergeDependencySet,
+	mergeEcosystemMaps,
+	mergeSecretNames,
 	parseWithSchema,
 	type Registry,
+	type RegistryConditionValue,
 	type RegistryContext,
 	type RegistryEcosystemDependencies,
 	type RegistryPayload,
+	type RegistryPayloadFile,
 	registryPayloadSchema,
 	runAfterInstallHook,
 	runBeforeInstallHook,
@@ -17,15 +25,16 @@ import { groupedMultiselectInput } from "../cli/prompts";
 import { runWithTasks } from "../cli/tasks";
 import { loadRegistryPayloads } from "../registry/load";
 import {
+	captureItemLocalConditionsForPlan,
 	captureRequiredConditions,
 	createProjectHandlerRuntime,
 } from "./add-conditions";
 import { confirmFileOverwrites, writePayloadFiles } from "./add-files";
-import { installDeclaredPackages } from "./add-packages";
+import { installDeclaredPackages, mergeProjectCommands } from "./add-packages";
 
 /** Options accepted by the add command. */
 interface AddCommandOptions {
-	/** Registry items (`id` or `id@variant`) from positional arguments. */
+	/** Registry items (`id` or `id@pack`) from positional arguments. */
 	items?: string[];
 	/** Overwrite existing files without prompting. */
 	overwrite?: boolean;
@@ -82,6 +91,79 @@ async function promptForItems(registry: Registry): Promise<string[]> {
 }
 
 /**
+ * Fail when two payload files share the same install target.
+ * @param itemId - Registry item id for the error message.
+ * @param files - Combined file list from base and pack payloads.
+ * @throws Error when a target appears more than once.
+ */
+function assertUniquePayloadTargets(
+	itemId: string,
+	files: RegistryPayloadFile[],
+): void {
+	const seen = new Set<string>();
+	for (const file of files) {
+		if (seen.has(file.target))
+			throw new Error(
+				`Registry item "${itemId}" has duplicate payload target "${file.target}".`,
+			);
+		seen.add(file.target);
+	}
+}
+
+/**
+ * Merge one or more catalog payloads for a single install node.
+ * @param itemId - Registry item id for error messages.
+ * @param sources - Payload URIs selected for this node.
+ * @param payloadDocuments - Raw payload documents keyed by source URI.
+ * @returns Merged payload (files concatenated; deps/commands/secrets folded).
+ * @throws Error when a planned source is missing or targets collide.
+ */
+function mergePayloadSources(
+	itemId: string,
+	sources: string[],
+	payloadDocuments: Map<string, unknown>,
+): RegistryPayload {
+	const payloads: RegistryPayload[] = [];
+
+	for (const source of sources) {
+		const rawPayload = payloadDocuments.get(source);
+		if (rawPayload === undefined)
+			throw new Error(
+				`Missing payload for registry item "${itemId}" (${source}).`,
+			);
+		payloads.push(
+			parseWithSchema(
+				registryPayloadSchema,
+				rawPayload,
+				`Registry payload for "${itemId}"`,
+			),
+		);
+	}
+
+	const files = payloads.flatMap((payload) => payload.files);
+	assertUniquePayloadTargets(itemId, files);
+
+	const dependencies = mergeEcosystemMaps(
+		mergeDependencySet,
+		...payloads.map((payload) => payload.dependencies),
+	);
+	const commands = mergeEcosystemMaps(
+		mergeCommandSet,
+		...payloads.map((payload) => payload.commands),
+	);
+	const secrets = mergeSecretNames(
+		...payloads.map((payload) => payload.secrets),
+	);
+
+	return {
+		files,
+		...(dependencies ? { dependencies } : {}),
+		...(commands ? { commands } : {}),
+		...(secrets ? { secrets } : {}),
+	};
+}
+
+/**
  * Parse fetched payload documents into labeled install units.
  * @param planItems - Ordered install nodes from the install plan.
  * @param registry - Loaded registry catalog for display titles.
@@ -96,31 +178,43 @@ function prepareInstallItems(
 ): InstallPlanItem[] {
 	return planItems.map((node) => {
 		const label = registry.items[node.itemId]?.title ?? node.itemId;
+		const sources = node.sources ?? [];
 
-		// If the item has no source, it's an item with only scripts.
-		if (!node.source)
+		if (sources.length === 0)
 			return {
 				label,
 				node,
 				payload: { files: [] },
 			};
 
-		const rawPayload = payloadDocuments.get(node.source);
-		if (rawPayload === undefined)
-			throw new Error(
-				`Missing payload for registry item "${node.itemId}" (${node.source}).`,
-			);
-
 		return {
 			label,
 			node,
-			payload: parseWithSchema(
-				registryPayloadSchema,
-				rawPayload,
-				`Registry payload for "${node.itemId}"`,
-			),
+			payload: mergePayloadSources(node.itemId, sources, payloadDocuments),
 		};
 	});
+}
+
+/**
+ * Apply one `beforeInstall` hook result to a payload and shared bindings.
+ * @param payload - Payload accumulated for the current item.
+ * @param hookResult - Hook output to merge.
+ * @param bindings - Shared bindings map mutated in place.
+ * @returns Payload with hook file and manifest updates applied.
+ */
+function applyBeforeInstallHookResult(
+	payload: RegistryPayload,
+	hookResult: Awaited<ReturnType<typeof runBeforeInstallHook>>,
+	bindings: Record<string, string>,
+): RegistryPayload {
+	Object.assign(bindings, hookResult.bindings);
+	return {
+		...payload,
+		files: hookResult.files,
+		commands: hookResult.commands,
+		dependencies: hookResult.dependencies,
+		secrets: hookResult.secrets,
+	};
 }
 
 /**
@@ -129,76 +223,37 @@ function prepareInstallItems(
  * @param runtime - Shared handler runtime.
  * @param conditions - Resolved condition context.
  * @param installItems - Prepared install items with plan nodes.
- * @returns Updated items and merged variables.
+ * @returns Updated items and merged bindings.
  */
 async function runBeforeInstallScripts(
 	catalogLocation: string,
 	runtime: HandlerRuntime,
 	conditions: RegistryContext,
 	installItems: InstallPlanItem[],
-): Promise<{ items: InstallPlanItem[]; variables: Record<string, string> }> {
-	const variables: Record<string, string> = {};
+): Promise<{ items: InstallPlanItem[]; bindings: Record<string, string> }> {
+	const bindings: Record<string, string> = {};
 	const result: InstallPlanItem[] = [];
 
 	for (const item of installItems) {
-		let files = [...item.payload.files];
+		let payload = item.payload;
 		for (const scriptUri of item.node.beforeInstallScripts ?? []) {
-			const hookResult = await runBeforeInstallHook(
-				catalogLocation,
-				scriptUri,
-				runtime,
-				{
+			payload = applyBeforeInstallHookResult(
+				payload,
+				await runBeforeInstallHook(catalogLocation, scriptUri, runtime, {
 					itemId: item.node.itemId,
-					...(item.node.variantId ? { variantId: item.node.variantId } : {}),
+					...(item.node.packIds ? { packIds: item.node.packIds } : {}),
 					conditions,
-					variables,
-					payload: item.payload,
-					files,
-				},
+					bindings,
+					payload,
+				}),
+				bindings,
 			);
-			Object.assign(variables, hookResult.variables);
-			files = hookResult.files;
 		}
 
-		result.push({
-			...item,
-			payload: {
-				...item.payload,
-				files,
-			},
-		});
+		result.push({ ...item, payload });
 	}
 
-	return { items: result, variables };
-}
-
-/**
- * Run `afterInstall` scripts for install items in plan order.
- * @param catalogLocation - Absolute path or HTTPS URL of the catalog document.
- * @param runtime - Shared handler runtime.
- * @param conditions - Resolved condition context.
- * @param installItems - Prepared install items with plan nodes.
- * @param variables - Variables collected during beforeInstall.
- */
-async function runAfterInstallScripts(
-	catalogLocation: string,
-	runtime: HandlerRuntime,
-	conditions: RegistryContext,
-	installItems: InstallPlanItem[],
-	variables: Record<string, string>,
-): Promise<void> {
-	for (const item of installItems) {
-		for (const scriptUri of item.node.afterInstallScripts ?? []) {
-			await runAfterInstallHook(catalogLocation, scriptUri, runtime, {
-				itemId: item.node.itemId,
-				...(item.node.variantId ? { variantId: item.node.variantId } : {}),
-				conditions,
-				variables,
-				payload: item.payload,
-				files: item.payload.files,
-			});
-		}
-	}
+	return { items: result, bindings };
 }
 
 /**
@@ -225,6 +280,55 @@ async function writePreparedItems(
 }
 
 /**
+ * Collect select option lists from shared and item-local conditions on the plan.
+ * @param registry - Loaded registry catalog.
+ * @param plan - Ordered install nodes.
+ * @returns Options keyed by condition name.
+ */
+function interpolationOptionValues(
+	registry: Registry,
+	plan: InstallNode[],
+): Record<string, RegistryConditionValue[]> {
+	const options: Record<string, RegistryConditionValue[]> = {};
+	for (const [key, condition] of Object.entries(registry.conditions ?? {})) {
+		if (condition.values) options[key] = condition.values;
+	}
+	for (const node of plan) {
+		const item = registry.items[node.itemId];
+		for (const [key, condition] of Object.entries(item?.conditions ?? {})) {
+			if (condition.values) options[key] = condition.values;
+		}
+	}
+	return options;
+}
+
+/**
+ * Print numbered Next steps for pending installs and repository secrets.
+ * @param pendingInstallCommands - Package install commands still left for the user.
+ * @param secrets - Repository secret names to configure manually.
+ */
+function printInstallNextSteps(
+	pendingInstallCommands: string[],
+	secrets: string[],
+): void {
+	if (pendingInstallCommands.length === 0 && secrets.length === 0) return;
+
+	console.log();
+	console.log(chalk.bold("Next steps"));
+	let step = 1;
+	for (const command of pendingInstallCommands) {
+		console.log(`  ${step}. Install dependencies with ${primaryText(command)}`);
+		step += 1;
+	}
+	if (secrets.length > 0) {
+		console.log(
+			`  ${step}. Configure the following repository secrets on GitHub:`,
+		);
+		for (const name of secrets) console.log(`     - ${primaryText(name)}`);
+	}
+}
+
+/**
  * Install registry items into the current project directory.
  * @param registry - Loaded registry catalog.
  * @param catalogLocation - Absolute path or HTTPS URL of the catalog document.
@@ -242,23 +346,34 @@ export async function addCommand(
 			: await promptForItems(registry);
 
 	const runtime = createProjectHandlerRuntime(projectDir);
-	const conditions = await captureRequiredConditions(
+
+	let conditions = await captureRequiredConditions(
 		registry,
 		catalogLocation,
 		projectDir,
 		items,
 		runtime,
 	);
-	const plan = buildInstallPlan(items, registry.items, conditions);
+
+	let plan = buildInstallPlan(items, registry.items, conditions);
 	if (plan.length === 0)
 		throw new Error("No registry items were selected for installation.");
+
+	({ context: conditions, plan } = await captureItemLocalConditionsForPlan(
+		registry,
+		catalogLocation,
+		items,
+		plan,
+		conditions,
+		runtime,
+	));
 
 	console.log();
 
 	let payloadDocuments = new Map<string, unknown>();
-	const payloadSources = plan
-		.map((node) => node.source)
-		.filter((source): source is string => Boolean(source));
+	const payloadSources = [
+		...new Set(plan.flatMap((node) => node.sources ?? []).filter(Boolean)),
+	];
 
 	if (payloadSources.length > 0)
 		await runWithTasks("Fetching payloads", async () => {
@@ -269,12 +384,24 @@ export async function addCommand(
 		});
 
 	const preparedItems = prepareInstallItems(plan, registry, payloadDocuments);
-	const { items: installItems, variables } = await runBeforeInstallScripts(
+
+	const { items: afterHooks, bindings } = await runBeforeInstallScripts(
 		catalogLocation,
 		runtime,
 		conditions,
 		preparedItems,
 	);
+
+	const interpolationValues = buildInterpolationContext(
+		conditions,
+		bindings,
+		interpolationOptionValues(registry, plan),
+	);
+	const installItems = afterHooks.map((item) => ({
+		...item,
+		payload: interpolatePayload(item.payload, interpolationValues),
+	}));
+
 	await confirmFileOverwrites(
 		projectDir,
 		installItems.map((item) => item.payload),
@@ -285,31 +412,37 @@ export async function addCommand(
 		projectDir,
 		installItems,
 	);
-	await runAfterInstallScripts(
-		catalogLocation,
-		runtime,
-		conditions,
-		installItems,
-		variables,
+
+	await mergeProjectCommands(
+		projectDir,
+		installItems.map((item) => item.payload),
 	);
+
+	for (const item of installItems) {
+		for (const scriptUri of item.node.afterInstallScripts ?? []) {
+			await runAfterInstallHook(catalogLocation, scriptUri, runtime, {
+				itemId: item.node.itemId,
+				...(item.node.packIds ? { packIds: item.node.packIds } : {}),
+				conditions,
+				bindings,
+				payload: item.payload,
+			});
+		}
+	}
+
 	const pendingInstallCommands = await installDeclaredPackages(
 		packageDeclarations,
 		projectDir,
+		conditions,
 	);
 
 	const itemWord = installItems.length === 1 ? "item" : "items";
 	console.log();
 	console.log(defaultText(`Installed ${installItems.length} ${itemWord}.`));
 
-	if (pendingInstallCommands.length > 0) {
-		console.log();
-		console.log(chalk.bold("Next steps"));
-		pendingInstallCommands.forEach((command, index) => {
-			console.log(
-				`  ${index + 1}. Install dependencies with ${primaryText(command)}`,
-			);
-		});
-	}
+	const secrets =
+		mergeSecretNames(...installItems.map((item) => item.payload.secrets)) ?? [];
+	printInstallNextSteps(pendingInstallCommands, secrets);
 
 	console.log();
 }

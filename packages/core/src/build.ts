@@ -10,7 +10,12 @@ import {
 	removeAsync,
 	writeFileAsync,
 } from "./fs";
-import { mergeEcosystemDependencies } from "./packages";
+import {
+	mergeCommandSet,
+	mergeDependencySet,
+	mergeEcosystemMaps,
+	mergeSecretNames,
+} from "./packages";
 import {
 	parseKeyedRecord,
 	parseRegistryDocument,
@@ -18,11 +23,16 @@ import {
 } from "./parse";
 import {
 	type AuthoredRegistryItem,
-	type AuthoredRegistryVariant,
+	type AuthoredRegistryPack,
+	assertConditionMapBindingKeys,
 	type CatalogItem,
+	type CatalogPack,
 	InstallPhase,
 	type Registry,
 	type RegistryCondition,
+	RegistryEcosystem,
+	type RegistryEcosystemCommands,
+	type RegistryEcosystemDependencies,
 	type RegistryFile,
 	type RegistryItemTypeDefinition,
 	type RegistryPayloadFile,
@@ -47,33 +57,15 @@ interface AuthoredItemEntry {
 }
 
 /**
- * Catalog-relative payload URI for an item or variant.
+ * Catalog-relative payload URI for an item or pack.
  * @param itemId - Registry item id.
- * @param variantId - Variant id when the payload is per-variant.
+ * @param packId - Pack id when the payload is per-pack.
  * @returns URI under `r/`.
  */
-function payloadUri(itemId: string, variantId?: string): string {
-	return variantId === undefined
+function payloadUri(itemId: string, packId?: string): string {
+	return packId === undefined
 		? `r/${itemId}.json`
-		: `r/${itemId}/${variantId}.json`;
-}
-
-/**
- * Catalog-relative URI for a compiled install-phase script.
- * @param itemId - Registry item id.
- * @param phase - Install phase name.
- * @param index - Script index within the phase list.
- * @param variantId - Variant id when the script belongs to a variant slice.
- * @returns URI under `r/`.
- */
-function installScriptUri(
-	itemId: string,
-	phase: InstallPhase,
-	index: number,
-	variantId?: string,
-): string {
-	if (variantId === undefined) return `r/${itemId}.${phase}.${index}.js`;
-	return `r/${itemId}/${variantId}.${phase}.${index}.js`;
+		: `r/${itemId}/${packId}.json`;
 }
 
 /**
@@ -83,7 +75,7 @@ function installScriptUri(
  * @param phase - Install phase being compiled.
  * @param entries - Authoring phase entries.
  * @param outDir - Absolute compiled output root.
- * @param variantId - Variant id when compiling a variant slice.
+ * @param packId - Pack id when compiling a pack slice.
  * @returns Compiled script URI list, or undefined when absent.
  */
 async function compileInstallPhaseList(
@@ -92,7 +84,7 @@ async function compileInstallPhaseList(
 	phase: InstallPhase,
 	entries: string[] | undefined,
 	outDir: string,
-	variantId?: string,
+	packId?: string,
 ): Promise<string[] | undefined> {
 	if (!entries?.length) return undefined;
 
@@ -105,7 +97,10 @@ async function compileInstallPhaseList(
 			`Registry item "${itemId}" ${phase} script`,
 			"item folder",
 		);
-		const uri = installScriptUri(itemId, phase, scriptIndex, variantId);
+		const uri =
+			packId === undefined
+				? `r/${itemId}.${phase}.${scriptIndex}.js`
+				: `r/${itemId}/${packId}.${phase}.${scriptIndex}.js`;
 		await bundleScript(
 			entryPath,
 			path.join(outDir, uri),
@@ -183,6 +178,21 @@ async function materializePayloadFiles(
 	);
 }
 
+function assertPackageManagerRequired(item: AuthoredRegistryItem): void {
+	const layers = [item, ...(item.packs ?? [])];
+	const needsPackageManager = layers.some(
+		(layer) =>
+			layer.dependencies?.[RegistryEcosystem.NPM] !== undefined ||
+			layer.commands?.[RegistryEcosystem.NPM] !== undefined,
+	);
+	if (!needsPackageManager) return;
+	if (item.requires?.includes("packageManager")) return;
+
+	throw new Error(
+		`Registry item "${item.id}" declares npm dependencies or commands but does not require "packageManager".`,
+	);
+}
+
 /**
  * Load and validate every authored registry item under the source tree.
  * @param sourceDir - Absolute authoring root.
@@ -202,6 +212,7 @@ async function loadAuthoredItems(
 		);
 
 		const item = parseWithSchema(registryItemSchema, raw, "Registry item");
+		assertPackageManagerRequired(item);
 
 		if (seenItemIds.has(item.id))
 			throw new Error(`Duplicate registry item id: "${item.id}".`);
@@ -214,31 +225,22 @@ async function loadAuthoredItems(
 }
 
 /**
- * Whether a variant-less item needs a compiled payload (static files and/or packages).
- * @param item - Authored registry item without variants.
+ * Whether an item's base layer needs a compiled payload.
+ * @param item - Authored registry item.
  * @returns True when a payload document should be written.
  */
-function variantLessNeedsPayload(item: AuthoredRegistryItem): boolean {
-	return (item.files?.length ?? 0) > 0 || item.dependencies !== undefined;
-}
-
-/**
- * Human-readable subject for payload validation errors.
- * @param itemId - Registry item id.
- * @param variant - Variant being compiled, if any.
- * @returns Label naming the item and optional variant.
- */
-function payloadSubject(
-	itemId: string,
-	variant: AuthoredRegistryVariant | undefined,
-): string {
-	if (variant === undefined) return `Registry item "${itemId}"`;
-	return `Registry item "${itemId}" variant "${variant.id}"`;
+function itemNeedsBasePayload(item: AuthoredRegistryItem): boolean {
+	return (
+		(item.files?.length ?? 0) > 0 ||
+		item.dependencies !== undefined ||
+		item.commands !== undefined ||
+		(item.secrets?.length ?? 0) > 0
+	);
 }
 
 /**
  * Fail when two payload files share the same install target path.
- * @param subject - Error label naming the item/variant.
+ * @param subject - Error label naming the item/pack.
  * @param files - Materialized payload files.
  * @throws Error when a target path appears more than once.
  */
@@ -259,45 +261,61 @@ function assertUniquePayloadTargets(
 /**
  * Write one install payload under `r/`.
  * @param entry - Authored item with its source folder.
- * @param variant - Variant being compiled; omit for an item-level payload.
+ * @param pack - Pack being compiled; omit for an item-level payload.
  * @param sourceDir - Absolute authoring root.
  * @param outDir - Absolute compiled output root.
  * @throws Error when a file source is missing, escapes the item folder, or two files share a target.
  */
 async function writePayload(
 	entry: AuthoredItemEntry,
-	variant: AuthoredRegistryVariant | undefined,
+	pack: AuthoredRegistryPack | undefined,
 	sourceDir: string,
 	outDir: string,
 ): Promise<void> {
 	const { itemDir, item } = entry;
-	const subject = payloadSubject(item.id, variant);
+	const subject =
+		pack === undefined
+			? `Registry item "${item.id}"`
+			: `Registry item "${item.id}" pack "${pack.id}"`;
 	const files = await materializePayloadFiles(itemDir, item.id, sourceDir, [
 		...(item.files ?? []),
-		...(variant?.files ?? []),
+		...(pack?.files ?? []),
 	]);
 
-	// Item-level and variant files share one destination namespace
+	// Item-level and pack files share one destination namespace
 	assertUniquePayloadTargets(subject, files);
 
-	const dependencies = mergeEcosystemDependencies(
+	const dependencies = mergeEcosystemMaps(
+		mergeDependencySet,
 		item.dependencies,
-		variant?.dependencies,
-	);
+		pack?.dependencies,
+	) as RegistryEcosystemDependencies | undefined;
+	const commands = mergeEcosystemMaps(
+		mergeCommandSet,
+		item.commands,
+		pack?.commands,
+	) as RegistryEcosystemCommands | undefined;
+	const secrets = mergeSecretNames(item.secrets, pack?.secrets);
+
 	const payload = parseWithSchema(
 		registryPayloadSchema,
-		{ files, ...(dependencies ? { dependencies } : {}) },
+		{
+			files,
+			dependencies,
+			commands,
+			secrets,
+		},
 		`Registry payload for "${item.id}"`,
 	);
 
 	await writeFileAsync(
-		path.join(outDir, payloadUri(item.id, variant?.id)),
+		path.join(outDir, payloadUri(item.id, pack?.id)),
 		`${JSON.stringify(payload)}\n`,
 	);
 }
 
 /**
- * Wipe `r/` and write every item/variant payload from the authored tree.
+ * Wipe `r/` and write every item/base and item/pack payload from the authored tree.
  * @param authoredItems - Loaded authored items.
  * @param sourceDir - Absolute authoring root.
  * @param outDir - Absolute compiled output root.
@@ -312,11 +330,10 @@ async function writeItemPayloads(
 	const writes: Promise<void>[] = [];
 	for (const entry of authoredItems) {
 		const { item } = entry;
-		if (item.variants?.length)
-			for (const variant of item.variants)
-				writes.push(writePayload(entry, variant, sourceDir, outDir));
-		else if (variantLessNeedsPayload(item))
+		if (itemNeedsBasePayload(item))
 			writes.push(writePayload(entry, undefined, sourceDir, outDir));
+		for (const pack of item.packs ?? [])
+			writes.push(writePayload(entry, pack, sourceDir, outDir));
 	}
 
 	await Promise.all(writes);
@@ -362,17 +379,24 @@ async function bundleScript(
 
 /**
  * Bundle condition handlers and rewrite authored paths to catalog URIs.
- * @param sourceDir - Absolute authoring root.
+ * @param rootDir - Absolute folder containing handler source files.
+ * @param conditions - Condition map (handlers still root-relative).
  * @param outDir - Absolute compiled output root.
- * @param conditions - Parsed shared conditions (handlers still authoring-relative).
+ * @param options - URI and label builders for bundled handlers.
  * @returns Conditions with compiled handler URIs, or undefined when absent.
  */
 async function compileConditionHandlers(
-	sourceDir: string,
-	outDir: string,
+	rootDir: string,
 	conditions: Record<string, RegistryCondition> | undefined,
+	outDir: string,
+	options: {
+		handlerUri: (key: string) => string;
+		entryLabel: (key: string) => string;
+		bundleLabel: (key: string) => string;
+		rootLabel: string;
+	},
 ): Promise<Record<string, RegistryCondition> | undefined> {
-	if (!conditions) return undefined;
+	if (!conditions || Object.keys(conditions).length === 0) return undefined;
 
 	const compiled: Record<string, RegistryCondition> = {};
 	const writes: Promise<void>[] = [];
@@ -383,19 +407,15 @@ async function compileConditionHandlers(
 			continue;
 		}
 
-		const uri = `r/_handlers/${key}.handler.js`;
+		const uri = options.handlerUri(key);
 		const entryPath = joinRelativePathUnderRoot(
-			sourceDir,
+			rootDir,
 			condition.handler,
-			`Registry condition "${key}" handler`,
-			"authoring root",
+			options.entryLabel(key),
+			options.rootLabel,
 		);
 		writes.push(
-			bundleScript(
-				entryPath,
-				path.join(outDir, uri),
-				`Registry condition "${key}"`,
-			),
+			bundleScript(entryPath, path.join(outDir, uri), options.bundleLabel(key)),
 		);
 		compiled[key] = { ...condition, handler: uri };
 	}
@@ -405,89 +425,150 @@ async function compileConditionHandlers(
 }
 
 /**
+ * Build one compiled catalog pack entry for an authored item pack.
+ * @param itemDir - Absolute item folder.
+ * @param itemId - Registry item id.
+ * @param pack - Authored pack definition.
+ * @param outDir - Absolute compiled output root.
+ * @returns Catalog pack shape with compiled install scripts.
+ */
+async function catalogPackEntry(
+	itemDir: string,
+	itemId: string,
+	pack: AuthoredRegistryPack,
+	outDir: string,
+): Promise<CatalogPack> {
+	const packBeforeInstall = await compileInstallPhaseList(
+		itemDir,
+		itemId,
+		InstallPhase.BeforeInstall,
+		pack.beforeInstall,
+		outDir,
+		pack.id,
+	);
+	const packAfterInstall = await compileInstallPhaseList(
+		itemDir,
+		itemId,
+		InstallPhase.AfterInstall,
+		pack.afterInstall,
+		outDir,
+		pack.id,
+	);
+
+	return {
+		id: pack.id,
+		title: pack.title,
+		source: payloadUri(itemId, pack.id),
+		...(pack.when ? { when: pack.when } : {}),
+		...(pack.dependsOn ? { dependsOn: pack.dependsOn } : {}),
+		...(packBeforeInstall ? { beforeInstall: packBeforeInstall } : {}),
+		...(packAfterInstall ? { afterInstall: packAfterInstall } : {}),
+	};
+}
+
+/**
+ * Compile item-level install scripts and condition handlers for the catalog.
+ * @param itemDir - Absolute item folder.
+ * @param item - Authored registry item.
+ * @param outDir - Absolute compiled output root.
+ * @returns Compiled install scripts and rewritten condition handlers.
+ */
+async function compileItemCatalogArtifacts(
+	itemDir: string,
+	item: AuthoredRegistryItem,
+	outDir: string,
+): Promise<{
+	beforeInstall: string[] | undefined;
+	afterInstall: string[] | undefined;
+	itemConditions: Record<string, RegistryCondition> | undefined;
+}> {
+	const [beforeInstall, afterInstall, itemConditions] = await Promise.all([
+		compileInstallPhaseList(
+			itemDir,
+			item.id,
+			InstallPhase.BeforeInstall,
+			item.beforeInstall,
+			outDir,
+		),
+		compileInstallPhaseList(
+			itemDir,
+			item.id,
+			InstallPhase.AfterInstall,
+			item.afterInstall,
+			outDir,
+		),
+		compileConditionHandlers(itemDir, item.conditions, outDir, {
+			handlerUri: (key) => `r/_handlers/items/${item.id}/${key}.handler.js`,
+			entryLabel: (key) =>
+				`Registry item "${item.id}" condition "${key}" handler`,
+			bundleLabel: (key) => `Registry item "${item.id}" condition "${key}"`,
+			rootLabel: "item folder",
+		}),
+	]);
+
+	return { beforeInstall, afterInstall, itemConditions };
+}
+
+/**
+ * Shared catalog fields copied from an authored item and its compiled artifacts.
+ * @param item - Authored registry item.
+ * @param artifacts - Compiled install scripts and condition handlers.
+ * @returns Catalog fields shared by item-level and pack-based entries.
+ */
+function sharedCatalogItemFields(
+	item: AuthoredRegistryItem,
+	artifacts: Awaited<ReturnType<typeof compileItemCatalogArtifacts>>,
+): Pick<
+	CatalogItem,
+	| "title"
+	| "description"
+	| "type"
+	| "requires"
+	| "conditions"
+	| "dependsOn"
+	| "beforeInstall"
+	| "afterInstall"
+> {
+	const { beforeInstall, afterInstall, itemConditions } = artifacts;
+	return {
+		title: item.title,
+		description: item.description,
+		type: item.type,
+		...(item.requires ? { requires: item.requires } : {}),
+		...(itemConditions ? { conditions: itemConditions } : {}),
+		...(item.dependsOn ? { dependsOn: item.dependsOn } : {}),
+		...(beforeInstall ? { beforeInstall } : {}),
+		...(afterInstall ? { afterInstall } : {}),
+	};
+}
+
+/**
  * Build the catalog index entry for one authored item.
  * @param itemDir - Absolute item folder.
  * @param item - Authored registry item.
  * @param outDir - Absolute compiled output root.
- * @returns Catalog item shape (variant list, item-level source, and/or lifecycle scripts).
+ * @returns Catalog item shape (pack list, item-level source, and/or lifecycle scripts).
  */
 async function catalogEntryForItem(
 	itemDir: string,
 	item: AuthoredRegistryItem,
 	outDir: string,
 ): Promise<CatalogItem> {
-	// Compile `beforeInstall` and `afterInstall` scripts
-	const beforeInstall = await compileInstallPhaseList(
-		itemDir,
-		item.id,
-		InstallPhase.BeforeInstall,
-		item.beforeInstall,
-		outDir,
-	);
-	const afterInstall = await compileInstallPhaseList(
-		itemDir,
-		item.id,
-		InstallPhase.AfterInstall,
-		item.afterInstall,
-		outDir,
-	);
-
-	const shared = {
-		title: item.title,
-		description: item.description,
-		type: item.type,
-		...(item.uses ? { uses: item.uses } : {}),
-		...(item.registryDependencies
-			? { registryDependencies: item.registryDependencies }
-			: {}),
-		...(beforeInstall ? { beforeInstall } : {}),
-		...(afterInstall ? { afterInstall } : {}),
+	const artifacts = await compileItemCatalogArtifacts(itemDir, item, outDir);
+	const entry: CatalogItem = {
+		...sharedCatalogItemFields(item, artifacts),
+		...(itemNeedsBasePayload(item) ? { source: payloadUri(item.id) } : {}),
 	};
 
-	// If the item has variants, compile the `beforeInstall` and `afterInstall` scripts for each variant
-	if (item.variants?.length)
-		return {
-			...shared,
-			variants: await Promise.all(
-				item.variants.map(async (variant) => {
-					const variantBeforeInstall = await compileInstallPhaseList(
-						itemDir,
-						item.id,
-						InstallPhase.BeforeInstall,
-						variant.beforeInstall,
-						outDir,
-						variant.id,
-					);
-					const variantAfterInstall = await compileInstallPhaseList(
-						itemDir,
-						item.id,
-						InstallPhase.AfterInstall,
-						variant.afterInstall,
-						outDir,
-						variant.id,
-					);
-					return {
-						id: variant.id,
-						title: variant.title,
-						source: payloadUri(item.id, variant.id),
-						...(variant.when ? { when: variant.when } : {}),
-						...(variant.registryDependencies
-							? { registryDependencies: variant.registryDependencies }
-							: {}),
-						...(variantBeforeInstall
-							? { beforeInstall: variantBeforeInstall }
-							: {}),
-						...(variantAfterInstall
-							? { afterInstall: variantAfterInstall }
-							: {}),
-					};
-				}),
-			),
-		};
+	if (!item.packs?.length) return entry;
 
 	return {
-		...shared,
-		...(variantLessNeedsPayload(item) ? { source: payloadUri(item.id) } : {}),
+		...entry,
+		packs: await Promise.all(
+			item.packs.map((pack) =>
+				catalogPackEntry(itemDir, item.id, pack, outDir),
+			),
+		),
 	};
 }
 
@@ -540,13 +621,16 @@ async function readTypesAndConditions(sourceDir: string): Promise<{
 		},
 	) as Record<string, RegistryItemTypeDefinition>;
 
+	const conditions = parseKeyedRecord(
+		registryConditionSchema,
+		rawConditions,
+		"Registry conditions",
+		(key) => `Registry condition "${key}"`,
+	);
+	assertConditionMapBindingKeys(conditions);
+
 	return {
-		conditions: parseKeyedRecord(
-			registryConditionSchema,
-			rawConditions,
-			"Registry conditions",
-			(key) => `Registry condition "${key}"`,
-		),
+		conditions,
 		types,
 	};
 }
@@ -572,8 +656,14 @@ export async function buildRegistry(
 
 	const compiledConditions = await compileConditionHandlers(
 		sourceDir,
-		outDir,
 		conditions,
+		outDir,
+		{
+			handlerUri: (key) => `r/_handlers/${key}.handler.js`,
+			entryLabel: (key) => `Registry condition "${key}" handler`,
+			bundleLabel: (key) => `Registry condition "${key}"`,
+			rootLabel: "authoring root",
+		},
 	);
 	const document = parseRegistryDocument({
 		...(compiledConditions ? { conditions: compiledConditions } : {}),

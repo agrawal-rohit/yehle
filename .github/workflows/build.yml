@@ -30,7 +30,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: Run typechecks
-        run: pnpm run typecheck
+        run: pnpm typecheck
 
       - name: Build
-        run: pnpm run build
+        run: pnpm build

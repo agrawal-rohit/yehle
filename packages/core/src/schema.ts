@@ -7,7 +7,7 @@ import {
 /** Non-empty string field. */
 const nonEmptyString = z.string().min(1);
 
-/** Item / variant ids must be a single path segment so default payload paths cannot escape `r/`. */
+/** Item / pack ids must be a single path segment so default payload paths cannot escape `r/`. */
 const safePathSegment = nonEmptyString.superRefine((id, context) => {
 	if (id === "." || id === ".." || id.includes("/") || id.includes("\\"))
 		context.addIssue({
@@ -16,9 +16,7 @@ const safePathSegment = nonEmptyString.superRefine((id, context) => {
 		});
 });
 
-/**
- * Make keys whose value may be `undefined` optional, matching {@link omitUndefined}.
- */
+/** Make keys whose value may be `undefined` optional, matching {@link omitUndefined}. */
 type OmitUndefinedKeys<T> = {
 	[K in keyof T as undefined extends T[K] ? never : K]: T[K];
 } & {
@@ -123,7 +121,7 @@ export const registryPayloadFileSchema = z.strictObject({
 });
 export type RegistryPayloadFile = z.infer<typeof registryPayloadFileSchema>;
 
-/** Supported package ecosystems declared on registry payloads. Add variants here when introducing new ecosystems. */
+/** Supported package ecosystems declared on registry payloads. Add ecosystems here when introducing new ones. */
 export enum RegistryEcosystem {
 	NPM = "npm",
 }
@@ -153,63 +151,219 @@ const registryEcosystemDependenciesShape = {
 	z.ZodOptional<typeof registryDependencySetSchema>
 >;
 
-/** Ecosystem packages to install, keyed by ecosystem. Add a key here when introducing a new ecosystem. */
-export const registryEcosystemDependenciesSchema = z
-	.strictObject(registryEcosystemDependenciesShape)
-	.transform((value) => {
-		const merged: Partial<Record<RegistryEcosystem, RegistryDependencySet>> =
-			{};
-		for (const ecosystem of Object.keys(
-			registryEcosystemDependenciesShape,
-		) as RegistryEcosystem[]) {
-			const dependencySet = value[ecosystem];
-			if (
-				dependencySet &&
-				((dependencySet[RegistryDependencyKind.RUNTIME]?.length ?? 0) > 0 ||
-					(dependencySet[RegistryDependencyKind.DEV]?.length ?? 0) > 0)
-			)
-				merged[ecosystem] = dependencySet;
+/**
+ * Strip empty per-ecosystem entries from a strict ecosystem map schema.
+ * @param shape - Ecosystem field definitions.
+ * @param isNonEmpty - Predicate that keeps an ecosystem entry.
+ * @returns Zod schema that omits the whole map when every ecosystem is empty.
+ */
+function stripEmptyEcosystemEntries<T>(
+	shape: Record<RegistryEcosystem, z.ZodOptional<z.ZodType<T>>>,
+	isNonEmpty: (value: T) => boolean,
+) {
+	return z.strictObject(shape).transform((value) => {
+		const merged: Partial<Record<RegistryEcosystem, T>> = {};
+		for (const ecosystem of Object.keys(shape) as RegistryEcosystem[]) {
+			const entry = value[ecosystem];
+			if (entry && isNonEmpty(entry)) merged[ecosystem] = entry;
 		}
 		return Object.keys(merged).length > 0 ? merged : undefined;
 	});
+}
+
+/** Ecosystem packages to install, keyed by ecosystem. Add a key here when introducing a new ecosystem. */
+export const registryEcosystemDependenciesSchema = stripEmptyEcosystemEntries(
+	registryEcosystemDependenciesShape,
+	(dependencySet) =>
+		(dependencySet[RegistryDependencyKind.RUNTIME]?.length ?? 0) > 0 ||
+		(dependencySet[RegistryDependencyKind.DEV]?.length ?? 0) > 0,
+);
 export type RegistryEcosystemDependencies = NonNullable<
 	z.infer<typeof registryEcosystemDependenciesSchema>
 >;
 
-/** Install payload for one item or variant (templates, not rendered output). */
+/** Named project commands for one ecosystem (e.g. `package.json` scripts for npm). */
+const registryCommandSetSchema = z.record(nonEmptyString, nonEmptyString);
+export type RegistryCommandSet = z.infer<typeof registryCommandSetSchema>;
+
+/** Ecosystem keys accepted on registry command maps. */
+const registryEcosystemCommandsShape = {
+	[RegistryEcosystem.NPM]: registryCommandSetSchema.optional(),
+} satisfies Record<
+	RegistryEcosystem,
+	z.ZodOptional<typeof registryCommandSetSchema>
+>;
+
+/** Ecosystem commands to merge into the project manifest, keyed by ecosystem. */
+const registryEcosystemCommandsSchema = stripEmptyEcosystemEntries(
+	registryEcosystemCommandsShape,
+	(commands) => Object.keys(commands).length > 0,
+);
+export type RegistryEcosystemCommands = NonNullable<
+	z.infer<typeof registryEcosystemCommandsSchema>
+>;
+
+/** Install payload for one item or pack (templates, not rendered output). */
 export const registryPayloadSchema = z
 	.strictObject({
-		/** Files to install (item-level files first when folded into a variant). May be empty when an install script generates every file at install time. */
+		/** Files to install (item-level files first when folded into a pack). May be empty when an install script generates every file at install time. */
 		files: z.array(registryPayloadFileSchema).default([]),
 		/** Ecosystem packages to install, keyed by ecosystem. */
 		dependencies: registryEcosystemDependenciesSchema.optional(),
+		/** Ecosystem commands to merge into the project manifest, keyed by ecosystem. */
+		commands: registryEcosystemCommandsSchema.optional(),
+		/** Repository secret names the consumer must configure manually (e.g. in GitHub) */
+		secrets: optionalNonEmptyStringArray(),
 	})
 	.transform(omitUndefined);
 export type RegistryPayload = z.infer<typeof registryPayloadSchema>;
 
-/** Condition matcher shared by items and variants. */
-const registryWhenSchema = z
-	.record(z.string(), nonEmptyString)
+/** Typed matcher value shared by conditions and packs. */
+export const registryWhenValueSchema = z.union([
+	nonEmptyString,
+	z.array(nonEmptyString).min(1),
+	z.boolean(),
+]);
+/** Condition matcher shared by conditions and packs. */
+export const registryWhenSchema = z
+	.record(z.string(), registryWhenValueSchema)
 	.optional()
 	.transform((value) => {
 		if (!value || Object.keys(value).length === 0) return undefined;
 		return value;
 	});
+export type RegistryWhen = NonNullable<z.infer<typeof registryWhenSchema>>;
 
 /** A labelled value for a shared condition. */
 export const registryConditionValueSchema = z
 	.strictObject({
-		/** Matcher value referenced by variant `when` entries. */
+		/** Matcher value referenced by pack and condition `when` entries. */
 		value: nonEmptyString,
 		/** Display label for this value. */
 		label: nonEmptyString,
+		/** Extra interpolation keys merged when this select option is chosen. */
+		bindings: z.record(nonEmptyString, nonEmptyString).optional(),
+	})
+	.superRefine((entry, context) => {
+		if (
+			entry.bindings !== undefined &&
+			Object.keys(entry.bindings).length === 0
+		)
+			context.addIssue({
+				code: "custom",
+				message: "empty_bindings",
+				path: ["bindings"],
+			});
 	})
 	.transform(omitUndefined);
 export type RegistryConditionValue = z.infer<
 	typeof registryConditionValueSchema
 >;
 
-/** Shared condition definition in the registry. */
+/** Shared or item-level condition definition in the registry. */
+interface RegistryConditionSchemaInput {
+	label: string;
+	description?: string;
+	kind: RegistryConditionKind;
+	optional?: boolean;
+	when?: RegistryWhen;
+	min?: number;
+	default?: string;
+	handler?: string;
+	values?: RegistryConditionValue[];
+}
+
+/**
+ * Add one custom validation issue for a registry condition.
+ * @param context - Zod refinement context collecting validation issues.
+ * @param message - Stable error code describing the failed rule.
+ */
+function addConditionIssue(context: z.RefinementCtx, message: string): void {
+	context.addIssue({
+		code: "custom",
+		message,
+	});
+}
+
+/**
+ * Validate the multiselect-only `min` field on a registry condition.
+ * @param condition - Parsed registry condition candidate.
+ * @param kind - Effective condition kind.
+ * @param context - Zod refinement context collecting validation issues.
+ * @returns True when validation should stop early.
+ */
+function rejectInvalidConditionMin(
+	condition: RegistryConditionSchemaInput,
+	kind: RegistryConditionKind,
+	context: z.RefinementCtx,
+): boolean {
+	if (
+		condition.min !== undefined &&
+		kind !== RegistryConditionKind.MULTISELECT
+	) {
+		addConditionIssue(context, "min_on_non_multiselect");
+		return true;
+	}
+	return false;
+}
+
+/**
+ * Validate select-like conditions that require labelled values.
+ * @param condition - Parsed registry condition candidate.
+ * @param kind - Effective condition kind.
+ * @param context - Zod refinement context collecting validation issues.
+ * @returns True when validation should stop early.
+ */
+function rejectInvalidSelectableCondition(
+	condition: RegistryConditionSchemaInput,
+	kind: RegistryConditionKind,
+	context: z.RefinementCtx,
+): boolean {
+	if (!condition.values || condition.values.length === 0) {
+		addConditionIssue(context, "select_requires_values");
+		return true;
+	}
+
+	const seenValues = new Set<string>();
+	for (const entry of condition.values) {
+		if (seenValues.has(entry.value)) {
+			addConditionIssue(context, `duplicate:${entry.value}`);
+			return true;
+		}
+		seenValues.add(entry.value);
+
+		if (
+			kind === RegistryConditionKind.MULTISELECT &&
+			entry.bindings !== undefined
+		) {
+			addConditionIssue(context, "bindings_on_multiselect");
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/**
+ * Validate non-select conditions that must not declare labelled values.
+ * @param condition - Parsed registry condition candidate.
+ * @param kind - Effective condition kind.
+ * @param context - Zod refinement context collecting validation issues.
+ */
+function rejectInvalidNonSelectableCondition(
+	condition: RegistryConditionSchemaInput,
+	kind: RegistryConditionKind,
+	context: z.RefinementCtx,
+): void {
+	if (!condition.values || condition.values.length === 0) return;
+	addConditionIssue(
+		context,
+		kind === RegistryConditionKind.TEXT
+			? "text_with_values"
+			: "boolean_with_values",
+	);
+}
+
 export const registryConditionSchema = z
 	.strictObject({
 		/** Display label for this condition. */
@@ -217,57 +371,94 @@ export const registryConditionSchema = z
 		/** Optional longer description shown in the CLI. */
 		description: optionalNonEmptyString(),
 		/** Type of condition to prompt for. */
-		kind: z.enum(RegistryConditionKind).optional(),
-		/** Handler path: authoring-relative for conditions/conditions.json, or compiled `r/_handlers/{key}.handler.js` URI in the catalog. */
+		kind: z.enum(RegistryConditionKind),
+		/** When true, allow skipping the condition value. */
+		optional: z.boolean().optional(),
+		/** Prompt this condition only when the current context matches. */
+		when: registryWhenSchema,
+		/** Minimum number of selected values required for multiselect conditions. */
+		min: z.number().int().min(1).optional(),
+		/** Default prompt value when no infer handler is declared. */
+		default: nonEmptyString.optional(),
+		/** Handler path: authoring-relative, or compiled `r/_handlers/{key}.handler.js` / `r/_handlers/items/{itemId}/{key}.handler.js` URI. */
 		handler: registryScriptPathSchema.optional(),
 		/** Allowed labelled values for select and multiselect conditions. */
 		values: z.array(registryConditionValueSchema).min(1).optional(),
 	})
 	.superRefine((data, context) => {
 		const { kind, requiresValues } = policyForConditionKind(data.kind);
+		if (rejectInvalidConditionMin(data, kind, context)) return;
 		if (requiresValues) {
-			if (!data.values || data.values.length === 0) {
-				context.addIssue({
-					code: "custom",
-					message: "select_requires_values",
-				});
-				return;
-			}
-
-			const seenValues = new Set<string>();
-			for (const entry of data.values) {
-				if (seenValues.has(entry.value)) {
-					context.addIssue({
-						code: "custom",
-						message: `duplicate:${entry.value}`,
-					});
-					return;
-				}
-				seenValues.add(entry.value);
-			}
+			rejectInvalidSelectableCondition(data, kind, context);
 			return;
 		}
-
-		// Free-form and yes/no conditions must not declare select values.
-		if (data.values && data.values.length > 0)
-			context.addIssue({
-				code: "custom",
-				message:
-					kind === RegistryConditionKind.TEXT
-						? "text_with_values"
-						: "boolean_with_values",
-			});
+		rejectInvalidNonSelectableCondition(data, kind, context);
 	})
 	.transform((condition) =>
 		omitUndefined({
 			label: condition.label,
 			kind: condition.kind,
 			handler: condition.handler,
+			default: condition.default,
 			values: condition.values,
 			description: condition.description,
+			when: condition.when,
+			min: condition.min,
+			optional: condition.optional === true ? true : undefined,
 		}),
 	);
 export type RegistryCondition = z.infer<typeof registryConditionSchema>;
+
+/**
+ * Throw when any option `bindings` key equals its parent condition key.
+ * @param conditions - Parsed condition map keyed by condition name.
+ * @throws Error when a binding reuses the condition key.
+ */
+export function assertConditionMapBindingKeys(
+	conditions: Record<string, RegistryCondition> | undefined,
+): void {
+	if (!conditions) return;
+	for (const [key, condition] of Object.entries(conditions)) {
+		for (const entry of condition.values ?? []) {
+			if (!entry.bindings || !Object.hasOwn(entry.bindings, key)) continue;
+			throw new Error(
+				`Registry condition "${key}" value "${entry.value}" cannot declare bindings.${key} (collides with the condition key).`,
+			);
+		}
+	}
+}
+
+/**
+ * Reject option `bindings` keys that collide with the parent condition key.
+ * @param conditions - Parsed condition map keyed by condition name.
+ * @param context - Zod refinement context.
+ */
+function rejectBindingParentKeyCollisions(
+	conditions: Record<string, RegistryCondition>,
+	context: z.RefinementCtx,
+): void {
+	for (const [key, condition] of Object.entries(conditions)) {
+		for (const [index, entry] of (condition.values ?? []).entries()) {
+			if (!entry.bindings || !Object.hasOwn(entry.bindings, key)) continue;
+			context.addIssue({
+				code: "custom",
+				message: `binding_parent_key:${key}`,
+				path: [key, "values", index, "bindings", key],
+			});
+		}
+	}
+}
+
+/** Optional condition map that collapses absent or empty records to `undefined`. */
+const optionalConditionMap = z
+	.record(z.string(), registryConditionSchema)
+	.superRefine((conditions, context) => {
+		rejectBindingParentKeyCollisions(conditions, context);
+	})
+	.optional()
+	.transform((value) =>
+		value && Object.keys(value).length > 0 ? value : undefined,
+	);
 
 /** Display metadata for a registry item type. */
 export const registryItemTypeSchema = z
@@ -281,24 +472,24 @@ export const registryItemTypeSchema = z
 export type RegistryItemTypeDefinition = z.infer<typeof registryItemTypeSchema>;
 
 /**
- * Reject duplicate variant ids on an authored or catalog item.
- * @param variants - Variant list that may contain duplicate ids.
+ * Reject duplicate pack ids on an authored or catalog item.
+ * @param packs - Pack list that may contain duplicate ids.
  * @param context - Zod refinement context.
  */
-function rejectDuplicateVariantIds(
-	variants: Array<{ id: string }> | undefined,
+function rejectDuplicatePackIds(
+	packs: Array<{ id: string }> | undefined,
 	context: z.RefinementCtx,
 ): void {
-	const seenVariantIds = new Set<string>();
-	for (const variant of variants ?? []) {
-		if (seenVariantIds.has(variant.id)) {
+	const seenPackIds = new Set<string>();
+	for (const pack of packs ?? []) {
+		if (seenPackIds.has(pack.id)) {
 			context.addIssue({
 				code: "custom",
-				message: `duplicate_variant:${variant.id}`,
+				message: `duplicate_pack:${pack.id}`,
 			});
 			return;
 		}
-		seenVariantIds.add(variant.id);
+		seenPackIds.add(pack.id);
 	}
 }
 
@@ -328,13 +519,13 @@ function rejectDuplicateListEntries(
 }
 
 /**
- * Reject duplicate scripts and registry dependency ids on an item or variant.
- * @param item - Parsed item or variant candidate.
+ * Reject duplicate scripts and dependency ids on an item or pack.
+ * @param item - Parsed item or pack candidate.
  * @param context - Zod refinement context.
  */
 function rejectInstallPhaseConflicts(
 	item: {
-		registryDependencies?: string[];
+		dependsOn?: string[];
 		beforeInstall?: string[];
 		afterInstall?: string[];
 	},
@@ -342,63 +533,61 @@ function rejectInstallPhaseConflicts(
 ): void {
 	rejectDuplicateListEntries(item.beforeInstall, "beforeInstall", context);
 	rejectDuplicateListEntries(item.afterInstall, "afterInstall", context);
-	rejectDuplicateListEntries(
-		item.registryDependencies,
-		"registryDependencies",
-		context,
-	);
+	rejectDuplicateListEntries(item.dependsOn, "dependsOn", context);
 }
 
-/** Shared fields for authored and catalog variants. */
-const variantSharedFields = {
-	/** Unique variant id within the item. */
+/** Shared fields for authored and catalog packs. */
+const packSharedFields = {
+	/** Unique pack id within the item. */
 	id: safePathSegment,
 	/** Display title. */
 	title: nonEmptyString,
-	/** Condition matcher that selects this variant. */
+	/** Condition matcher that includes this pack when it matches. */
 	when: registryWhenSchema,
-	/** Other registry items this variant depends on. */
-	registryDependencies: optionalNonEmptyStringArray(),
-	/** Colocated scripts to run before this variant's files are written. */
+	/** Other registry items this pack depends on. */
+	dependsOn: optionalNonEmptyStringArray(),
+	/** Colocated scripts to run before this pack's files are written. */
 	beforeInstall: optionalInstallPhaseList(),
-	/** Colocated scripts to run after this variant's files are written. */
+	/** Colocated scripts to run after this pack's files are written. */
 	afterInstall: optionalInstallPhaseList(),
 };
 
-/** Variant from an authoring `registry-item.json`. */
-export const registryVariantSchema = z
+/** Pack from an authoring `registry-item.json`. */
+export const registryPackSchema = z
 	.strictObject({
-		...variantSharedFields,
-		/** Short description of this installable slice. */
-		description: nonEmptyString,
-		/** Files copied when this variant is selected. */
-		files: z.array(registryFileSchema).min(1),
-		/** Ecosystem packages added with this variant, keyed by ecosystem. */
+		...packSharedFields,
+		/** Files copied when this pack is included. */
+		files: z.array(registryFileSchema).min(1).optional(),
+		/** Ecosystem packages added with this pack, keyed by ecosystem. */
 		dependencies: registryEcosystemDependenciesSchema.optional(),
+		/** Ecosystem commands added with this pack, keyed by ecosystem. */
+		commands: registryEcosystemCommandsSchema.optional(),
+		/** Repository secret names to remind about after install (never prompted). */
+		secrets: optionalNonEmptyStringArray(),
 	})
-	.superRefine((variant, context) => {
-		rejectInstallPhaseConflicts(variant, context);
+	.superRefine((pack, context) => {
+		rejectInstallPhaseConflicts(pack, context);
 	})
 	.transform(omitUndefined);
-export type AuthoredRegistryVariant = z.infer<typeof registryVariantSchema>;
+export type AuthoredRegistryPack = z.infer<typeof registryPackSchema>;
 
-/** Variant index entry in compiled `registry.json`. */
-export const catalogVariantSchema = z
+/** Pack index entry in compiled `registry.json`. */
+export const catalogPackSchema = z
 	.strictObject({
-		...variantSharedFields,
+		...packSharedFields,
 		/** Payload URI joined against the catalog location. */
 		source: nonEmptyString,
 	})
-	.superRefine((variant, context) => {
-		rejectInstallPhaseConflicts(variant, context);
+	.superRefine((pack, context) => {
+		rejectInstallPhaseConflicts(pack, context);
 	})
 	.transform(omitUndefined);
-export type CatalogVariant = z.infer<typeof catalogVariantSchema>;
+export type CatalogPack = z.infer<typeof catalogPackSchema>;
 
-/** Optional variants list that collapses empty arrays to undefined. */
-const optionalVariants = <T extends z.ZodType>(variantSchema: T) =>
+/** Optional packs list that collapses empty arrays to undefined. */
+const optionalPacks = <T extends z.ZodType>(packSchema: T) =>
 	z
-		.array(variantSchema)
+		.array(packSchema)
 		.optional()
 		.transform((value) => (value && value.length > 0 ? value : undefined));
 
@@ -411,9 +600,11 @@ const itemSharedFields = {
 	/** Item type key declared in `types`. */
 	type: nonEmptyString,
 	/** Shared condition keys this item consumes. */
-	uses: optionalNonEmptyStringArray(),
+	requires: optionalNonEmptyStringArray(),
+	/** Local conditions used by this item only. */
+	conditions: optionalConditionMap,
 	/** Other registry items this item depends on. */
-	registryDependencies: optionalNonEmptyStringArray(),
+	dependsOn: optionalNonEmptyStringArray(),
 	/** Colocated scripts to run before this item's files are written. */
 	beforeInstall: optionalInstallPhaseList(),
 	/** Colocated scripts to run after this item's files are written. */
@@ -421,50 +612,107 @@ const itemSharedFields = {
 };
 
 /**
- * Shared item refinements: require an installable shape and unique variant ids.
- * @param item - Parsed item candidate.
- * @param context - Zod refinement context.
- * @param options - Whether the item uses authored files or catalog source.
+ * Whether a list field is present and non-empty.
+ * @param value - Optional array field from a parsed item.
+ * @returns True when the array has at least one entry.
  */
-function refineRegistryItem(
+function hasEntries(value: readonly unknown[] | undefined): boolean {
+	return Array.isArray(value) && value.length > 0;
+}
+
+/**
+ * Whether an item declares at least one install-phase script.
+ * @param item - Parsed item candidate.
+ * @returns True when beforeInstall or afterInstall is non-empty.
+ */
+function hasInstallPhaseScripts(item: {
+	beforeInstall?: string[];
+	afterInstall?: string[];
+}): boolean {
+	return hasEntries(item.beforeInstall) || hasEntries(item.afterInstall);
+}
+
+/**
+ * Authored-item refinements: require files, scripts, or packs, and unique pack ids.
+ * @param item - Parsed authored item candidate.
+ * @param context - Zod refinement context.
+ */
+function refineAuthoredRegistryItem(
 	item: {
-		variants?: Array<{ id: string }>;
+		packs?: Array<{ id: string }>;
 		beforeInstall?: string[];
 		afterInstall?: string[];
 		files?: unknown[];
-		source?: string;
+		requires?: string[];
+		conditions?: Record<string, unknown>;
 	},
 	context: z.RefinementCtx,
-	options: { authored: boolean },
 ): void {
-	const hasVariants = (item.variants?.length ?? 0) > 0;
-	const hasInstallPhases =
-		(item.beforeInstall?.length ?? 0) > 0 ||
-		(item.afterInstall?.length ?? 0) > 0;
-	const hasInstallSource = options.authored
-		? (item.files?.length ?? 0) > 0
-		: Boolean(item.source);
-
-	// Script-only or composer-only items need no static files when phases or variants exist.
-	if (!hasVariants && !hasInstallSource && !hasInstallPhases) {
+	if (
+		!hasEntries(item.packs) &&
+		!hasEntries(item.files) &&
+		!hasInstallPhaseScripts(item)
+	) {
 		context.addIssue({
 			code: "custom",
-			message: options.authored
-				? "missing_files_or_variants"
-				: "missing_source_or_variants",
+			message: "missing_files_or_packs",
 		});
 		return;
 	}
 
-	if (!options.authored && hasVariants && item.source) {
+	rejectDuplicatePackIds(item.packs, context);
+	rejectRequiresAndLocalConditionOverlap(item, context);
+}
+
+/**
+ * Catalog-item refinements: require source, scripts, or packs.
+ * @param item - Parsed catalog item candidate.
+ * @param context - Zod refinement context.
+ */
+function refineCatalogRegistryItem(
+	item: {
+		packs?: Array<{ id: string }>;
+		beforeInstall?: string[];
+		afterInstall?: string[];
+		source?: string;
+		requires?: string[];
+		conditions?: Record<string, unknown>;
+	},
+	context: z.RefinementCtx,
+): void {
+	if (
+		!hasEntries(item.packs) &&
+		!item.source &&
+		!hasInstallPhaseScripts(item)
+	) {
 		context.addIssue({
 			code: "custom",
-			message: "source_with_variants",
+			message: "missing_source_or_packs",
 		});
 		return;
 	}
 
-	rejectDuplicateVariantIds(item.variants, context);
+	rejectDuplicatePackIds(item.packs, context);
+	rejectRequiresAndLocalConditionOverlap(item, context);
+}
+
+/**
+ * Fail when the same key appears in both `requires` (shared) and item-level `conditions`.
+ * @param item - Item with optional requires and local conditions.
+ * @param context - Zod refinement context.
+ */
+function rejectRequiresAndLocalConditionOverlap(
+	item: { requires?: string[]; conditions?: Record<string, unknown> },
+	context: z.RefinementCtx,
+): void {
+	if (!item.conditions) return;
+	for (const key of item.requires ?? []) {
+		if (Object.hasOwn(item.conditions, key))
+			context.addIssue({
+				code: "custom",
+				message: `requires_and_local:${key}`,
+			});
+	}
 }
 
 /** Item from an authoring `registry-item.json`. */
@@ -473,15 +721,19 @@ export const registryItemSchema = z
 		...itemSharedFields,
 		/** Unique item id. */
 		id: safePathSegment,
-		/** Install files for a variant-less item, or files shared by every variant. */
+		/** Install files for a pack-less item, or files shared by every pack. */
 		files: z.array(registryFileSchema).min(1).optional(),
 		/** Ecosystem packages added with this item, keyed by ecosystem. */
 		dependencies: registryEcosystemDependenciesSchema.optional(),
-		/** Installable slices of this item; omit for a single top-level configuration. */
-		variants: optionalVariants(registryVariantSchema),
+		/** Ecosystem commands added with this item, keyed by ecosystem. */
+		commands: registryEcosystemCommandsSchema.optional(),
+		/** Repository secret names to remind about after install (never prompted). */
+		secrets: optionalNonEmptyStringArray(),
+		/** Optional included packs for conditional subsets of this item. */
+		packs: optionalPacks(registryPackSchema),
 	})
 	.superRefine((item, context) => {
-		refineRegistryItem(item, context, { authored: true });
+		refineAuthoredRegistryItem(item, context);
 		rejectInstallPhaseConflicts(item, context);
 	})
 	.transform(omitUndefined);
@@ -491,13 +743,13 @@ export type AuthoredRegistryItem = z.infer<typeof registryItemSchema>;
 export const catalogItemSchema = z
 	.strictObject({
 		...itemSharedFields,
-		/** Payload URI for a variant-less item, joined against the catalog location. */
+		/** Payload URI for item-level files, joined against the catalog location. */
 		source: nonEmptyString.optional(),
-		/** Installable slices of this item; omit for a single top-level configuration. */
-		variants: optionalVariants(catalogVariantSchema),
+		/** Optional included packs compiled as additional payloads. */
+		packs: optionalPacks(catalogPackSchema),
 	})
 	.superRefine((item, context) => {
-		refineRegistryItem(item, context, { authored: false });
+		refineCatalogRegistryItem(item, context);
 		rejectInstallPhaseConflicts(item, context);
 	})
 	.transform(omitUndefined);

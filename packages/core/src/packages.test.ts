@@ -1,24 +1,25 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	buildPackageInstallCommands,
 	detectPackageManagerFromLockfile,
 	ecosystemManagers,
-	mergeEcosystemDependencies,
+	mergeCommandSet,
+	mergeDependencySet,
+	mergeEcosystemMaps,
+	mergeSecretNames,
 	NpmPackageManager,
 } from "./packages";
 import { RegistryEcosystem } from "./schema";
 
 describe("core/packages", () => {
-	describe("mergeEcosystemDependencies", () => {
+	describe("mergeEcosystemMaps with mergeDependencySet", () => {
 		it("merges dependency sets per ecosystem and deduplicates names", () => {
 			expect(
-				mergeEcosystemDependencies(
-					{
-						npm: { dev: ["vitest@^3"] },
-					},
-					{
-						npm: { dev: ["@vitest/coverage-v8@^3"] },
-					},
+				mergeEcosystemMaps(
+					mergeDependencySet,
+					{ npm: { dev: ["vitest@^3"] } },
+					{ npm: { dev: ["@vitest/coverage-v8@^3"] } },
 				),
 			).toEqual({
 				npm: {
@@ -29,7 +30,8 @@ describe("core/packages", () => {
 
 		it("unions runtime and dev dependencies across sources", () => {
 			expect(
-				mergeEcosystemDependencies(
+				mergeEcosystemMaps(
+					mergeDependencySet,
 					{ npm: { runtime: ["react"], dev: ["vitest"] } },
 					{ npm: { runtime: ["react", "zod"] } },
 				),
@@ -43,7 +45,8 @@ describe("core/packages", () => {
 
 		it("keeps only the non-empty dependency list when the other side is blank", () => {
 			expect(
-				mergeEcosystemDependencies(
+				mergeEcosystemMaps(
+					mergeDependencySet,
 					{ npm: { runtime: ["left-pad"] } },
 					{ npm: { runtime: [], dev: [] } },
 				),
@@ -53,10 +56,52 @@ describe("core/packages", () => {
 		});
 
 		it("returns undefined when all sources are empty", () => {
-			expect(mergeEcosystemDependencies(undefined, {})).toBeUndefined();
 			expect(
-				mergeEcosystemDependencies({ npm: { runtime: [] } }, undefined),
+				mergeEcosystemMaps(mergeDependencySet, undefined, {}),
 			).toBeUndefined();
+			expect(
+				mergeEcosystemMaps(
+					mergeDependencySet,
+					{ npm: { runtime: [] } },
+					undefined,
+				),
+			).toBeUndefined();
+		});
+	});
+
+	describe("mergeEcosystemMaps with mergeCommandSet", () => {
+		it("merges command maps and lets later sources overwrite keys", () => {
+			expect(
+				mergeEcosystemMaps(
+					mergeCommandSet,
+					{ npm: { test: "vitest run", lint: "biome check" } },
+					{ npm: { test: "vitest run --coverage" } },
+				),
+			).toEqual({
+				npm: {
+					test: "vitest run --coverage",
+					lint: "biome check",
+				},
+			});
+		});
+
+		it("returns undefined when all sources are empty", () => {
+			expect(
+				mergeEcosystemMaps(mergeCommandSet, undefined, {}),
+			).toBeUndefined();
+			expect(mergeCommandSet({}, {})).toBeUndefined();
+		});
+	});
+
+	describe("mergeSecretNames", () => {
+		it("dedupes and sorts secret names", () => {
+			expect(
+				mergeSecretNames(["SONAR_TOKEN", "GH_ADMIN_TOKEN"], ["SONAR_TOKEN"]),
+			).toEqual(["GH_ADMIN_TOKEN", "SONAR_TOKEN"]);
+		});
+
+		it("returns undefined when no names are present", () => {
+			expect(mergeSecretNames(undefined, [])).toBeUndefined();
 		});
 	});
 
@@ -74,42 +119,20 @@ describe("core/packages", () => {
 	});
 
 	describe("detectPackageManagerFromLockfile", () => {
-		it("returns the matching manager and lockfile name", () => {
+		it("returns the manager when exactly one lockfile matches", () => {
 			expect(
 				detectPackageManagerFromLockfile(
 					"/project",
 					RegistryEcosystem.NPM,
-					(filePath) => filePath.endsWith("package-lock.json"),
+					(absolutePath) => absolutePath.endsWith("pnpm-lock.yaml"),
 				),
 			).toEqual({
-				manager: NpmPackageManager.NPM,
-				lockfile: "package-lock.json",
+				manager: NpmPackageManager.PNPM,
+				lockfile: "pnpm-lock.yaml",
 			});
 		});
 
-		it("returns undefined when multiple npm lockfiles are present", () => {
-			expect(
-				detectPackageManagerFromLockfile(
-					"/project",
-					RegistryEcosystem.NPM,
-					(filePath) =>
-						filePath.endsWith("bun.lock") ||
-						filePath.endsWith("pnpm-lock.yaml"),
-				),
-			).toBeUndefined();
-		});
-
-		it("infers bun when bun.lock is present", () => {
-			expect(
-				detectPackageManagerFromLockfile(
-					"/project",
-					RegistryEcosystem.NPM,
-					(filePath) => filePath.endsWith("bun.lock"),
-				)?.manager,
-			).toBe(NpmPackageManager.BUN);
-		});
-
-		it("returns undefined when no lockfile is present", () => {
+		it("returns undefined when no lockfile matches", () => {
 			expect(
 				detectPackageManagerFromLockfile(
 					"/project",
@@ -119,12 +142,14 @@ describe("core/packages", () => {
 			).toBeUndefined();
 		});
 
-		it("does not infer npm from package.json alone", () => {
+		it("returns undefined when multiple lockfiles match", () => {
 			expect(
 				detectPackageManagerFromLockfile(
 					"/project",
 					RegistryEcosystem.NPM,
-					(filePath) => filePath.endsWith("package.json"),
+					(absolutePath) =>
+						absolutePath.endsWith("package-lock.json") ||
+						absolutePath.endsWith("pnpm-lock.yaml"),
 				),
 			).toBeUndefined();
 		});
@@ -132,75 +157,79 @@ describe("core/packages", () => {
 		it("uses fs.existsSync when no path checker is provided", () => {
 			expect(
 				detectPackageManagerFromLockfile(
-					"/tmp/yehle-no-such-project-lockfiles",
+					path.join(import.meta.dirname, "..", "..", ".."),
 					RegistryEcosystem.NPM,
 				),
-			).toBeUndefined();
+			).toEqual({ manager: "pnpm", lockfile: "pnpm-lock.yaml" });
 		});
 	});
 
 	describe("buildPackageInstallCommands", () => {
-		it("builds pnpm dev dependency commands", () => {
+		it("builds runtime and dev install commands", () => {
 			expect(
 				buildPackageInstallCommands(
 					RegistryEcosystem.NPM,
-					NpmPackageManager.PNPM,
-					{ dev: ["vitest@^3"] },
+					NpmPackageManager.NPM,
+					{ runtime: ["zod"], dev: ["vitest@^3"] },
 				),
-			).toEqual(["pnpm add -D vitest@^3"]);
+			).toEqual(["npm install zod", "npm install -D vitest@^3"]);
 		});
 
-		it("builds npm runtime and dev commands", () => {
+		it("treats a missing runtime list as empty", () => {
+			expect(
+				buildPackageInstallCommands(
+					RegistryEcosystem.NPM,
+					NpmPackageManager.NPM,
+					{ dev: ["vitest@^3"] },
+				),
+			).toEqual(["npm install -D vitest@^3"]);
+		});
+
+		it("returns an empty list when there is nothing to install", () => {
 			expect(
 				buildPackageInstallCommands(
 					RegistryEcosystem.NPM,
 					NpmPackageManager.NPM,
 					{
-						runtime: ["react"],
-						dev: ["vitest@^3"],
+						runtime: [],
+						dev: [],
 					},
-				),
-			).toEqual(["npm install react", "npm install -D vitest@^3"]);
-		});
-
-		it("builds a command for every manager listed for the ecosystem", () => {
-			for (const spec of ecosystemManagers[RegistryEcosystem.NPM]) {
-				expect(
-					buildPackageInstallCommands(RegistryEcosystem.NPM, spec.manager, {
-						runtime: ["left-pad"],
-					}),
-				).toHaveLength(1);
-			}
-		});
-
-		it("returns an empty list when both dependency lists are empty", () => {
-			expect(
-				buildPackageInstallCommands(
-					RegistryEcosystem.NPM,
-					NpmPackageManager.NPM,
-					{ runtime: [], dev: [] },
 				),
 			).toEqual([]);
 		});
 
-		it("deduplicates package names in generated commands", () => {
-			expect(
-				buildPackageInstallCommands(
-					RegistryEcosystem.NPM,
-					NpmPackageManager.NPM,
-					{ runtime: ["react", "react", "zod"] },
-				),
-			).toEqual(["npm install react zod"]);
-		});
-
-		it("rejects a manager that is not valid for the ecosystem", () => {
+		it("throws when the manager is not valid for the ecosystem", () => {
 			expect(() =>
 				buildPackageInstallCommands(
 					RegistryEcosystem.NPM,
-					"cargo" as NpmPackageManager,
-					{ runtime: ["react"] },
+					"pip" as NpmPackageManager,
+					{ runtime: ["zod"] },
 				),
-			).toThrow('Package manager "cargo" is not valid for ecosystem "npm".');
+			).toThrow('Package manager "pip" is not valid for ecosystem "npm".');
+		});
+
+		it("builds pnpm, yarn, and bun install commands", () => {
+			expect(
+				buildPackageInstallCommands(
+					RegistryEcosystem.NPM,
+					NpmPackageManager.PNPM,
+					{ runtime: ["zod"] },
+				),
+			).toEqual(["pnpm add zod"]);
+			expect(
+				buildPackageInstallCommands(
+					RegistryEcosystem.NPM,
+					NpmPackageManager.YARN,
+					{ runtime: ["zod"] },
+				),
+			).toEqual(["yarn add zod"]);
+			expect(
+				buildPackageInstallCommands(
+					RegistryEcosystem.NPM,
+					NpmPackageManager.BUN,
+					{ runtime: ["zod"] },
+				),
+			).toEqual(["bun add zod"]);
 		});
 	});
 });

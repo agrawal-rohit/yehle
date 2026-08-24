@@ -65,7 +65,7 @@ function makeItem(
 	const { id, ...rest } = overrides;
 	return {
 		description: `${overrides.title} description`,
-		variants: [
+		packs: [
 			{
 				id: "default",
 				title: "Default",
@@ -173,13 +173,13 @@ describe("commands/list", () => {
 		expect(output).toContain("1 item(s)");
 	});
 
-	it("shows variant titles as a suffix", async () => {
+	it("shows pack titles as a suffix", async () => {
 		const registry = makeRegistry({
 			"theme-a": makeItem({
 				id: "theme-a",
 				title: "Alpha Theme",
 				type: "theme",
-				variants: [
+				packs: [
 					{
 						id: "light",
 						title: "Light",
@@ -200,13 +200,13 @@ describe("commands/list", () => {
 		expect(output).toContain("Alpha Theme [Light, Dark]");
 	});
 
-	it("omits the variant suffix when an item has no variants", async () => {
+	it("omits the pack suffix when an item has no packs", async () => {
 		const registry = makeRegistry({
 			"theme-a": makeItem({
 				id: "theme-a",
 				title: "Alpha Theme",
 				type: "theme",
-				variants: [],
+				packs: [],
 			}),
 		});
 
@@ -217,13 +217,13 @@ describe("commands/list", () => {
 		expect(output).not.toContain("Alpha Theme [");
 	});
 
-	it("omits the variant suffix when variants are omitted", async () => {
+	it("omits the pack suffix when packs are omitted", async () => {
 		const registry = makeRegistry({
 			"theme-a": makeItem({
 				id: "theme-a",
 				title: "Alpha Theme",
 				type: "theme",
-				variants: undefined,
+				packs: undefined,
 				source: "r/theme-a.json",
 			}),
 		});

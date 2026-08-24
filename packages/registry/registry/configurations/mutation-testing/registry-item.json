@@ -3,11 +3,14 @@
 	"title": "Mutation Testing",
 	"description": "Mutation testing configuration for catching weak tests.",
 	"type": "configuration",
-	"variants": [
+	"requires": [
+		"language",
+		"packageManager"
+	],
+	"packs": [
 		{
 			"id": "typescript",
 			"title": "TypeScript",
-			"description": "Stryker mutation testing config for TypeScript projects.",
 			"when": {
 				"language": "typescript"
 			},
@@ -18,6 +21,11 @@
 						"@stryker-mutator/vitest-runner@^9",
 						"@stryker-mutator/typescript-checker@^9"
 					]
+				}
+			},
+			"commands": {
+				"npm": {
+					"mutate": "stryker run"
 				}
 			},
 			"files": [

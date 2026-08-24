@@ -7,6 +7,7 @@ import {
 	parseWithSchema,
 } from "./parse";
 import {
+	assertConditionMapBindingKeys,
 	catalogItemSchema,
 	registryConditionSchema,
 	registryItemSchema,
@@ -16,12 +17,14 @@ import {
 
 /** Parse conditions the same way build/document parsing does. */
 function parseRegistryConditions(raw: unknown) {
-	return parseKeyedRecord(
+	const parsed = parseKeyedRecord(
 		registryConditionSchema,
 		raw,
 		"Registry conditions",
 		(key) => `Registry condition "${key}"`,
 	);
+	assertConditionMapBindingKeys(parsed);
+	return parsed;
 }
 
 /** Parse types the same way build/document parsing does. */
@@ -46,13 +49,13 @@ function validCatalogItem(
 		title: "Button",
 		description: "A button",
 		type: "component",
-		variants: [validCatalogVariant()],
+		packs: [validCatalogPack()],
 		...overrides,
 	};
 }
 
-/** Minimal valid catalog variant. */
-function validCatalogVariant(
+/** Minimal valid catalog pack. */
+function validCatalogPack(
 	overrides: Record<string, unknown> = {},
 ): Record<string, unknown> {
 	return {
@@ -84,15 +87,14 @@ describe("registry/parse", () => {
 			validDocument({
 				conditions: {
 					language: {
+						kind: "select",
 						label: "Language",
 						values: [{ value: "typescript", label: "TypeScript" }],
 					},
 				},
 				items: {
 					button: validCatalogItem({
-						variants: [
-							validCatalogVariant({ when: { language: "typescript" } }),
-						],
+						packs: [validCatalogPack({ when: { language: "typescript" } })],
 					}),
 				},
 			}),
@@ -104,35 +106,45 @@ describe("registry/parse", () => {
 		});
 	});
 
-	it("rejects items with neither source nor variants", () => {
+	it("rejects items with neither source nor packs", () => {
 		expect(() =>
 			parseRegistryDocument(
 				validDocument({
 					items: {
-						button: validCatalogItem({ variants: [] }),
+						button: validCatalogItem({ packs: [] }),
 					},
 				}),
 			),
 		).toThrow(
-			'Registry items["button"] must declare source, an install script (beforeInstall/afterInstall), or at least one variant.',
+			'Registry items["button"] must declare source, an install script (beforeInstall/afterInstall), or at least one pack.',
 		);
 	});
 
-	it("rejects items that declare source together with variants", () => {
-		expect(() =>
+	it("accepts an item that declares source together with packs", () => {
+		expect(
 			parseRegistryDocument(
 				validDocument({
 					items: {
 						button: validCatalogItem({ source: "r/button.json" }),
 					},
 				}),
-			),
-		).toThrow(
-			'Registry items["button"] cannot declare source together with variants.',
-		);
+			).items.button,
+		).toEqual({
+			title: "Button",
+			description: "A button",
+			type: "component",
+			source: "r/button.json",
+			packs: [
+				{
+					id: "react",
+					title: "React",
+					source: "r/button/react.json",
+				},
+			],
+		});
 	});
 
-	it("accepts a variant-less item with a payload source", () => {
+	it("accepts a pack-less item with a payload source", () => {
 		expect(
 			parseRegistryDocument(
 				validDocument({
@@ -140,7 +152,7 @@ describe("registry/parse", () => {
 						"assign-owner": validCatalogItem({
 							title: "Assign Owner",
 							description: "Assigns the owner",
-							variants: undefined,
+							packs: undefined,
 							source: "r/assign-owner.json",
 						}),
 					},
@@ -181,11 +193,10 @@ describe("registry/parse", () => {
 					title: "Legacy Item",
 					description: "Legacy",
 					type: "legacy",
-					variants: [
+					packs: [
 						{
 							id: "default",
 							title: "Default",
-							description: "Default",
 							files: [{ source: "legacy.txt", target: "legacy.txt" }],
 						},
 					],
@@ -209,7 +220,7 @@ describe("registry/parse", () => {
 			title: "Button",
 			description: "A button",
 			type: "component",
-			variants: [
+			packs: [
 				{
 					id: "react",
 					title: "React",
@@ -238,20 +249,18 @@ describe("registry/parse", () => {
 			).toThrow('Registry items["button"] has an unknown key: typo.');
 		});
 
-		it("rejects an unknown variant key", () => {
+		it("rejects an unknown pack key", () => {
 			expect(() =>
 				parseRegistryDocument(
 					validDocument({
 						items: {
 							button: validCatalogItem({
-								variants: [validCatalogVariant({ extra: "nope" })],
+								packs: [validCatalogPack({ extra: "nope" })],
 							}),
 						},
 					}),
 				),
-			).toThrow(
-				'Registry items["button"].variants[0] has an unknown key: extra.',
-			);
+			).toThrow('Registry items["button"].packs[0] has an unknown key: extra.');
 		});
 
 		it("rejects an unknown condition key", () => {
@@ -260,6 +269,7 @@ describe("registry/parse", () => {
 					validDocument({
 						conditions: {
 							language: {
+								kind: "select",
 								label: "Language",
 								unknownField: true,
 								values: [{ value: "typescript", label: "TypeScript" }],
@@ -394,25 +404,25 @@ describe("registry/parse", () => {
 		);
 	});
 
-	it("rejects variants that are not an array", () => {
+	it("rejects packs that are not an array", () => {
 		expect(() =>
 			parseRegistryDocument(
 				validDocument({
 					items: {
-						button: validCatalogItem({ variants: "react" }),
+						button: validCatalogItem({ packs: "react" }),
 					},
 				}),
 			),
-		).toThrow('Registry items["button"].variants must be an array.');
+		).toThrow('Registry items["button"].packs must be an array.');
 	});
 
-	it("rejects a variant without a payload source", () => {
+	it("rejects a pack without a payload source", () => {
 		expect(() =>
 			parseRegistryDocument(
 				validDocument({
 					items: {
 						button: validCatalogItem({
-							variants: [
+							packs: [
 								{
 									id: "react",
 									title: "React",
@@ -423,7 +433,7 @@ describe("registry/parse", () => {
 				}),
 			),
 		).toThrow(
-			'Registry items["button"].variants[0].source must be a non-empty string.',
+			'Registry items["button"].packs[0].source must be a non-empty string.',
 		);
 	});
 
@@ -447,6 +457,7 @@ describe("registry/parse", () => {
 			expect(
 				parseRegistryConditions({
 					language: {
+						kind: "select",
 						label: "Language",
 						description: "Pick a language.",
 						values: [{ value: "typescript", label: "TypeScript" }],
@@ -454,11 +465,32 @@ describe("registry/parse", () => {
 				}),
 			).toEqual({
 				language: {
+					kind: "select",
 					label: "Language",
 					description: "Pick a language.",
 					values: [{ value: "typescript", label: "TypeScript" }],
 				},
 			});
+		});
+
+		it("rejects option bindings that reuse the condition key", () => {
+			expect(() =>
+				parseRegistryConditions({
+					packageManager: {
+						kind: "select",
+						label: "Package manager",
+						values: [
+							{
+								value: "pnpm",
+								label: "pnpm",
+								bindings: { packageManager: "pnpm" },
+							},
+						],
+					},
+				}),
+			).toThrow(
+				'Registry condition "packageManager" value "pnpm" cannot declare bindings.packageManager (collides with the condition key).',
+			);
 		});
 
 		it("rejects a conditions value that is not an object", () => {
@@ -476,7 +508,7 @@ describe("registry/parse", () => {
 		it("rejects an empty condition values list", () => {
 			expect(() =>
 				parseRegistryConditions({
-					language: { label: "Language", values: [] },
+					language: { kind: "select", label: "Language", values: [] },
 				}),
 			).toThrow(
 				'Registry condition "language" must declare at least one value.',
@@ -486,7 +518,7 @@ describe("registry/parse", () => {
 		it("rejects a select condition that omits values", () => {
 			expect(() =>
 				parseRegistryConditions({
-					language: { label: "Language" },
+					language: { kind: "select", label: "Language" },
 				}),
 			).toThrow(
 				'Registry condition "language" must declare at least one value.',
@@ -511,6 +543,7 @@ describe("registry/parse", () => {
 			expect(() =>
 				parseRegistryConditions({
 					language: {
+						kind: "select",
 						label: "Language",
 						values: [
 							{ value: "ts", label: "TS" },
@@ -525,6 +558,7 @@ describe("registry/parse", () => {
 			expect(() =>
 				parseRegistryConditions({
 					language: {
+						kind: "select",
 						label: "Language",
 						values: [{ value: "", label: "TypeScript" }],
 					},
@@ -542,15 +576,13 @@ describe("registry/parse", () => {
 					validDocument({
 						items: {
 							button: validCatalogItem({
-								variants: [
-									validCatalogVariant({ when: { language: "typescript" } }),
-								],
+								packs: [validCatalogPack({ when: { language: "typescript" } })],
 							}),
 						},
 					}),
 				),
 			).toThrow(
-				'Registry item "button" variant "react" references unknown when key "language".',
+				'Registry item "button" pack "react" references unknown when key "language".',
 			);
 		});
 
@@ -560,21 +592,20 @@ describe("registry/parse", () => {
 					validDocument({
 						conditions: {
 							language: {
+								kind: "select",
 								label: "Language",
 								values: [{ value: "typescript", label: "TypeScript" }],
 							},
 						},
 						items: {
 							button: validCatalogItem({
-								variants: [
-									validCatalogVariant({ when: { language: "javascript" } }),
-								],
+								packs: [validCatalogPack({ when: { language: "javascript" } })],
 							}),
 						},
 					}),
 				),
 			).toThrow(
-				'Registry item "button" variant "react" uses undeclared when value "javascript" for key "language".',
+				'Registry item "button" pack "react" uses undeclared when value "javascript" for key "language".',
 			);
 		});
 
@@ -587,7 +618,7 @@ describe("registry/parse", () => {
 								title: "Assign Owner",
 								description: "Assigns the owner",
 								when: { language: "typescript" },
-								variants: undefined,
+								packs: undefined,
 								source: "r/assign-owner.json",
 							}),
 						},
@@ -596,7 +627,7 @@ describe("registry/parse", () => {
 			).toThrow('Registry items["assign-owner"] has an unknown key: when.');
 		});
 
-		it("rejects an item uses key that is not a declared condition", () => {
+		it("rejects an item requires key that is not a declared condition", () => {
 			expect(() =>
 				parseRegistryDocument(
 					validDocument({
@@ -604,14 +635,94 @@ describe("registry/parse", () => {
 							license: validCatalogItem({
 								title: "License",
 								description: "License file",
-								uses: ["authorName"],
-								variants: undefined,
+								requires: ["authorName"],
+								packs: undefined,
 								beforeInstall: ["r/license.beforeInstall.0.js"],
 							}),
 						},
 					}),
 				),
-			).toThrow('Registry item "license" uses unknown condition "authorName".');
+			).toThrow(
+				'Registry item "license" requires unknown condition "authorName".',
+			);
+		});
+
+		it("rejects an item-level condition that collides with a shared condition", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						conditions: {
+							authorName: { kind: "text", label: "Author" },
+						},
+						items: {
+							license: validCatalogItem({
+								title: "License",
+								description: "License file",
+								conditions: {
+									authorName: { kind: "text", label: "Author" },
+								},
+								packs: undefined,
+								source: "r/license.json",
+							}),
+						},
+					}),
+				),
+			).toThrow(
+				'Registry item "license" condition "authorName" collides with a shared condition.',
+			);
+		});
+
+		it("rejects requires and local conditions that share a key", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						conditions: {
+							coverageThreshold: { kind: "text", label: "Coverage" },
+						},
+						items: {
+							button: validCatalogItem({
+								requires: ["coverageThreshold"],
+								conditions: {
+									coverageThreshold: { kind: "text", label: "Coverage" },
+								},
+							}),
+						},
+					}),
+				),
+			).toThrow(
+				'Registry items["button"] lists "coverageThreshold" in both requires and local conditions.',
+			);
+		});
+
+		it("rejects duplicate local condition keys across items", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						items: {
+							left: validCatalogItem({
+								title: "Left",
+								description: "Left item",
+								packs: undefined,
+								source: "r/left.json",
+								conditions: {
+									coverageThreshold: { kind: "text", label: "Coverage" },
+								},
+							}),
+							right: validCatalogItem({
+								title: "Right",
+								description: "Right item",
+								packs: undefined,
+								source: "r/right.json",
+								conditions: {
+									coverageThreshold: { kind: "text", label: "Coverage" },
+								},
+							}),
+						},
+					}),
+				),
+			).toThrow(
+				'Item-level condition "coverageThreshold" is declared by both "left" and "right".',
+			);
 		});
 
 		it("rejects text conditions used in when", () => {
@@ -625,8 +736,8 @@ describe("registry/parse", () => {
 							license: validCatalogItem({
 								title: "License",
 								description: "License file",
-								variants: [
-									validCatalogVariant({
+								packs: [
+									validCatalogPack({
 										id: "default",
 										when: { authorName: "Ada" },
 									}),
@@ -636,7 +747,7 @@ describe("registry/parse", () => {
 					}),
 				),
 			).toThrow(
-				'Registry item "license" variant "default" references text condition "authorName" in when (text conditions cannot be used in when).',
+				'Registry item "license" pack "default" references text condition "authorName" in when (text conditions cannot be used in when).',
 			);
 		});
 
@@ -651,8 +762,8 @@ describe("registry/parse", () => {
 							ci: validCatalogItem({
 								title: "CI",
 								description: "CI workflow",
-								variants: [
-									validCatalogVariant({
+								packs: [
+									validCatalogPack({
 										id: "default",
 										when: { enableCi: "yes" },
 									}),
@@ -662,7 +773,7 @@ describe("registry/parse", () => {
 					}),
 				),
 			).toThrow(
-				'Registry item "ci" variant "default" uses invalid when value "yes" for boolean key "enableCi" (expected "true" or "false").',
+				'Registry item "ci" pack "default" uses invalid when value "yes" for boolean key "enableCi" (expected true or false).',
 			);
 		});
 
@@ -685,10 +796,10 @@ describe("registry/parse", () => {
 							mobile: validCatalogItem({
 								title: "Mobile",
 								description: "Mobile app",
-								variants: [
-									validCatalogVariant({
+								packs: [
+									validCatalogPack({
 										id: "ios",
-										when: { enableCi: "true", platforms: "ios" },
+										when: { enableCi: true, platforms: "ios" },
 									}),
 								],
 							}),
@@ -737,7 +848,7 @@ describe("registry/parse", () => {
 			);
 		});
 
-		it("rejects items with neither files, install scripts, nor variants", () => {
+		it("rejects items with neither files, install scripts, nor packs", () => {
 			expect(() =>
 				parseWithSchema(
 					registryItemSchema,
@@ -750,7 +861,7 @@ describe("registry/parse", () => {
 					"Registry item",
 				),
 			).toThrow(
-				"Registry item must declare files, an install script (beforeInstall/afterInstall), or at least one variant.",
+				"Registry item must declare files, an install script (beforeInstall/afterInstall), or at least one pack.",
 			);
 		});
 
@@ -773,6 +884,51 @@ describe("registry/parse", () => {
 			);
 		});
 
+		it("rejects min on a non-multiselect condition", () => {
+			expect(() =>
+				parseRegistryConditions({
+					language: {
+						kind: "select",
+						label: "Language",
+						min: 1,
+						values: [{ value: "typescript", label: "TypeScript" }],
+					},
+				}),
+			).toThrow(
+				'Registry condition "language" can only declare min for kind "multiselect".',
+			);
+		});
+
+		it("maps item-local option bindings that reuse the condition key", () => {
+			expect(() =>
+				parseWithSchema(
+					catalogItemSchema,
+					{
+						title: "Testing",
+						description: "Tests",
+						type: "configuration",
+						source: "r/testing.json",
+						conditions: {
+							packageManager: {
+								label: "Package manager",
+								kind: "select",
+								values: [
+									{
+										value: "pnpm",
+										label: "pnpm",
+										bindings: { packageManager: "pnpm" },
+									},
+								],
+							},
+						},
+					},
+					'Registry items["testing"]',
+				),
+			).toThrow(
+				'Registry condition "packageManager" option bindings cannot reuse the condition key "packageManager".',
+			);
+		});
+
 		it("rejects boolean conditions that declare values", () => {
 			expect(() =>
 				parseRegistryConditions({
@@ -784,6 +940,40 @@ describe("registry/parse", () => {
 				}),
 			).toThrow(
 				'Registry condition "enableCi" of kind "boolean" cannot declare values.',
+			);
+		});
+
+		it("rejects empty option bindings with a readable message", () => {
+			expect(() =>
+				parseRegistryConditions({
+					packageManager: {
+						kind: "select",
+						label: "Package manager",
+						values: [{ value: "pnpm", label: "pnpm", bindings: {} }],
+					},
+				}),
+			).toThrow(
+				'Registry condition "packageManager" values[0].bindings must declare at least one binding.',
+			);
+		});
+
+		it("rejects option bindings on multiselect conditions", () => {
+			expect(() =>
+				parseRegistryConditions({
+					tools: {
+						kind: "multiselect",
+						label: "Tools",
+						values: [
+							{
+								value: "biome",
+								label: "Biome",
+								bindings: { checkCmd: "biome check" },
+							},
+						],
+					},
+				}),
+			).toThrow(
+				'Registry condition "tools" of kind "multiselect" cannot declare option bindings.',
 			);
 		});
 
@@ -843,14 +1033,15 @@ describe("registry/parse", () => {
 						validDocument({
 							conditions: {
 								language: {
+									kind: "select",
 									label: "Language",
 									values: [{ value: "typescript", label: "TypeScript" }],
 								},
 							},
 							items: {
 								button: validCatalogItem({
-									variants: [
-										validCatalogVariant({ when: { language: "typescript" } }),
+									packs: [
+										validCatalogPack({ when: { language: "typescript" } }),
 									],
 								}),
 							},

@@ -3,11 +3,14 @@
 	"title": "Pre-commit Hooks",
 	"description": "Local hooks that run lint, format, and commit checks before changes land.",
 	"type": "configuration",
-	"variants": [
+	"requires": [
+		"language",
+		"packageManager"
+	],
+	"packs": [
 		{
 			"id": "typescript",
 			"title": "TypeScript",
-			"description": "Husky, commitlint, and lint-staged hooks for TypeScript projects using Biome.",
 			"when": {
 				"language": "typescript"
 			},
@@ -19,6 +22,11 @@
 						"@commitlint/cli@^20",
 						"@commitlint/config-conventional@^20"
 					]
+				}
+			},
+			"commands": {
+				"npm": {
+					"prepare": "husky"
 				}
 			},
 			"files": [

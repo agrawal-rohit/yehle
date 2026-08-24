@@ -5,6 +5,7 @@ export {
 	RegistryConditionKind,
 	type RegistryContext,
 	type RegistryContextValue,
+	type RegistryWhenValue,
 } from "./condition-kind";
 export {
 	InvalidJsonError,
@@ -34,10 +35,18 @@ export {
 	runBeforeInstallHook,
 } from "./handlers";
 export {
+	buildInterpolationContext,
+	type InterpolationView,
+	interpolatePayload,
+} from "./interpolate";
+export {
 	buildPackageInstallCommands,
 	detectPackageManagerFromLockfile,
 	ecosystemManagers,
-	mergeEcosystemDependencies,
+	mergeCommandSet,
+	mergeDependencySet,
+	mergeEcosystemMaps,
+	mergeSecretNames,
 	NpmPackageManager,
 	type PackageManagerSpec,
 	type RegistryPackageManager,
@@ -47,6 +56,7 @@ export {
 	assumeContextFromSelectedItems,
 	buildInstallPlan,
 	type CatalogEntry,
+	collectItemLocalConditions,
 	collectRegistryDependencies,
 	collectRequiredConditions,
 	type InstallNode,
@@ -54,22 +64,26 @@ export {
 } from "./plan";
 export {
 	type AuthoredRegistryItem,
-	type AuthoredRegistryVariant,
+	type AuthoredRegistryPack,
+	assertConditionMapBindingKeys,
 	type CatalogItem,
-	type CatalogVariant,
+	type CatalogPack,
 	catalogItemSchema,
-	catalogVariantSchema,
+	catalogPackSchema,
 	type Registry,
+	type RegistryCommandSet,
 	type RegistryCondition,
 	type RegistryConditionValue,
 	RegistryDependencyKind,
 	type RegistryDependencySet,
 	RegistryEcosystem,
+	type RegistryEcosystemCommands,
 	type RegistryEcosystemDependencies,
 	type RegistryFile,
 	type RegistryItemTypeDefinition,
 	type RegistryPayload,
 	type RegistryPayloadFile,
+	type RegistryWhen,
 	registryConditionSchema,
 	registryConditionValueSchema,
 	registryDependencySetSchema,
@@ -78,9 +92,11 @@ export {
 	registryFileSchema,
 	registryItemSchema,
 	registryItemTypeSchema,
+	registryPackSchema,
 	registryPayloadFileSchema,
 	registryPayloadSchema,
-	registryVariantSchema,
+	registryWhenSchema,
+	registryWhenValueSchema,
 } from "./schema";
 export { type RunOptions, runAsync } from "./shell";
 export {

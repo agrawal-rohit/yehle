@@ -53,8 +53,19 @@ function makeRegistry(): Registry {
 		types: { configuration: { label: "Configurations" } },
 		conditions: {
 			language: {
+				kind: RegistryConditionKind.SELECT,
 				label: "Language",
 				values: [{ value: "typescript", label: "TypeScript" }],
+			},
+			packageManager: {
+				kind: RegistryConditionKind.SELECT,
+				label: "Package manager",
+				values: [
+					{ value: "npm", label: "npm" },
+					{ value: "pnpm", label: "pnpm" },
+					{ value: "yarn", label: "Yarn" },
+					{ value: "bun", label: "Bun" },
+				],
 			},
 		},
 		items: {
@@ -83,7 +94,7 @@ describe("commands/add", () => {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "pr-template-configuration",
-				source: "r/pr-template-configuration.json",
+				sources: ["r/pr-template-configuration.json"],
 			},
 		]);
 		mockLoadRegistryPayloads.mockResolvedValue(
@@ -200,7 +211,7 @@ describe("commands/add", () => {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "alpha-configuration",
-				source: "r/alpha.json",
+				sources: ["r/alpha.json"],
 			},
 		]);
 		mockLoadRegistryPayloads.mockResolvedValue(
@@ -256,11 +267,11 @@ describe("commands/add", () => {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "pr-template-configuration",
-				source: "r/pr-template-configuration.json",
+				sources: ["r/pr-template-configuration.json"],
 			},
 			{
 				itemId: "code-quality-workflow",
-				source: "r/code-quality-workflow.json",
+				sources: ["r/code-quality-workflow.json"],
 			},
 		]);
 		mockLoadRegistryPayloads.mockResolvedValue(
@@ -369,11 +380,11 @@ describe("commands/add", () => {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "pr-template-configuration",
-				source: "r/pr-template-configuration.json",
+				sources: ["r/pr-template-configuration.json"],
 			},
 			{
 				itemId: "other",
-				source: "r/other.json",
+				sources: ["r/other.json"],
 			},
 		]);
 		mockLoadRegistryPayloads.mockResolvedValue(
@@ -415,23 +426,27 @@ describe("commands/add", () => {
 		const multiRegistry: Registry = {
 			...registry,
 			items: {
-				...registry.items,
+				"pr-template-configuration": {
+					...registry.items["pr-template-configuration"],
+					requires: ["packageManager"],
+				},
 				other: {
 					title: "Other",
 					description: "Other item",
 					type: "configuration",
 					source: "r/other.json",
+					requires: ["packageManager"],
 				},
 			},
 		};
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "pr-template-configuration",
-				source: "r/pr-template-configuration.json",
+				sources: ["r/pr-template-configuration.json"],
 			},
 			{
 				itemId: "other",
-				source: "r/other.json",
+				sources: ["r/other.json"],
 			},
 		]);
 		mockLoadRegistryPayloads.mockResolvedValue(
@@ -497,7 +512,7 @@ describe("commands/add", () => {
 					description: "PR template",
 					type: "configuration",
 					source: "r/pr-template-configuration.json",
-					variants: [
+					packs: [
 						{
 							id: "ts",
 							title: "TypeScript",
@@ -616,7 +631,7 @@ describe("commands/add", () => {
 					description: "PR template",
 					type: "configuration",
 					source: "r/pr-template-configuration.json",
-					uses: ["authorName", "enableCi", "language", "platforms"],
+					requires: ["authorName", "enableCi", "language", "platforms"],
 				},
 			},
 		};
@@ -713,7 +728,7 @@ describe("commands/add", () => {
 					description: "Demo item",
 					type: "configuration",
 					source: "r/pr-template-configuration.json",
-					uses: ["tags", "platforms", "language"],
+					requires: ["tags", "platforms", "language"],
 				},
 			},
 		};
@@ -721,7 +736,7 @@ describe("commands/add", () => {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "demo",
-				source: "r/pr-template-configuration.json",
+				sources: ["r/pr-template-configuration.json"],
 			},
 		]);
 		mockMultiselectInput.mockResolvedValue(["ios"]);
@@ -802,7 +817,7 @@ module.exports = {
 					description: "Demo item",
 					type: "configuration",
 					source: "r/pr-template-configuration.json",
-					uses: ["authorName", "enableCi"],
+					requires: ["authorName", "enableCi"],
 				},
 			},
 		};
@@ -810,7 +825,7 @@ module.exports = {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "demo",
-				source: "r/pr-template-configuration.json",
+				sources: ["r/pr-template-configuration.json"],
 			},
 		]);
 		mockTextInput.mockResolvedValue("Ada");
@@ -873,46 +888,6 @@ module.exports = {
 		);
 	});
 
-	it("uses a lockfile manager for next-step commands when install is declined", async () => {
-		fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
-		mockLoadRegistryPayloads.mockResolvedValue(
-			new Map([
-				[
-					"r/pr-template-configuration.json",
-					{
-						files: [
-							{
-								target: ".github/pull_request_template.md",
-								content: "# PR Template",
-							},
-						],
-						dependencies: {
-							npm: {
-								dev: ["vitest@^3"],
-							},
-						},
-					},
-				],
-			]),
-		);
-		mockConfirmInput.mockResolvedValue(false);
-
-		await addCommand(registry, catalogLocation, {
-			items: ["pr-template-configuration"],
-			overwrite: true,
-		});
-
-		expect(consoleLogSpy).toHaveBeenCalledWith(
-			expect.stringContaining("bun add -D vitest@^3"),
-		);
-		expect(consoleLogSpy).toHaveBeenCalledWith(
-			expect.stringMatching(/^\s+1\. Install dependencies with/),
-		);
-		expect(consoleLogSpy).not.toHaveBeenCalledWith(
-			expect.stringContaining("-1."),
-		);
-	});
-
 	it("falls back to the item id when the catalog has no title", async () => {
 		const untitledRegistry: Registry = {
 			types: { configuration: { label: "Configurations" } },
@@ -928,7 +903,7 @@ module.exports = {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "untitled-item",
-				source: "r/pr-template-configuration.json",
+				sources: ["r/pr-template-configuration.json"],
 			},
 		]);
 
@@ -947,7 +922,7 @@ module.exports = {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "ghost-item",
-				source: "r/pr-template-configuration.json",
+				sources: ["r/pr-template-configuration.json"],
 			},
 		]);
 
@@ -972,7 +947,7 @@ module.exports = {
 		).rejects.toThrow("No registry items were selected for installation.");
 	});
 
-	it("passes variantId into beforeInstall scripts when present", async () => {
+	it("passes packIds into beforeInstall scripts when present", async () => {
 		const handlerDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-variant-"));
 		const catalogPath = path.join(handlerDir, "registry.json");
 		const scriptPath = path.join(handlerDir, "r/hello.beforeInstall.0.js");
@@ -983,7 +958,7 @@ module.exports = {
 			`
 module.exports = async function beforeInstall(ctx) {
   return {
-    files: [{ target: "VARIANT.md", content: ctx.variantId || "none" }],
+    files: [{ target: "VARIANT.md", content: (ctx.packIds || []).join(",") || "none" }],
   };
 };
 `,
@@ -992,7 +967,7 @@ module.exports = async function beforeInstall(ctx) {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "hello",
-				variantId: "typescript",
+				packIds: ["typescript"],
 				beforeInstallScripts: ["r/hello.beforeInstall.0.js"],
 			},
 		]);
@@ -1024,7 +999,7 @@ module.exports = async function beforeInstall(ctx) {
 		}
 	});
 
-	it("passes variantId into afterInstall scripts when present", async () => {
+	it("passes packIds into afterInstall scripts when present", async () => {
 		const handlerDir = fs.mkdtempSync(
 			path.join(os.tmpdir(), "add-after-variant-"),
 		);
@@ -1038,7 +1013,7 @@ module.exports = async function beforeInstall(ctx) {
 			`
 const fs = require("node:fs");
 module.exports = async function afterInstall(ctx) {
-  fs.appendFileSync(${JSON.stringify(logPath)}, ctx.variantId || "none");
+  fs.appendFileSync(${JSON.stringify(logPath)}, (ctx.packIds || []).join(",") || "none");
 };
 `,
 		);
@@ -1046,8 +1021,8 @@ module.exports = async function afterInstall(ctx) {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "hello",
-				variantId: "typescript",
-				source: "r/hello.json",
+				packIds: ["typescript"],
+				sources: ["r/hello.json"],
 				afterInstallScripts: ["r/hello.afterInstall.0.js"],
 			},
 		]);
@@ -1122,11 +1097,17 @@ module.exports = async function afterInstall(ctx) {
 		);
 	});
 
-	it("installs npm packages when the user selects a manager", async () => {
+	it("installs npm packages using the packageManager condition", async () => {
 		fs.writeFileSync(path.join(tempDir, "package.json"), "{}\n");
-		mockIsFileAsync.mockImplementation(async (filePath: string) =>
-			filePath.endsWith("package.json"),
-		);
+		const packageRegistry: Registry = {
+			...registry,
+			items: {
+				"pr-template-configuration": {
+					...registry.items["pr-template-configuration"],
+					requires: ["packageManager"],
+				},
+			},
+		};
 		mockLoadRegistryPayloads.mockResolvedValue(
 			new Map([
 				[
@@ -1150,7 +1131,7 @@ module.exports = async function afterInstall(ctx) {
 		mockSelectInput.mockResolvedValue("npm");
 		mockConfirmInput.mockResolvedValue(true);
 
-		await addCommand(registry, catalogLocation, {
+		await addCommand(packageRegistry, catalogLocation, {
 			items: ["pr-template-configuration"],
 			overwrite: true,
 		});
@@ -1160,105 +1141,15 @@ module.exports = async function afterInstall(ctx) {
 			{},
 			true,
 		);
-		expect(mockSelectInput).toHaveBeenCalled();
-		expect(mockRunAsync).toHaveBeenCalledWith(
-			expect.stringContaining("npm install -D vitest@^3"),
-			expect.objectContaining({ cwd: tempDir, stdio: "inherit" }),
-		);
-	});
-
-	it("confirms a detected lockfile manager before installing", async () => {
-		fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
-		mockIsFileAsync.mockImplementation(async (filePath: string) =>
-			filePath.endsWith("bun.lock"),
-		);
-		mockLoadRegistryPayloads.mockResolvedValue(
-			new Map([
-				[
-					"r/pr-template-configuration.json",
-					{
-						files: [
-							{
-								target: ".github/pull_request_template.md",
-								content: "# PR Template",
-							},
-						],
-						dependencies: {
-							npm: {
-								dev: ["vitest@^3"],
-							},
-						},
-					},
-				],
-			]),
-		);
-		mockConfirmInput.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
-
-		await addCommand(registry, catalogLocation, {
-			items: ["pr-template-configuration"],
-			overwrite: true,
-		});
-
-		expect(mockConfirmInput).toHaveBeenNthCalledWith(
-			1,
-			"Would you like to install the required dependencies?",
-			{},
-			true,
-		);
-		expect(mockConfirmInput).toHaveBeenNthCalledWith(
-			2,
-			expect.stringMatching(/bun\.lock.*bun/),
-			{},
-			true,
-		);
-		expect(mockSelectInput).not.toHaveBeenCalled();
-		expect(mockRunAsync).toHaveBeenCalledWith(
-			expect.stringContaining("bun add -D vitest@^3"),
-			expect.objectContaining({ cwd: tempDir, stdio: "inherit" }),
-		);
-	});
-
-	it("prompts for a package manager when the detected lockfile is declined", async () => {
-		fs.writeFileSync(path.join(tempDir, "bun.lock"), "");
-		mockIsFileAsync.mockImplementation(async (filePath: string) =>
-			filePath.endsWith("bun.lock"),
-		);
-		mockLoadRegistryPayloads.mockResolvedValue(
-			new Map([
-				[
-					"r/pr-template-configuration.json",
-					{
-						files: [
-							{
-								target: ".github/pull_request_template.md",
-								content: "# PR Template",
-							},
-						],
-						dependencies: {
-							npm: {
-								dev: ["vitest@^3"],
-							},
-						},
-					},
-				],
-			]),
-		);
-		mockConfirmInput.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
-		mockSelectInput.mockResolvedValue("npm");
-
-		await addCommand(registry, catalogLocation, {
-			items: ["pr-template-configuration"],
-			overwrite: true,
-		});
-
 		expect(mockSelectInput).toHaveBeenCalledWith(
-			"Which package manager should install these npm packages?",
+			"Package manager",
 			expect.objectContaining({
 				options: expect.arrayContaining([
 					{ label: "npm", value: "npm" },
-					{ label: "bun", value: "bun" },
+					{ label: "Bun", value: "bun" },
 				]),
 			}),
+			undefined,
 		);
 		expect(mockRunAsync).toHaveBeenCalledWith(
 			expect.stringContaining("npm install -D vitest@^3"),
@@ -1266,7 +1157,55 @@ module.exports = async function afterInstall(ctx) {
 		);
 	});
 
-	it("skips package installation when the user declines the prompt", async () => {
+	it("uses the packageManager condition for next-step commands when install is declined", async () => {
+		fs.writeFileSync(path.join(tempDir, "package.json"), "{}\n");
+		const packageRegistry: Registry = {
+			...registry,
+			items: {
+				"pr-template-configuration": {
+					...registry.items["pr-template-configuration"],
+					requires: ["packageManager"],
+				},
+			},
+		};
+		mockLoadRegistryPayloads.mockResolvedValue(
+			new Map([
+				[
+					"r/pr-template-configuration.json",
+					{
+						files: [
+							{
+								target: ".github/pull_request_template.md",
+								content: "# PR Template",
+							},
+						],
+						dependencies: {
+							npm: {
+								dev: ["vitest@^3"],
+							},
+						},
+					},
+				],
+			]),
+		);
+		mockSelectInput.mockResolvedValue("pnpm");
+		mockConfirmInput.mockResolvedValue(false);
+
+		await addCommand(packageRegistry, catalogLocation, {
+			items: ["pr-template-configuration"],
+			overwrite: true,
+		});
+
+		expect(mockRunAsync).not.toHaveBeenCalled();
+		expect(consoleLogSpy).toHaveBeenCalledWith(
+			expect.stringContaining("Next steps"),
+		);
+		expect(consoleLogSpy).toHaveBeenCalledWith(
+			expect.stringContaining("pnpm add -D vitest@^3"),
+		);
+	});
+
+	it("fails when npm packages are declared without a packageManager condition", async () => {
 		fs.writeFileSync(path.join(tempDir, "package.json"), "{}\n");
 		mockLoadRegistryPayloads.mockResolvedValue(
 			new Map([
@@ -1288,21 +1227,14 @@ module.exports = async function afterInstall(ctx) {
 				],
 			]),
 		);
-		mockConfirmInput.mockResolvedValue(false);
+		mockConfirmInput.mockResolvedValue(true);
 
-		await addCommand(registry, catalogLocation, {
-			items: ["pr-template-configuration"],
-			overwrite: true,
-		});
-
-		expect(mockSelectInput).not.toHaveBeenCalled();
-		expect(mockRunAsync).not.toHaveBeenCalled();
-		expect(consoleLogSpy).toHaveBeenCalledWith(
-			expect.stringContaining("Next steps"),
-		);
-		expect(consoleLogSpy).toHaveBeenCalledWith(
-			expect.stringContaining("npm install -D vitest@^3"),
-		);
+		await expect(
+			addCommand(registry, catalogLocation, {
+				items: ["pr-template-configuration"],
+				overwrite: true,
+			}),
+		).rejects.toThrow('Missing condition "packageManager"');
 	});
 
 	it("runs a local beforeInstall script before writing files", async () => {
@@ -1317,9 +1249,9 @@ module.exports = async function afterInstall(ctx) {
 			scriptPath,
 			`
 module.exports = async function beforeInstall(ctx) {
-  const name = await ctx.prompts.text("Name", {}, "world");
+  const name = ctx.conditions.authorName || "world";
   return {
-    variables: { name },
+    bindings: { name },
     files: [{ target: "HELLO.md", content: "Hello " + name }],
   };
 };
@@ -1336,11 +1268,18 @@ module.exports = async function beforeInstall(ctx) {
 
 		const handlerRegistry: Registry = {
 			types: { configuration: { label: "Configurations" } },
+			conditions: {
+				authorName: {
+					kind: RegistryConditionKind.TEXT,
+					label: "Author",
+				},
+			},
 			items: {
 				hello: {
 					title: "Hello",
 					description: "Install script demo",
 					type: "configuration",
+					requires: ["authorName"],
 					beforeInstall: ["r/hello.beforeInstall.0.js"],
 				},
 			},
@@ -1352,7 +1291,11 @@ module.exports = async function beforeInstall(ctx) {
 				overwrite: true,
 			});
 
-			expect(mockTextInput).toHaveBeenCalled();
+			expect(mockTextInput).toHaveBeenCalledWith(
+				"Author",
+				{ required: true },
+				undefined,
+			);
 			expect(mockLoadRegistryPayloads).not.toHaveBeenCalled();
 			expect(mockWriteFileAsync).toHaveBeenCalledWith(
 				path.join(tempDir, "HELLO.md"),
@@ -1395,7 +1338,7 @@ module.exports = async function afterInstall() {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "lifecycle",
-				source: "r/lifecycle.json",
+				sources: ["r/lifecycle.json"],
 				beforeInstallScripts: ["r/lifecycle.beforeInstall.0.js"],
 				afterInstallScripts: ["r/lifecycle.afterInstall.0.js"],
 			},
@@ -1439,5 +1382,281 @@ module.exports = async function afterInstall() {
 		} finally {
 			fs.rmSync(handlerDir, { recursive: true, force: true });
 		}
+	});
+
+	it("interpolates {{key}} in files and leaves GitHub Actions expressions intact", async () => {
+		const local: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			conditions: {
+				defaultBranch: {
+					kind: RegistryConditionKind.TEXT,
+					label: "Default branch",
+				},
+			},
+			items: {
+				demo: {
+					title: "Demo",
+					description: "Demo",
+					type: "configuration",
+					source: "r/demo.json",
+					requires: ["defaultBranch"],
+				},
+			},
+		};
+		mockTextInput.mockResolvedValue("main");
+		mockBuildInstallPlan.mockReturnValue([
+			{ itemId: "demo", sources: ["r/demo.json"] },
+		]);
+		mockLoadRegistryPayloads.mockResolvedValue(
+			new Map([
+				[
+					"r/demo.json",
+					{
+						files: [
+							{
+								target: "ci.yml",
+								content: "branch: {{defaultBranch}}\nsha: ${{ github.sha }}\n",
+							},
+						],
+					},
+				],
+			]),
+		);
+
+		await addCommand(local, catalogLocation, {
+			items: ["demo"],
+			overwrite: true,
+		});
+
+		expect(mockWriteFileAsync).toHaveBeenCalledWith(
+			path.join(tempDir, "ci.yml"),
+			"branch: main\nsha: ${{ github.sha }}\n",
+		);
+	});
+
+	it("merges payload commands into package.json scripts", async () => {
+		fs.writeFileSync(
+			path.join(tempDir, "package.json"),
+			`${JSON.stringify({ name: "app", scripts: { start: "node ." } }, null, 2)}\n`,
+		);
+		mockLoadRegistryPayloads.mockResolvedValue(
+			new Map([
+				[
+					"r/pr-template-configuration.json",
+					{
+						files: [
+							{
+								target: ".github/pull_request_template.md",
+								content: "# PR Template",
+							},
+						],
+						commands: { npm: { test: "vitest run" } },
+					},
+				],
+			]),
+		);
+
+		await addCommand(registry, catalogLocation, {
+			items: ["pr-template-configuration"],
+			overwrite: true,
+		});
+
+		expect(mockWriteFileAsync).toHaveBeenCalledWith(
+			path.join(tempDir, "package.json"),
+			expect.stringContaining('"test": "vitest run"'),
+		);
+	});
+
+	it("logs repository secret names in Next steps", async () => {
+		mockLoadRegistryPayloads.mockResolvedValue(
+			new Map([
+				[
+					"r/pr-template-configuration.json",
+					{
+						files: [
+							{
+								target: ".github/pull_request_template.md",
+								content: "# PR Template",
+							},
+						],
+						secrets: ["GH_ADMIN_TOKEN"],
+					},
+				],
+			]),
+		);
+
+		await addCommand(registry, catalogLocation, {
+			items: ["pr-template-configuration"],
+			overwrite: true,
+		});
+
+		expect(consoleLogSpy).toHaveBeenCalledWith(
+			expect.stringContaining("Next steps"),
+		);
+		expect(consoleLogSpy).toHaveBeenCalledWith(
+			expect.stringContaining("GH_ADMIN_TOKEN"),
+		);
+	});
+
+	it("rejects duplicate payload targets across merged sources", async () => {
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "pr-template-configuration",
+				sources: ["r/base.json", "r/pack.json"],
+			},
+		]);
+		mockLoadRegistryPayloads.mockResolvedValue(
+			new Map([
+				["r/base.json", { files: [{ target: "README.md", content: "base" }] }],
+				["r/pack.json", { files: [{ target: "README.md", content: "pack" }] }],
+			]),
+		);
+
+		await expect(
+			addCommand(registry, catalogLocation, {
+				items: ["pr-template-configuration"],
+				overwrite: true,
+			}),
+		).rejects.toThrow(
+			'Registry item "pr-template-configuration" has duplicate payload target "README.md".',
+		);
+	});
+
+	it("folds beforeInstall hook dependencies into the working payload", async () => {
+		const handlerDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-deps-"));
+		const catalogPath = path.join(handlerDir, "registry.json");
+		const scriptPath = path.join(handlerDir, "r/hello.beforeInstall.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(catalogPath, "{}\n");
+		fs.writeFileSync(
+			path.join(tempDir, "package.json"),
+			JSON.stringify({ name: "demo", scripts: {} }),
+			"utf8",
+		);
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeInstall() {
+  return {
+    files: [{ target: "HELLO.md", content: "hi" }],
+    dependencies: { npm: { runtime: ["left-pad"] } },
+    commands: { npm: { hello: "echo hi" } },
+    secrets: ["HELLO_TOKEN"],
+  };
+};
+`,
+		);
+
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "hello",
+				beforeInstallScripts: ["r/hello.beforeInstall.0.js"],
+			},
+		]);
+
+		const handlerRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			conditions: {
+				packageManager: {
+					kind: RegistryConditionKind.SELECT,
+					label: "Package manager",
+					values: [{ value: "npm", label: "npm" }],
+				},
+			},
+			items: {
+				hello: {
+					title: "Hello",
+					description: "Hook deps",
+					type: "configuration",
+					requires: ["packageManager"],
+					beforeInstall: ["r/hello.beforeInstall.0.js"],
+				},
+			},
+		};
+
+		try {
+			await addCommand(handlerRegistry, catalogPath, {
+				items: ["hello"],
+				overwrite: true,
+			});
+			expect(mockWriteFileAsync).toHaveBeenCalledWith(
+				path.join(tempDir, "HELLO.md"),
+				"hi",
+			);
+			expect(consoleLogSpy).toHaveBeenCalledWith(
+				expect.stringContaining("HELLO_TOKEN"),
+			);
+		} finally {
+			fs.rmSync(handlerDir, { recursive: true, force: true });
+		}
+	});
+
+	it("uses item-local condition values during interpolation", async () => {
+		mockTextInput.mockResolvedValue("Ada");
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "hello",
+				sources: ["r/hello.json"],
+			},
+			{
+				itemId: "ghost",
+				sources: [],
+			},
+		]);
+		mockLoadRegistryPayloads.mockResolvedValue(
+			new Map([
+				[
+					"r/hello.json",
+					{
+						files: [
+							{
+								target: "HELLO.md",
+								content: "Hello {{authorName}} {{pmRun}}",
+							},
+						],
+					},
+				],
+			]),
+		);
+
+		const localRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			items: {
+				hello: {
+					title: "Hello",
+					description: "Local conditions",
+					type: "configuration",
+					source: "r/hello.json",
+					conditions: {
+						authorName: {
+							kind: RegistryConditionKind.TEXT,
+							label: "Author",
+						},
+						packageManager: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Package manager",
+							values: [
+								{
+									value: "pnpm",
+									label: "pnpm",
+									bindings: { pmRun: "pnpm" },
+								},
+							],
+						},
+					},
+				},
+			},
+		};
+		mockSelectInput.mockResolvedValue("pnpm");
+
+		await addCommand(localRegistry, catalogLocation, {
+			items: ["hello"],
+			overwrite: true,
+		});
+
+		expect(mockWriteFileAsync).toHaveBeenCalledWith(
+			path.join(tempDir, "HELLO.md"),
+			"Hello Ada pnpm",
+		);
 	});
 });

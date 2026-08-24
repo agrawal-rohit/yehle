@@ -3,15 +3,24 @@
 	"title": "Release Package",
 	"description": "Release Please automation that opens a Release PR on pushes to main and handles package publication.",
 	"type": "workflow",
-	"variants": [
+	"requires": [
+		"language",
+		"defaultBranch",
+		"packageManager"
+	],
+	"dependsOn": [
+		"setup-workspace-workflow"
+	],
+	"secrets": [
+		"GH_ADMIN_TOKEN"
+	],
+	"packs": [
 		{
 			"id": "typescript",
 			"title": "TypeScript",
-			"description": "Release Please configuration and GitHub Actions workflow for handling package publication for TypeScript projects.",
 			"when": {
 				"language": "typescript"
 			},
-			"registryDependencies": ["setup-workspace-workflow"],
 			"files": [
 				{
 					"source": "typescript/.github/workflows/release.yml",

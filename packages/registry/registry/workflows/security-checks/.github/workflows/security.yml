@@ -3,10 +3,10 @@ name: Security
 on:
   push:
     branches:
-      - main
+      - {{defaultBranch}}
   pull_request:
     branches:
-      - main
+      - {{defaultBranch}}
   schedule:
     - cron: "0 6 * * 1" # every Monday at 6:00 AM
   workflow_dispatch:

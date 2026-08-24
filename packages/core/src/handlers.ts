@@ -5,9 +5,17 @@ import {
 	type RegistryContext,
 	type RegistryContextValue,
 } from "./condition-kind";
+import {
+	mergeCommandSet,
+	mergeDependencySet,
+	mergeEcosystemMaps,
+	mergeSecretNames,
+} from "./packages";
 import type { RequiredCondition } from "./plan";
 import type {
 	RegistryConditionValue,
+	RegistryEcosystemCommands,
+	RegistryEcosystemDependencies,
 	RegistryPayload,
 	RegistryPayloadFile,
 } from "./schema";
@@ -21,7 +29,7 @@ export interface HandlerSelectOption extends RegistryConditionValue {
 	hint?: string;
 }
 
-/** Prompt helper injected into install scripts so they never import the CLI. */
+/** Prompt helper used by the CLI when capturing conditions. */
 export interface PromptHost {
 	/**
 	 * Prompt for free-form text.
@@ -76,12 +84,10 @@ export interface PromptHost {
 	) => Promise<boolean>;
 }
 
-/** Shared filesystem and process helpers available to install scripts. */
+/** Shared filesystem and process helpers available to install and infer scripts. */
 export interface HandlerRuntime {
 	/** Absolute project root receiving the install. */
 	projectDir: string;
-	/** Prompt host for interactive questions. */
-	prompts: PromptHost;
 	/**
 	 * Check whether a path is an existing file.
 	 * @param filePath - Absolute or project-relative path.
@@ -102,35 +108,40 @@ export interface HandlerRuntime {
 /** Shared options for install lifecycle scripts. */
 export interface RunInstallHookOptions {
 	itemId: string;
-	variantId?: string;
+	packIds?: string[];
 	conditions: RegistryContext;
-	variables?: Record<string, string>;
+	bindings?: Record<string, string>;
 	payload: RegistryPayload;
-	files: RegistryPayloadFile[];
 }
 
 /** Context passed to install lifecycle scripts. */
 export interface InstallHookContext extends HandlerRuntime {
 	/** Registry item id being installed. */
 	itemId: string;
-	/** Selected variant id when the item has variants. */
-	variantId?: string;
+	/** Selected pack ids layered onto this item. */
+	packIds?: string[];
 	/** Condition values captured from the install plan. */
 	conditions: RegistryContext;
-	/** Variables collected from earlier install scripts in this run. */
-	variables: Record<string, string>;
-	/** Parsed install payload (may have empty files before scripts run). */
+	/** Bindings collected from earlier install scripts in this run. */
+	bindings: Record<string, string>;
+	/** Working install payload (files may be empty before scripts run). */
 	payload: RegistryPayload;
-	/** Working file list (payload files plus any generated so far). */
-	files: RegistryPayloadFile[];
 }
 
 /** Optional result from a `beforeInstall` script. */
 export interface BeforeInstallHookResult {
-	/** Final file list for overwrite checks and writes. Replaces `ctx.files` when set. */
+	/** Files to upsert into the working payload by `target`. */
 	files?: RegistryPayloadFile[];
-	/** Variables merged into the shared install context. */
-	variables?: Record<string, string>;
+	/** Target paths to remove from the working payload. */
+	removeFiles?: string[];
+	/** Bindings merged into the shared install context. */
+	bindings?: Record<string, string>;
+	/** Ecosystem commands to fold into the payload when returned from a hook. */
+	commands?: RegistryEcosystemCommands;
+	/** Ecosystem packages to install. */
+	dependencies?: RegistryEcosystemDependencies;
+	/** Repository secret names to remind about after install. */
+	secrets?: string[];
 }
 
 /** Install hook script invoked before files are written. */
@@ -159,13 +170,46 @@ export interface ConditionHandlerContext extends HandlerRuntime {
 export interface ConditionHandler {
 	/**
 	 * Suggest a default value for the condition prompt.
-	 * Returning undefined leaves the prompt without a default.
+	 * Returning undefined falls back to a static `default` when declared.
 	 * @param ctx - Condition handler context.
 	 * @returns Suggested default (string, string[] for multiselect, or boolean), or undefined.
 	 */
 	infer?: (
 		ctx: ConditionHandlerContext,
 	) => Promise<string | string[] | boolean | undefined>;
+}
+
+/**
+ * Upsert returned files into the working list by target path.
+ * @param files - Current working file list.
+ * @param upserts - Files returned from a beforeInstall hook.
+ * @returns Updated file list.
+ */
+function upsertPayloadFiles(
+	files: RegistryPayloadFile[],
+	upserts: RegistryPayloadFile[],
+): RegistryPayloadFile[] {
+	const next = [...files];
+	for (const file of upserts) {
+		const index = next.findIndex((entry) => entry.target === file.target);
+		if (index === -1) next.push(file);
+		else next[index] = file;
+	}
+	return next;
+}
+
+/**
+ * Remove files whose targets appear in `removeFiles`.
+ * @param files - Current working file list.
+ * @param removeFiles - Targets to drop.
+ * @returns Filtered file list.
+ */
+function removePayloadFiles(
+	files: RegistryPayloadFile[],
+	removeFiles: string[],
+): RegistryPayloadFile[] {
+	const removed = new Set(removeFiles);
+	return files.filter((file) => !removed.has(file.target));
 }
 
 /**
@@ -200,17 +244,6 @@ export function localScriptPath(
 }
 
 /**
- * Load a CommonJS script module from disk.
- * @param absolutePath - Absolute path to the compiled script.
- * @returns Module exports object.
- */
-function requireScriptModule(absolutePath: string): Record<string, unknown> {
-	// Delete the script from the require cache so rebuilt scripts are picked up in long-lived processes.
-	Reflect.deleteProperty(requireScript.cache, absolutePath);
-	return requireScript(absolutePath) as Record<string, unknown>;
-}
-
-/**
  * Dynamically import a local script module and validate its export shape.
  * @param catalogLocation - Absolute path to registry.json (must be local).
  * @param scriptUri - Catalog script URI.
@@ -226,7 +259,9 @@ async function loadScriptModule<T>(
 	errorMessage: string,
 ): Promise<T> {
 	const absolutePath = localScriptPath(catalogLocation, scriptUri);
-	const imported = requireScriptModule(absolutePath);
+	// Delete the script from the require cache so rebuilt scripts are picked up in long-lived processes.
+	Reflect.deleteProperty(requireScript.cache, absolutePath);
+	const imported = requireScript(absolutePath) as Record<string, unknown>;
 	// Accept either `export default fn` or `module.exports = fn`.
 	const script =
 		imported !== null &&
@@ -240,12 +275,65 @@ async function loadScriptModule<T>(
 }
 
 /**
+ * Apply a beforeInstall hook result onto the working install state.
+ * @param state - Current files, bindings, and optional payload fields.
+ * @param result - Hook return value.
+ * @returns Updated install state.
+ */
+function applyBeforeInstallResult(
+	state: {
+		files: RegistryPayloadFile[];
+		bindings: Record<string, string>;
+		commands?: RegistryEcosystemCommands;
+		dependencies?: RegistryEcosystemDependencies;
+		secrets?: string[];
+	},
+	result: BeforeInstallHookResult,
+): {
+	files: RegistryPayloadFile[];
+	bindings: Record<string, string>;
+	commands?: RegistryEcosystemCommands;
+	dependencies?: RegistryEcosystemDependencies;
+	secrets?: string[];
+} {
+	const bindings = { ...state.bindings, ...result.bindings };
+	let files = state.files;
+	if (result.removeFiles) files = removePayloadFiles(files, result.removeFiles);
+	if (result.files) files = upsertPayloadFiles(files, result.files);
+
+	return {
+		files,
+		bindings,
+		commands:
+			result.commands !== undefined
+				? (mergeEcosystemMaps(
+						mergeCommandSet,
+						state.commands,
+						result.commands,
+					) as RegistryEcosystemCommands | undefined)
+				: state.commands,
+		dependencies:
+			result.dependencies !== undefined
+				? (mergeEcosystemMaps(
+						mergeDependencySet,
+						state.dependencies,
+						result.dependencies,
+					) as RegistryEcosystemDependencies | undefined)
+				: state.dependencies,
+		secrets:
+			result.secrets !== undefined
+				? mergeSecretNames(state.secrets, result.secrets)
+				: state.secrets,
+	};
+}
+
+/**
  * Run one compiled `beforeInstall` script.
  * @param catalogLocation - Absolute local path to registry.json.
  * @param scriptUri - Catalog script URI.
  * @param runtime - Shared handler runtime.
  * @param options - Item identity, payload, and install state.
- * @returns Updated files and variables.
+ * @returns Updated files, bindings, and merged payload fields.
  */
 export async function runBeforeInstallHook(
 	catalogLocation: string,
@@ -254,7 +342,10 @@ export async function runBeforeInstallHook(
 	options: RunInstallHookOptions,
 ): Promise<{
 	files: RegistryPayloadFile[];
-	variables: Record<string, string>;
+	bindings: Record<string, string>;
+	commands?: RegistryEcosystemCommands;
+	dependencies?: RegistryEcosystemDependencies;
+	secrets?: string[];
 }> {
 	const hook = await loadScriptModule(
 		catalogLocation,
@@ -262,26 +353,39 @@ export async function runBeforeInstallHook(
 		(script): script is BeforeInstallHook => typeof script === "function",
 		`Script at "${scriptUri}" must export a \`beforeInstall\` hook function.`,
 	);
-	const variables = { ...options.variables };
-	let files = [...options.files];
+	let state: {
+		files: RegistryPayloadFile[];
+		bindings: Record<string, string>;
+		commands?: RegistryEcosystemCommands;
+		dependencies?: RegistryEcosystemDependencies;
+		secrets?: string[];
+	} = {
+		files: [...options.payload.files],
+		bindings: { ...options.bindings },
+		commands: options.payload.commands,
+		dependencies: options.payload.dependencies,
+		secrets: options.payload.secrets,
+	};
 
 	const ctx: InstallHookContext = {
 		...runtime,
 		itemId: options.itemId,
-		...(options.variantId ? { variantId: options.variantId } : {}),
+		...(options.packIds ? { packIds: options.packIds } : {}),
 		conditions: options.conditions,
-		variables,
-		payload: options.payload,
-		files,
+		bindings: state.bindings,
+		payload: { ...options.payload, files: state.files },
 	};
 
 	const result: BeforeInstallHookResult | undefined = await hook(ctx);
-	if (result) {
-		if (result.variables) Object.assign(variables, result.variables);
-		if (result.files) files = result.files;
-	}
+	if (result) state = applyBeforeInstallResult(state, result);
 
-	return { files, variables };
+	return {
+		files: state.files,
+		bindings: state.bindings,
+		...(state.commands ? { commands: state.commands } : {}),
+		...(state.dependencies ? { dependencies: state.dependencies } : {}),
+		...(state.secrets ? { secrets: state.secrets } : {}),
+	};
 }
 
 /**
@@ -306,53 +410,41 @@ export async function runAfterInstallHook(
 	const ctx: InstallHookContext = {
 		...runtime,
 		itemId: options.itemId,
-		...(options.variantId ? { variantId: options.variantId } : {}),
+		...(options.packIds ? { packIds: options.packIds } : {}),
 		conditions: options.conditions,
-		variables: { ...options.variables },
+		bindings: { ...options.bindings },
 		payload: options.payload,
-		files: options.files,
 	};
 	await hook(ctx);
 }
 
 /**
- * Join a project-relative or absolute path against the install root.
- * @param projectDir - Absolute project root.
- * @param filePath - Project-relative or absolute path.
- * @returns Absolute path.
- */
-function projectFilePath(projectDir: string, filePath: string): string {
-	return path.isAbsolute(filePath) ? filePath : path.join(projectDir, filePath);
-}
-
-/**
  * Build the shared runtime helpers injected into every install script.
  * @param projectDir - Absolute project root.
- * @param prompts - Prompt host implementation.
  * @param helpers - Filesystem and process helpers.
  * @returns Handler runtime object.
  */
 export function createHandlerRuntime(
 	projectDir: string,
-	prompts: PromptHost,
 	helpers: {
 		isFile: (filePath: string) => Promise<boolean>;
 		readFile: (filePath: string) => Promise<string>;
 		run: (command: string) => Promise<string>;
 	},
 ): HandlerRuntime {
+	const absolutePath = (filePath: string) =>
+		path.isAbsolute(filePath) ? filePath : path.join(projectDir, filePath);
+
 	return {
 		projectDir,
-		prompts,
-		isFile: (filePath) => helpers.isFile(projectFilePath(projectDir, filePath)),
-		readFile: (filePath) =>
-			helpers.readFile(projectFilePath(projectDir, filePath)),
+		isFile: (filePath) => helpers.isFile(absolutePath(filePath)),
+		readFile: (filePath) => helpers.readFile(absolutePath(filePath)),
 		run: helpers.run,
 	};
 }
 
 /**
- * Infer a prompt default for one required condition when it declares a handler.
+ * Infer a prompt default for one required condition.
  * @param catalogLocation - Absolute local path to registry.json.
  * @param condition - Required condition from the install plan.
  * @param runtime - Shared handler runtime.
@@ -365,37 +457,43 @@ export async function inferConditionDefault(
 	runtime: HandlerRuntime,
 	context: RegistryContext,
 ): Promise<RegistryContextValue | undefined> {
-	if (!condition.handler) return undefined;
+	if (condition.handler) {
+		const handler = await loadScriptModule(
+			catalogLocation,
+			condition.handler,
+			(
+				loaded,
+			): loaded is ConditionHandler & {
+				infer: NonNullable<ConditionHandler["infer"]>;
+			} =>
+				typeof loaded === "object" &&
+				loaded !== null &&
+				typeof (loaded as ConditionHandler).infer === "function",
+			`Handler at "${condition.handler}" must export a condition handler with an infer hook.`,
+		);
 
-	// Dynamically import the condition handler module and validate its export shape.
-	const handler = await loadScriptModule(
-		catalogLocation,
-		condition.handler,
-		(
-			loaded,
-		): loaded is ConditionHandler & {
-			infer: NonNullable<ConditionHandler["infer"]>;
-		} =>
-			typeof loaded === "object" &&
-			loaded !== null &&
-			typeof (loaded as ConditionHandler).infer === "function",
-		`Handler at "${condition.handler}" must export a condition handler with an infer hook.`,
-	);
+		const ctx: ConditionHandlerContext = {
+			...runtime,
+			key: condition.key,
+			label: condition.label,
+			...(condition.description ? { description: condition.description } : {}),
+			...(condition.values.length > 0 ? { values: condition.values } : {}),
+			conditions: context,
+		};
 
-	const ctx: ConditionHandlerContext = {
-		...runtime,
-		key: condition.key,
-		label: condition.label,
-		...(condition.description ? { description: condition.description } : {}),
-		...(condition.values.length > 0 ? { values: condition.values } : {}),
-		conditions: context,
-	};
+		const inferred = await handler.infer(ctx);
+		if (inferred !== undefined && inferred !== "") {
+			const normalized = policyForConditionKind(
+				condition.kind,
+			).normalizeInferred(inferred, condition.values);
+			if (normalized !== undefined) return normalized;
+		}
+	}
 
-	const inferred = await handler.infer(ctx);
-	if (inferred === undefined || inferred === "") return undefined;
+	if (condition.default === undefined) return undefined;
 
 	return policyForConditionKind(condition.kind).normalizeInferred(
-		inferred,
+		condition.default,
 		condition.values,
 	);
 }

@@ -1,80 +1,73 @@
+import fs from "node:fs";
+import path from "node:path";
 import {
 	buildPackageInstallCommands,
-	detectPackageManagerFromLockfile,
-	ecosystemManagers,
-	mergeEcosystemDependencies,
+	mergeCommandSet,
+	mergeDependencySet,
+	mergeEcosystemMaps,
+	NpmPackageManager,
+	type RegistryContext,
 	RegistryEcosystem,
 	type RegistryEcosystemDependencies,
 	type RegistryPackageManager,
+	type RegistryPayload,
+	readFileAsync,
 	runAsync,
+	writeFileAsync,
 } from "@tuckshop/core";
-import { primaryText } from "../cli/labels";
-import { confirmInput, selectInput } from "../cli/prompts";
+import { confirmInput } from "../cli/prompts";
 import { runWithTasks } from "../cli/tasks";
 
 /**
- * Select the package manager to use for an ecosystem.
- * Confirms a lockfile match when one is detected; otherwise prompts to choose.
- * @param ecosystem - Registry ecosystem with packages to install.
- * @param projectDir - Absolute project root.
- * @returns Selected or confirmed manager.
+ * Read the npm package manager from the captured `packageManager` condition.
+ * @param conditions - Install condition context.
+ * @returns Selected npm package manager.
+ * @throws Error when the condition is missing or not a supported manager id.
  */
-async function selectPackageManager(
-	ecosystem: RegistryEcosystem,
-	projectDir: string,
-): Promise<RegistryPackageManager> {
-	const managers = ecosystemManagers[ecosystem].map((spec) => spec.manager);
-	const detection = detectPackageManagerFromLockfile(projectDir, ecosystem);
-	if (detection) {
-		const confirmed = await confirmInput(
-			`${primaryText(detection.lockfile)} detected. Would you like to use ${primaryText(detection.manager)} to install the dependencies?`,
-			{},
-			true,
+export function npmPackageManagerFromConditions(
+	conditions: RegistryContext,
+): RegistryPackageManager {
+	const value = conditions.packageManager;
+	if (typeof value !== "string")
+		throw new Error(
+			'Missing condition "packageManager". Items that declare npm dependencies or commands must require it.',
 		);
-		if (confirmed) return detection.manager;
-	} else if (managers.length === 1) return managers[0];
 
-	return selectInput(
-		`Which package manager should install these ${ecosystem} packages?`,
-		{
-			options: managers.map((manager) => ({
-				label: manager,
-				value: manager,
-			})),
-		},
-	);
+	const managers = Object.values(NpmPackageManager) as string[];
+	if (!managers.includes(value))
+		throw new Error(
+			`Unknown packageManager "${value}". Expected one of: ${managers.join(", ")}.`,
+		);
+
+	return value as RegistryPackageManager;
 }
 
 /**
  * Build install commands for merged package declarations.
  * @param packageDeclarations - Per-payload package maps from the install plan.
- * @param projectDir - Absolute project root.
- * @param shouldInstall - When true, select a manager and return runnable commands.
+ * @param conditions - Captured install conditions (must include packageManager for npm).
+ * @param shouldInstall - When true, return runnable commands; otherwise next-step suggestions.
  * @returns Commands to run now and commands to suggest as next steps.
  */
 async function collectPackageInstallCommands(
 	packageDeclarations: RegistryEcosystemDependencies[],
-	projectDir: string,
+	conditions: RegistryContext,
 	shouldInstall: boolean,
 ): Promise<{ installCommands: string[]; pendingCommands: string[] }> {
-	const merged = mergeEcosystemDependencies(...packageDeclarations);
+	const merged = mergeEcosystemMaps(mergeDependencySet, ...packageDeclarations);
 	const installCommands: string[] = [];
 	const pendingCommands: string[] = [];
 	if (!merged) return { installCommands, pendingCommands };
 
 	const commands = shouldInstall ? installCommands : pendingCommands;
-
-	for (const ecosystem of Object.values(RegistryEcosystem)) {
-		const packageSet = merged[ecosystem];
-		if (!packageSet) continue;
-
-		const manager = shouldInstall
-			? await selectPackageManager(ecosystem, projectDir)
-			: (detectPackageManagerFromLockfile(projectDir, ecosystem)?.manager ??
-				ecosystemManagers[ecosystem][0].manager);
-
+	const npmPackages = merged[RegistryEcosystem.NPM];
+	if (npmPackages) {
 		commands.push(
-			...buildPackageInstallCommands(ecosystem, manager, packageSet),
+			...buildPackageInstallCommands(
+				RegistryEcosystem.NPM,
+				npmPackageManagerFromConditions(conditions),
+				npmPackages,
+			),
 		);
 	}
 
@@ -82,14 +75,17 @@ async function collectPackageInstallCommands(
 }
 
 /**
- * Prompt for and optionally run package install commands from payload declarations.
+ * Optionally run package install commands from payload declarations.
+ * Uses `conditions.packageManager` for the npm ecosystem (no second prompt).
  * @param packageDeclarations - Per-payload package maps collected during writes.
  * @param projectDir - Absolute project root.
+ * @param conditions - Captured install conditions.
  * @returns Commands still left for the user when installation was skipped.
  */
 export async function installDeclaredPackages(
 	packageDeclarations: RegistryEcosystemDependencies[],
 	projectDir: string,
+	conditions: RegistryContext,
 ): Promise<string[]> {
 	if (packageDeclarations.length === 0) return [];
 
@@ -102,7 +98,7 @@ export async function installDeclaredPackages(
 	const { installCommands, pendingCommands } =
 		await collectPackageInstallCommands(
 			packageDeclarations,
-			projectDir,
+			conditions,
 			shouldInstall,
 		);
 
@@ -116,4 +112,55 @@ export async function installDeclaredPackages(
 	}
 
 	return [];
+}
+
+/**
+ * Merge payload `commands` into the project's package.json scripts.
+ * @param projectDir - Absolute project root.
+ * @param payloads - Install payloads whose commands may be merged.
+ * @throws Error when commands are declared but package.json is missing.
+ */
+export async function mergeProjectCommands(
+	projectDir: string,
+	payloads: RegistryPayload[],
+): Promise<void> {
+	const commands = mergeEcosystemMaps(
+		mergeCommandSet,
+		...payloads.map((p) => p.commands),
+	);
+	const npmCommands = commands?.[RegistryEcosystem.NPM];
+	if (!npmCommands || Object.keys(npmCommands).length === 0) return;
+
+	const packageJsonPath = path.join(projectDir, "package.json");
+	if (!fs.existsSync(packageJsonPath))
+		throw new Error(
+			"Cannot merge package.json scripts: package.json was not found in the project root.",
+		);
+
+	const raw = await readFileAsync(packageJsonPath);
+	const packageJson = JSON.parse(raw) as {
+		scripts?: Record<string, string>;
+		[key: string]: unknown;
+	};
+	const scripts = { ...packageJson.scripts };
+
+	for (const [name, command] of Object.entries(npmCommands)) {
+		const existing = scripts[name];
+		if (existing === command) continue;
+		if (existing !== undefined) {
+			const overwrite = await confirmInput(
+				`package.json script "${name}" already exists. Overwrite with "${command}"?`,
+				{},
+				false,
+			);
+			if (!overwrite) continue;
+		}
+		scripts[name] = command;
+	}
+
+	packageJson.scripts = scripts;
+	await writeFileAsync(
+		packageJsonPath,
+		`${JSON.stringify(packageJson, null, 2)}\n`,
+	);
 }

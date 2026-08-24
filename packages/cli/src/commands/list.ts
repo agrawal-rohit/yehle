@@ -79,17 +79,13 @@ function printItemsByType(
 		const indexWidth = String(sorted.length).length;
 
 		for (const [index, item] of sorted.entries()) {
-			const variantLabels = (item.variants ?? []).map(
-				(variant) => variant.title,
-			);
-			const variants =
-				variantLabels.length > 0
-					? chalk.cyan(` [${variantLabels.join(", ")}]`)
-					: "";
+			const packLabels = (item.packs ?? []).map((pack) => pack.title);
+			const packs =
+				packLabels.length > 0 ? chalk.cyan(` [${packLabels.join(", ")}]`) : "";
 			const number = defaultText(`${String(index + 1).padStart(indexWidth)}.`);
 
 			console.log(
-				`  ${number} ${chalk.bold(item.title)}${variants}: ${item.description}`,
+				`  ${number} ${chalk.bold(item.title)}${packs}: ${item.description}`,
 			);
 		}
 

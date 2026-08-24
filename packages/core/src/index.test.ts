@@ -18,7 +18,9 @@ describe("package entry", () => {
 		expect(typeof core.buildRegistry).toBe("function");
 		expect(typeof core.buildInstallPlan).toBe("function");
 		expect(typeof core.runAsync).toBe("function");
-		expect(typeof core.mergeEcosystemDependencies).toBe("function");
+		expect(typeof core.mergeEcosystemMaps).toBe("function");
+		expect(typeof core.mergeDependencySet).toBe("function");
+		expect(typeof core.mergeCommandSet).toBe("function");
 		expect(typeof core.buildPackageInstallCommands).toBe("function");
 		expect(typeof core.joinRelativePathUnderRoot).toBe("function");
 		expect(typeof core.detectPackageManagerFromLockfile).toBe("function");
@@ -26,6 +28,10 @@ describe("package entry", () => {
 		expect(typeof core.runBeforeInstallHook).toBe("function");
 		expect(typeof core.runAfterInstallHook).toBe("function");
 		expect(typeof core.inferConditionDefault).toBe("function");
+		expect(typeof core.buildInterpolationContext).toBe("function");
+		expect(typeof core.interpolatePayload).toBe("function");
+		expect(typeof core.mergeSecretNames).toBe("function");
+		expect(typeof core.collectItemLocalConditions).toBe("function");
 		expect(core.registryPayloadSchema).toBeDefined();
 		expect(core.RegistryConditionKind).toBeDefined();
 		expect(core.RegistryEcosystem).toBeDefined();

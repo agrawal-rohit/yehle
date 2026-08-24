@@ -1,11 +1,11 @@
-name: Setup pnpm workspace
-description: Install Node, pnpm, and frozen workspace dependencies.
+name: Setup {{packageManager}} workspace
+description: Install Node, {{packageManager}}, and frozen workspace dependencies.
 
 inputs:
   node-version:
     description: Node.js version to install.
     required: false
-    default: "20"
+    default: "{{nodeVersion}}"
   registry-url:
     description: Optional npm registry URL (e.g. for publishing with provenance).
     required: false
@@ -14,16 +14,13 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Setup pnpm
-      uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-
     - name: Setup Node
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
-        cache: pnpm
+        cache: {{packageManager}}
         node-version: ${{ inputs.node-version }}
         registry-url: ${{ inputs.registry-url }}
 
     - name: Install dependencies
       shell: bash
-      run: pnpm install --ignore-scripts --frozen-lockfile
+      run: {{pmInstall}}

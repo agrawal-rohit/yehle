@@ -3,21 +3,60 @@
 	"title": "Code Quality",
 	"description": "Code quality gates with linting and static analysis.",
 	"type": "workflow",
-	"files": [
-		{
-			"source": "sonar-project.properties",
-			"target": "sonar-project.properties"
-		}
+	"requires": [
+		"language",
+		"defaultBranch",
+		"packageManager"
 	],
-	"variants": [
-		{
-			"id": "typescript",
-			"title": "TypeScript",
-			"description": "Biome, SonarQube, and Fallow quality gates for TypeScript projects.",
+	"dependsOn": [
+		"setup-workspace-workflow"
+	],
+	"conditions": {
+		"qualityTools": {
+			"min": 1,
+			"kind": "multiselect",
+			"label": "Quality tools",
+			"description": "Which code quality gates should be installed?",
+			"values": [
+				{
+					"value": "biome",
+					"label": "Biome"
+				},
+				{
+					"value": "sonar",
+					"label": "SonarQube"
+				},
+				{
+					"value": "fallow",
+					"label": "Fallow"
+				}
+			]
+		},
+		"sonarProjectKey": {
+			"kind": "text",
+			"label": "SonarQube project key",
+			"description": "SonarQube project key (e.g. my-org_my-project).",
 			"when": {
-				"language": "typescript"
+				"qualityTools": "sonar"
+			}
+		},
+		"sonarOrganization": {
+			"kind": "text",
+			"label": "SonarQube organization",
+			"description": "SonarQube organization key.",
+			"when": {
+				"qualityTools": "sonar"
+			}
+		}
+	},
+	"packs": [
+		{
+			"id": "biome",
+			"title": "Biome",
+			"when": {
+				"language": "typescript",
+				"qualityTools": "biome"
 			},
-			"registryDependencies": ["setup-workspace-workflow"],
 			"dependencies": {
 				"npm": {
 					"dev": [
@@ -25,14 +64,67 @@
 					]
 				}
 			},
+			"commands": {
+				"npm": {
+					"check": "{{pmExec}} biome check ."
+				}
+			},
 			"files": [
 				{
-					"source": "typescript/.github/workflows/quality.yml",
-					"target": ".github/workflows/quality.yml"
+					"source": "typescript/.github/workflows/quality-biome.yml",
+					"target": ".github/workflows/quality-biome.yml"
 				},
 				{
 					"source": "typescript/biome.json",
 					"target": "biome.json"
+				}
+			]
+		},
+		{
+			"id": "sonar",
+			"title": "SonarQube",
+			"when": {
+				"language": "typescript",
+				"qualityTools": "sonar"
+			},
+			"dependencies": {
+				"npm": {
+					"dev": [
+						"vitest@^3",
+						"@vitest/coverage-v8@^3"
+					]
+				}
+			},
+			"commands": {
+				"npm": {
+					"cov": "vitest run --coverage --passWithNoTests"
+				}
+			},
+			"secrets": [
+				"SONAR_TOKEN"
+			],
+			"files": [
+				{
+					"source": "typescript/.github/workflows/quality-sonar.yml",
+					"target": ".github/workflows/quality-sonar.yml"
+				},
+				{
+					"source": "sonar-project.properties",
+					"target": "sonar-project.properties"
+				}
+			]
+		},
+		{
+			"id": "fallow",
+			"title": "Fallow",
+			"when": {
+				"language": "typescript",
+				"qualityTools": "fallow"
+			},
+			"files": [
+				{
+					"source": "typescript/.github/workflows/quality-fallow.yml",
+					"target": ".github/workflows/quality-fallow.yml"
 				},
 				{
 					"source": "typescript/.fallowrc.json",

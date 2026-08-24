@@ -14,7 +14,10 @@ vi.mock("../cli/prompts", () => ({
 	multiselectInput: (...args: unknown[]) => mockMultiselectInput(...args),
 }));
 
-import { captureRequiredConditions } from "./add-conditions";
+import {
+	captureItemLocalConditionsForPlan,
+	captureRequiredConditions,
+} from "./add-conditions";
 
 describe("commands/add-conditions", () => {
 	beforeEach(() => {
@@ -44,7 +47,7 @@ describe("commands/add-conditions", () => {
 					description: "Demo",
 					type: "configuration",
 					source: "r/demo.json",
-					uses: ["authorName"],
+					requires: ["authorName"],
 				},
 			},
 		};
@@ -80,7 +83,7 @@ describe("commands/add-conditions", () => {
 					description: "Demo",
 					type: "configuration",
 					source: "r/demo.json",
-					uses: ["tags"],
+					requires: ["tags"],
 				},
 			},
 		};
@@ -94,5 +97,219 @@ describe("commands/add-conditions", () => {
 
 		expect(context).toEqual({ tags: ["docs"] });
 		expect(mockMultiselectInput).not.toHaveBeenCalled();
+	});
+
+	it("omits skipped optional text conditions from context", async () => {
+		mockTextInput.mockResolvedValue("");
+		const registry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			conditions: {
+				coverageThreshold: {
+					kind: RegistryConditionKind.TEXT,
+					label: "Coverage",
+					optional: true,
+				},
+			},
+			items: {
+				demo: {
+					title: "Demo",
+					description: "Demo",
+					type: "configuration",
+					source: "r/demo.json",
+					requires: ["coverageThreshold"],
+				},
+			},
+		};
+
+		const context = await captureRequiredConditions(
+			registry,
+			"/tmp/registry.json",
+			"/tmp/project",
+			["demo"],
+		);
+
+		expect(context).toEqual({});
+		expect(mockTextInput).toHaveBeenCalledWith(
+			"Coverage",
+			{ required: false },
+			undefined,
+		);
+	});
+
+	it("captures optional boolean conditions via Yes/No/Skip", async () => {
+		mockSelectInput.mockResolvedValue("true");
+		const registry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			conditions: {
+				enableCi: {
+					kind: RegistryConditionKind.BOOLEAN,
+					label: "Enable CI",
+					optional: true,
+					default: "true",
+				},
+			},
+			items: {
+				demo: {
+					title: "Demo",
+					description: "Demo",
+					type: "configuration",
+					source: "r/demo.json",
+					requires: ["enableCi"],
+				},
+			},
+		};
+
+		await expect(
+			captureRequiredConditions(
+				registry,
+				"/tmp/registry.json",
+				"/tmp/project",
+				["demo"],
+			),
+		).resolves.toEqual({ enableCi: true });
+		expect(mockSelectInput).toHaveBeenCalledWith(
+			"Enable CI",
+			expect.any(Object),
+			"true",
+		);
+
+		mockSelectInput.mockResolvedValue("__tuckshop_skip__");
+		const skipRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			conditions: {
+				enableCi: {
+					kind: RegistryConditionKind.BOOLEAN,
+					label: "Enable CI",
+					optional: true,
+				},
+			},
+			items: {
+				demo: {
+					title: "Demo",
+					description: "Demo",
+					type: "configuration",
+					source: "r/demo.json",
+					requires: ["enableCi"],
+				},
+			},
+		};
+		await expect(
+			captureRequiredConditions(
+				skipRegistry,
+				"/tmp/registry.json",
+				"/tmp/project",
+				["demo"],
+			),
+		).resolves.toEqual({});
+	});
+
+	it("omits skipped optional multiselect conditions from context", async () => {
+		mockMultiselectInput.mockResolvedValue([]);
+		const registry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			conditions: {
+				platforms: {
+					kind: RegistryConditionKind.MULTISELECT,
+					label: "Platforms",
+					optional: true,
+					values: [
+						{ value: "ios", label: "iOS" },
+						{ value: "android", label: "Android" },
+					],
+				},
+			},
+			items: {
+				demo: {
+					title: "Demo",
+					description: "Demo",
+					type: "configuration",
+					source: "r/demo.json",
+					requires: ["platforms"],
+				},
+			},
+		};
+
+		await expect(
+			captureRequiredConditions(
+				registry,
+				"/tmp/registry.json",
+				"/tmp/project",
+				["demo"],
+			),
+		).resolves.toEqual({});
+	});
+
+	it("omits skipped optional select conditions from context", async () => {
+		mockSelectInput.mockResolvedValue("__tuckshop_skip__");
+		const registry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			conditions: {
+				language: {
+					kind: RegistryConditionKind.SELECT,
+					label: "Language",
+					optional: true,
+					values: [
+						{ value: "typescript", label: "TypeScript" },
+						{ value: "python", label: "Python" },
+					],
+				},
+			},
+			items: {
+				demo: {
+					title: "Demo",
+					description: "Demo",
+					type: "configuration",
+					source: "r/demo.json",
+					requires: ["language"],
+				},
+			},
+		};
+
+		await expect(
+			captureRequiredConditions(
+				registry,
+				"/tmp/registry.json",
+				"/tmp/project",
+				["demo"],
+			),
+		).resolves.toEqual({});
+	});
+
+	it("rebuilds the install plan after capturing item-local conditions", async () => {
+		mockTextInput.mockResolvedValue("45");
+		const registry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			items: {
+				demo: {
+					title: "Demo",
+					description: "Demo",
+					type: "configuration",
+					source: "r/demo.json",
+					conditions: {
+						coverageThreshold: {
+							kind: RegistryConditionKind.TEXT,
+							label: "Coverage",
+						},
+					},
+				},
+			},
+		};
+
+		const result = await captureItemLocalConditionsForPlan(
+			registry,
+			"/tmp/registry.json",
+			["demo"],
+			[{ itemId: "demo", sources: ["r/demo.json"] }],
+			{},
+			{
+				projectDir: "/tmp/project",
+				isFile: async () => false,
+				readFile: async () => "",
+				run: async () => "",
+			},
+		);
+
+		expect(result.context).toEqual({ coverageThreshold: "45" });
+		expect(result.plan).toEqual([{ itemId: "demo", sources: ["r/demo.json"] }]);
 	});
 });

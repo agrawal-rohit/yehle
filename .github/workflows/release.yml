@@ -50,7 +50,7 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Build workspace
-        run: pnpm run build
+        run: pnpm build
 
       - name: Publish packages
         env:

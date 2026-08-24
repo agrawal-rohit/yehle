@@ -9,12 +9,24 @@ description: Compiling and validating tuckshop registries with @tuckshop/core.
 pnpm add @tuckshop/core
 ```
 
-## What `@tuckshop/core` provides
+## Mental model
 
-- registry schema types
-- `parseRegistryDocument()` and `parseWithSchema()` for runtime validation (unknown keys are rejected)
-- `buildRegistry()` to compile an authoring tree into `registry.json` plus payloads and scripts under `r/`
-- install hook contracts (`BeforeInstallHook`, `AfterInstallHook`, `ConditionHandler`) and local-only runners (`runBeforeInstallHook`, `runAfterInstallHook`)
+Authors learn four things, in this order:
+
+1. **Items** copy files (and optional packages, commands, and secrets) into a project.
+2. **Conditions** are the only questions. Shared ones live in `conditions/conditions.json` and are opted into with `requires`. Local ones live on the item under `conditions`.
+3. **Packs** are optional named bundles. **Every pack whose `when` matches is installed (union).** Item-level files are the unconditional base.
+4. **Hooks generate** content from already-captured conditions. They do not prompt. They run on **local catalogs only**.
+
+## Decision tree
+
+| You need… | Use… |
+| --- | --- |
+| Static files only | Item `files` |
+| Answers that fill `{{keys}}` | Shared `requires` and/or item `conditions` |
+| Optional or language-specific file sets | `packs` with `when` (union match) |
+| Packages, scripts, secrets, or other items first | `dependencies`, `commands`, `secrets`, `dependsOn` |
+| Generated content from answers | `beforeInstall` / `afterInstall` (local catalog) |
 
 ## Compiling a registry
 
@@ -30,75 +42,143 @@ await buildRegistry({
 
 That writes:
 
-- `registry.json` — catalog index (items may declare `source`, `variants`, and/or `beforeInstall` / `afterInstall`)
-- `r/{itemId}.json` or `r/{itemId}/{variantId}.json` — install payloads
-- `r/{itemId}.beforeInstall.{index}.js` / `r/{itemId}.afterInstall.{index}.js` — bundled install scripts
-- `r/_handlers/{key}.handler.js` — bundled condition handlers
+- `registry.json` — catalog index (`source`, `packs`, `requires`, `dependsOn`, scripts)
+- `r/{itemId}.json` — base payload when the item has item-level files/deps/commands/secrets
+- `r/{itemId}/{packId}.json` — per-pack payloads
+- Bundled install scripts and condition handlers under `r/`
 
-## Install lifecycle (local catalogs only)
+Build fails if an item or pack declares npm `dependencies` or `commands` without `requires: ["packageManager"]`.
 
-Every item has two optional authored phases. **Write** (static payload files) is core and not a script.
+## Conditions
+
+Shared prompts live in `conditions/conditions.json`. Items opt in with `"requires": ["authorName"]`. Every condition declares a required `kind`:
+
+| Kind | Captured value | Notes |
+| --- | --- | --- |
+| `select` | `string` | Options may declare `bindings` (extra interpolation keys) |
+| `multiselect` | `string[]` | Optional `min`; no option `bindings` |
+| `text` | `string` | Optional `default` |
+| `boolean` | `boolean` | |
+
+Conditions may declare `when` so they are only prompted after other answers match. Multiselect may declare `min` (for example `1`).
+
+Condition handlers expose `infer` to suggest a prompt default. If `infer` returns undefined, a static `default` is used when present. Handlers and install hooks run only for **local** catalogs.
+
+Item-level conditions use the same schema under `conditions`. Do not also list those keys in `requires`. Local keys must not collide with shared names.
+
+```json
+{
+	"id": "testing-configuration",
+	"requires": ["defaultBranch", "packageManager"],
+	"conditions": {
+		"coverageThreshold": {
+			"kind": "text",
+			"label": "Coverage line threshold",
+			"default": "45"
+		}
+	}
+}
+```
+
+Set `"optional": true` to allow skipping. Skipped keys stay unset (falsy in Mustache), not empty strings.
+
+## Packs
+
+Packs replace the old one-of variants model. Matching is **union**: every pack whose `when` matches is installed, layered on any item-level files.
+
+```json
+{
+	"id": "code-quality-workflow",
+	"requires": ["language", "packageManager"],
+	"dependsOn": ["setup-workspace-workflow"],
+	"conditions": {
+		"qualityTools": {
+			"kind": "multiselect",
+			"min": 1,
+			"label": "Quality tools",
+			"values": [
+				{ "value": "biome", "label": "Biome" },
+				{ "value": "sonar", "label": "SonarQube" }
+			]
+		}
+	},
+	"packs": [
+		{
+			"id": "biome",
+			"when": { "language": "typescript", "qualityTools": "biome" },
+			"files": [{ "source": "typescript/biome.json", "target": "biome.json" }],
+			"dependencies": { "npm": { "dev": ["@biomejs/biome@^2"] } }
+		}
+	]
+}
+```
+
+`when` grammar (AND across keys):
+
+- **select:** string (equals) or string[] (any-of)
+- **multiselect:** string (membership) or string[] (any-of membership)
+- **boolean:** boolean
+- **text:** forbidden in `when`
+
+An item may have base `files` **and** `packs` together (for example a shared workflow plus a language-specific config pack).
+
+Pin `item@pack` force-includes that pack and does not drop other matches.
+
+## Dependencies between items
+
+`dependsOn` installs other items first. Prefer item-level `dependsOn` when every pack needs the same dependency.
+
+## Interpolation
+
+After `beforeInstall`, Mustache runs on file contents and command values. The view is typed:
+
+1. Captured conditions (booleans stay boolean, arrays stay arrays)
+2. Select option `bindings` for the chosen value
+3. Hook `bindings` (win on key conflicts)
+
+GitHub Actions expressions (`${{ ... }}`) are left untouched. HTML escaping is disabled.
+
+## Install hooks (local catalogs only)
 
 | Phase | When it runs | Typical use |
 | --- | --- | --- |
-| `beforeInstall` | Before planned files are written | Prompts, generate/transform the file list, scaffold CLIs |
-| write | After `beforeInstall` | Static `files` plus any files returned from `beforeInstall` |
-| `afterInstall` | After files exist on disk | `git init`, format, convert |
+| `beforeInstall` | Before planned files are written | Generate or upsert files from conditions |
+| write | After `beforeInstall` | Static `files` plus hook upserts |
+| `afterInstall` | After files exist on disk | `git init`, format |
 
-Each phase accepts a **string or array of strings**. Each entry is a **colocated script** — any relative path under the item folder (`license.ts`, `./scaffold.ts`, `scripts/setup`). Item ids belong in `registryDependencies`, not in these lists.
-
-Scripts are bundled at compile time and executed only when the catalog is a **local path**. Remote HTTPS registries cannot execute custom scripts.
-
-Use `import type` from `@tuckshop/core` (do not runtime-import the package):
+Hooks do **not** prompt. Put questions in conditions. Use `import type` from `@tuckshop/core` (do not runtime-import the package):
 
 ```ts
 import type { BeforeInstallHook } from "@tuckshop/core";
 
 const beforeInstall: BeforeInstallHook = async (ctx) => {
-	const licenseId = await ctx.prompts.select("License", {
-		options: [{ label: "MIT", value: "MIT" }],
-	});
+	const licenseId = ctx.conditions.licenseId;
 	return {
-		files: [{ target: "LICENSE", content: licenseId }],
+		files: [{ target: "LICENSE", content: String(licenseId) }],
 	};
 };
 
 export default beforeInstall;
 ```
 
-`beforeInstall` may prompt (`ctx.prompts`), run commands (`ctx.run`), and return `files` / `variables`. Returned `files` **replace** `ctx.files` (append with `[...ctx.files, ...extra]` when needed). `afterInstall` uses the same function type, but returned `files` are ignored.
+`beforeInstall` may return:
 
-Shared prompts stay on conditions and `uses`. Condition handlers expose `infer` to suggest a prompt default (for example from marker files or `ctx.run("git config --get user.name")`). Items consume those values with `"uses": ["authorName"]`; the captured value is then `ctx.conditions.authorName` in install scripts.
+- `files` — **upsert by target** (replace matching targets, append new ones)
+- `removeFiles` — drop targets from the working payload
+- `bindings`, `commands`, `dependencies`, `secrets` — merged into the install state
 
-Shared conditions declare a `kind`:
+Working state is `ctx.payload` (and `ctx.bindings` / `ctx.conditions`). There is no parallel `ctx.files` or `ctx.prompts` on install hooks.
 
-- `select` (default) — single choice from `values`
-- `multiselect` — multiple choices from `values` (`ctx.conditions` stores `string[]`)
-- `text` — free-form string
-- `boolean` — yes/no (`ctx.conditions` stores `boolean`)
+Remote HTTPS registries cannot execute custom scripts or condition `infer` handlers.
 
-Variant `when` may reference `select`, `multiselect`, and `boolean` keys (`"true"` / `"false"` for booleans). Text conditions are for prompts/`uses` only.
+## Local vs remote catalogs
 
-### Composing templates
-
-`registryDependencies` install other items **before** the consumer. They are not lifecycle phases. Each dependency runs its own `beforeInstall` / write / `afterInstall` when it is installed.
-
-```json
-{
-	"id": "react-app-template",
-	"registryDependencies": ["create-react-app-scaffold", "license-configuration", "git-init"]
-}
-```
-
-A reusable `git-init` item is just an item whose only phase is `afterInstall`. Because it is a dependency, that script runs when `git-init` is installed — before the consumer's files. To run a command after *this* item's writes, list a colocated script on the item:
-
-```json
-{
-	"id": "license-configuration",
-	"uses": ["authorName"],
-	"beforeInstall": "license.ts"
-}
-```
+| Capability | Local path | Remote HTTPS |
+| --- | --- | --- |
+| Static files / packs | Yes | Yes |
+| Conditions prompts | Yes | Yes |
+| Condition `infer` handlers | Yes | No |
+| `beforeInstall` / `afterInstall` | Yes | No |
 
 ## Validating artefacts
 
@@ -108,4 +188,4 @@ import { parseRegistryDocument } from "@tuckshop/core";
 const registry = parseRegistryDocument(JSON.parse(registryJson));
 ```
 
-Unknown item types are allowed as long as the document shape is valid, so you can extend the registry model without forking the CLI.
+Unknown item types are allowed as long as the document shape is valid.

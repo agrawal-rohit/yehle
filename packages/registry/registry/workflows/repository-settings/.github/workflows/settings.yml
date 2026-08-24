@@ -3,7 +3,7 @@ name: Repository Settings
 on:
   push:
     branches:
-      - main
+      - {{defaultBranch}}
     paths:
       - .github/rulesets/**
       - .github/workflows/settings.yml

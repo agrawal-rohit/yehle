@@ -4,7 +4,6 @@ import {
 	RegistryDependencyKind,
 	type RegistryDependencySet,
 	RegistryEcosystem,
-	type RegistryEcosystemDependencies,
 } from "./schema";
 
 /** JavaScript package managers supported for the npm ecosystem. */
@@ -68,36 +67,22 @@ function uniqueSortedNames(names: string[]): string[] {
 }
 
 /**
- * Read one dependency list from a package set, treating missing sets as empty.
- * @param set - Package set that may be undefined.
- * @param kind - Which dependency list to read.
- * @returns The named list, or an empty array.
- */
-function packageNames(
-	set: RegistryDependencySet | undefined,
-	kind: RegistryDependencyKind,
-): string[] {
-	if (!set) return [];
-	return set[kind] ?? [];
-}
-
-/**
  * Merge non-empty dependency lists within one ecosystem dependency set.
  * @param left - Existing merged set.
  * @param right - Set to fold in.
  * @returns Combined dependency set, or undefined when both sides are empty.
  */
-function mergeDependencySet(
+export function mergeDependencySet(
 	left: RegistryDependencySet | undefined,
 	right: RegistryDependencySet | undefined,
 ): RegistryDependencySet | undefined {
 	const runtime = uniqueSortedNames([
-		...packageNames(left, RegistryDependencyKind.RUNTIME),
-		...packageNames(right, RegistryDependencyKind.RUNTIME),
+		...(left?.[RegistryDependencyKind.RUNTIME] ?? []),
+		...(right?.[RegistryDependencyKind.RUNTIME] ?? []),
 	]);
 	const dev = uniqueSortedNames([
-		...packageNames(left, RegistryDependencyKind.DEV),
-		...packageNames(right, RegistryDependencyKind.DEV),
+		...(left?.[RegistryDependencyKind.DEV] ?? []),
+		...(right?.[RegistryDependencyKind.DEV] ?? []),
 	]);
 
 	if (runtime.length === 0 && dev.length === 0) return undefined;
@@ -109,29 +94,60 @@ function mergeDependencySet(
 }
 
 /**
- * Merge ecosystem dependency declarations from multiple registry sources.
- * @param sources - Item, variant, or payload dependency maps.
- * @returns Combined dependencies keyed by ecosystem, or undefined when empty.
+ * Merge non-empty command maps within one ecosystem.
+ * Later sources overwrite earlier keys with the same name.
+ * @param left - Existing merged set.
+ * @param right - Set to fold in.
+ * @returns Combined command set, or undefined when both sides are empty.
  */
-export function mergeEcosystemDependencies(
-	...sources: Array<RegistryEcosystemDependencies | undefined>
-): RegistryEcosystemDependencies | undefined {
-	const merged: Partial<Record<RegistryEcosystem, RegistryDependencySet>> = {};
+export function mergeCommandSet(
+	left: Record<string, string> | undefined,
+	right: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+	if (!left && !right) return undefined;
+	const merged = { ...left, ...right };
+	return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+/**
+ * Merge ecosystem-keyed maps by folding each ecosystem with `mergeSet`.
+ * @param mergeSet - Per-ecosystem merge function.
+ * @param sources - Item, pack, hook, or payload maps.
+ * @returns Combined map keyed by ecosystem, or undefined when empty.
+ */
+export function mergeEcosystemMaps<T>(
+	mergeSet: (left: T | undefined, right: T | undefined) => T | undefined,
+	...sources: Array<Partial<Record<RegistryEcosystem, T>> | undefined>
+): Partial<Record<RegistryEcosystem, T>> | undefined {
+	const merged: Partial<Record<RegistryEcosystem, T>> = {};
 
 	for (const source of sources) {
 		if (!source) continue;
-		// Walk every known ecosystem so a later source can still fill in a language the earlier ones omitted.
 		for (const ecosystem of Object.values(RegistryEcosystem)) {
-			const next = mergeDependencySet(merged[ecosystem], source[ecosystem]);
-			if (next) merged[ecosystem] = next;
-			// Drop empty folds so the returned map only contains ecosystems with packages to install.
+			const next = mergeSet(merged[ecosystem], source[ecosystem]);
+			if (next !== undefined) merged[ecosystem] = next;
 			else Reflect.deleteProperty(merged, ecosystem);
 		}
 	}
 
-	return Object.keys(merged).length > 0
-		? (merged as RegistryEcosystemDependencies)
-		: undefined;
+	return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+/**
+ * Merge and dedupe repository secret name lists.
+ * @param sources - Item, pack, hook, or payload secret lists.
+ * @returns Sorted unique secret names, or undefined when empty.
+ */
+export function mergeSecretNames(
+	...sources: Array<string[] | undefined>
+): string[] | undefined {
+	const names = new Set<string>();
+	for (const source of sources) {
+		if (!source) continue;
+		for (const name of source) names.add(name);
+	}
+	if (names.size === 0) return undefined;
+	return [...names].sort((a, b) => a.localeCompare(b));
 }
 
 /**

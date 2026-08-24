@@ -16,5 +16,65 @@
 		"label": "Author name",
 		"description": "Who should be credited as the author?",
 		"handler": "conditions/author-name.ts"
+	},
+	"defaultBranch": {
+		"kind": "text",
+		"label": "Default branch",
+		"description": "Primary branch name for workflows and Dependabot.",
+		"handler": "conditions/default-branch.ts"
+	},
+	"packageManager": {
+		"kind": "select",
+		"label": "Package manager",
+		"description": "Which package manager should be used for the project?",
+		"handler": "conditions/package-manager.ts",
+		"values": [
+			{
+				"value": "npm",
+				"label": "npm",
+				"bindings": {
+					"pmRun": "npm run",
+					"pmExec": "npx",
+					"pmInstall": "npm ci --ignore-scripts",
+					"pmPublish": "npm publish --workspaces --provenance --access public --no-git-checks"
+				}
+			},
+			{
+				"value": "pnpm",
+				"label": "pnpm",
+				"bindings": {
+					"pmRun": "pnpm",
+					"pmExec": "pnpm exec",
+					"pmInstall": "pnpm install --ignore-scripts --frozen-lockfile",
+					"pmPublish": "pnpm -r publish --provenance --access public --no-git-checks"
+				}
+			},
+			{
+				"value": "yarn",
+				"label": "Yarn",
+				"bindings": {
+					"pmRun": "yarn",
+					"pmExec": "yarn",
+					"pmInstall": "yarn install --frozen-lockfile --ignore-scripts",
+					"pmPublish": "yarn workspaces foreach -A npm publish --provenance --access public"
+				}
+			},
+			{
+				"value": "bun",
+				"label": "Bun",
+				"bindings": {
+					"pmRun": "bun run",
+					"pmExec": "bunx",
+					"pmInstall": "bun install --frozen-lockfile",
+					"pmPublish": "bun publish --access public"
+				}
+			}
+		]
+	},
+	"nodeVersion": {
+		"kind": "text",
+		"label": "Node.js version",
+		"description": "Node major version for CI setup.",
+		"handler": "conditions/node-version.ts"
 	}
 }

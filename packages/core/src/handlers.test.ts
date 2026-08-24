@@ -7,20 +7,9 @@ import {
 	createHandlerRuntime,
 	inferConditionDefault,
 	localScriptPath,
-	type PromptHost,
 	runAfterInstallHook,
 	runBeforeInstallHook,
 } from "./handlers";
-
-function makePromptHost(overrides: Partial<PromptHost> = {}): PromptHost {
-	return {
-		text: vi.fn(async () => ""),
-		select: vi.fn(async () => ""),
-		multiselect: vi.fn(async () => []),
-		confirm: vi.fn(async () => false),
-		...overrides,
-	};
-}
 
 describe("core/handlers", () => {
 	let tempDir: string;
@@ -86,7 +75,7 @@ describe("core/handlers", () => {
 
 	describe("runBeforeInstallHook script loading", () => {
 		const runtime = () =>
-			createHandlerRuntime(tempDir, makePromptHost(), {
+			createHandlerRuntime(tempDir, {
 				isFile: vi.fn(async () => false),
 				readFile: vi.fn(async () => ""),
 				run: vi.fn(async () => ""),
@@ -106,9 +95,8 @@ describe("core/handlers", () => {
 					itemId: "item",
 					conditions: {},
 					payload: { files: [] },
-					files: [],
 				}),
-			).resolves.toEqual({ files: [], variables: {} });
+			).resolves.toEqual({ files: [], bindings: {} });
 		});
 
 		it("loads a module that exports the hook function directly", async () => {
@@ -125,9 +113,8 @@ describe("core/handlers", () => {
 					itemId: "item",
 					conditions: {},
 					payload: { files: [] },
-					files: [],
 				}),
-			).resolves.toEqual({ files: [], variables: {} });
+			).resolves.toEqual({ files: [], bindings: {} });
 		});
 
 		it("rejects modules without an install hook function", async () => {
@@ -141,7 +128,6 @@ describe("core/handlers", () => {
 					itemId: "item",
 					conditions: {},
 					payload: { files: [] },
-					files: [],
 				}),
 			).rejects.toThrow("must export a `beforeInstall` hook function");
 		});
@@ -167,7 +153,6 @@ describe("core/handlers", () => {
 							itemId: "item",
 							conditions: {},
 							payload: { files: [] },
-							files: [],
 						},
 					),
 				).rejects.toThrow("must export a `beforeInstall` hook function");
@@ -177,7 +162,7 @@ describe("core/handlers", () => {
 
 	describe("inferConditionDefault handler loading", () => {
 		const runtime = () =>
-			createHandlerRuntime(tempDir, makePromptHost(), {
+			createHandlerRuntime(tempDir, {
 				isFile: vi.fn(async () => false),
 				readFile: vi.fn(async () => ""),
 				run: vi.fn(async () => ""),
@@ -268,7 +253,7 @@ describe("core/handlers", () => {
 	it("createHandlerRuntime joins relative paths to projectDir", async () => {
 		const isFile = vi.fn(async () => true);
 		const readFile = vi.fn(async () => "contents");
-		const runtime = createHandlerRuntime("/project", makePromptHost(), {
+		const runtime = createHandlerRuntime("/project", {
 			isFile,
 			readFile,
 			run: vi.fn(async () => ""),
@@ -284,7 +269,7 @@ describe("core/handlers", () => {
 	it("createHandlerRuntime passes absolute paths through unchanged", async () => {
 		const isFile = vi.fn(async () => true);
 		const readFile = vi.fn(async () => "contents");
-		const runtime = createHandlerRuntime("/project", makePromptHost(), {
+		const runtime = createHandlerRuntime("/project", {
 			isFile,
 			readFile,
 			run: vi.fn(async () => ""),
@@ -297,8 +282,31 @@ describe("core/handlers", () => {
 		expect(readFile).toHaveBeenCalledWith("/abs/file.ts");
 	});
 
-	it("inferConditionDefault returns undefined without a handler", async () => {
-		const runtime = createHandlerRuntime("/project", makePromptHost(), {
+	it("inferConditionDefault returns schema default when no handler is declared", async () => {
+		const runtime = createHandlerRuntime("/project", {
+			isFile: vi.fn(async () => false),
+			readFile: vi.fn(async () => ""),
+			run: vi.fn(async () => ""),
+		});
+
+		await expect(
+			inferConditionDefault(
+				"/catalog/registry.json",
+				{
+					key: "coverageThreshold",
+					label: "Coverage",
+					kind: RegistryConditionKind.TEXT,
+					values: [],
+					default: "45",
+				},
+				runtime,
+				{},
+			),
+		).resolves.toBe("45");
+	});
+
+	it("inferConditionDefault returns undefined without a handler or default", async () => {
+		const runtime = createHandlerRuntime("/project", {
 			isFile: vi.fn(async () => false),
 			readFile: vi.fn(async () => ""),
 			run: vi.fn(async () => ""),
@@ -317,6 +325,124 @@ describe("core/handlers", () => {
 				{},
 			),
 		).resolves.toBeUndefined();
+	});
+
+	it("inferConditionDefault does not special-case packageManager without a handler", async () => {
+		fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
+		const runtime = createHandlerRuntime(tempDir, {
+			isFile: vi.fn(async () => false),
+			readFile: vi.fn(async () => ""),
+			run: vi.fn(async () => ""),
+		});
+
+		await expect(
+			inferConditionDefault(
+				"/catalog/registry.json",
+				{
+					key: "packageManager",
+					label: "Package manager",
+					kind: RegistryConditionKind.SELECT,
+					values: [
+						{ value: "npm", label: "npm" },
+						{ value: "pnpm", label: "pnpm" },
+					],
+				},
+				runtime,
+				{},
+			),
+		).resolves.toBeUndefined();
+	});
+
+	it("inferConditionDefault uses a schema default when packageManager has no handler", async () => {
+		fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
+		const runtime = createHandlerRuntime(tempDir, {
+			isFile: vi.fn(async () => false),
+			readFile: vi.fn(async () => ""),
+			run: vi.fn(async () => ""),
+		});
+
+		await expect(
+			inferConditionDefault(
+				"/catalog/registry.json",
+				{
+					key: "packageManager",
+					label: "Package manager",
+					kind: RegistryConditionKind.SELECT,
+					values: [{ value: "npm", label: "npm" }],
+					default: "npm",
+				},
+				runtime,
+				{},
+			),
+		).resolves.toBe("npm");
+	});
+
+	it("inferConditionDefault prefers a declared handler over a schema default", async () => {
+		fs.writeFileSync(path.join(tempDir, "pnpm-lock.yaml"), "");
+		const catalog = path.join(tempDir, "registry.json");
+		const handlerPath = path.join(
+			tempDir,
+			"r/_handlers/packageManager.handler.js",
+		);
+		fs.mkdirSync(path.dirname(handlerPath), { recursive: true });
+		fs.writeFileSync(
+			handlerPath,
+			"module.exports = { async infer() { return 'npm'; } };\n",
+		);
+		const runtime = createHandlerRuntime(tempDir, {
+			isFile: vi.fn(async () => false),
+			readFile: vi.fn(async () => ""),
+			run: vi.fn(async () => ""),
+		});
+
+		await expect(
+			inferConditionDefault(
+				catalog,
+				{
+					key: "packageManager",
+					label: "Package manager",
+					kind: RegistryConditionKind.SELECT,
+					values: [
+						{ value: "npm", label: "npm" },
+						{ value: "pnpm", label: "pnpm" },
+					],
+					handler: "r/_handlers/packageManager.handler.js",
+				},
+				runtime,
+				{},
+			),
+		).resolves.toBe("npm");
+	});
+
+	it("inferConditionDefault falls back to schema default when infer returns undefined", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const handlerPath = path.join(tempDir, "r/_handlers/fallback.handler.js");
+		fs.mkdirSync(path.dirname(handlerPath), { recursive: true });
+		fs.writeFileSync(
+			handlerPath,
+			"module.exports = { async infer() { return undefined; } };\n",
+		);
+		const runtime = createHandlerRuntime(tempDir, {
+			isFile: vi.fn(async () => false),
+			readFile: vi.fn(async () => ""),
+			run: vi.fn(async () => ""),
+		});
+
+		await expect(
+			inferConditionDefault(
+				catalog,
+				{
+					key: "coverageThreshold",
+					label: "Coverage",
+					kind: RegistryConditionKind.TEXT,
+					values: [],
+					default: "45",
+					handler: "r/_handlers/fallback.handler.js",
+				},
+				runtime,
+				{},
+			),
+		).resolves.toBe("45");
 	});
 
 	it("inferConditionDefault passes optional description and values only when present", async () => {
@@ -349,7 +475,7 @@ module.exports = {
 			return `r/_handlers/${name}.handler.js`;
 		}
 
-		const runtime = createHandlerRuntime(tempDir, makePromptHost(), {
+		const runtime = createHandlerRuntime(tempDir, {
 			isFile: vi.fn(async () => false),
 			readFile: vi.fn(async () => ""),
 			run: vi.fn(async () => ""),
@@ -416,7 +542,7 @@ module.exports = {
 			return `r/_handlers/${name}.handler.js`;
 		}
 
-		const runtime = createHandlerRuntime(tempDir, makePromptHost(), {
+		const runtime = createHandlerRuntime(tempDir, {
 			isFile: vi.fn(async () => false),
 			readFile: vi.fn(async () => ""),
 			run: vi.fn(async () => ""),
@@ -523,7 +649,7 @@ module.exports = {
 		).resolves.toBeUndefined();
 	});
 
-	it("runBeforeInstallHook merges returned files and variables", async () => {
+	it("runBeforeInstallHook upserts returned files and merges bindings", async () => {
 		const catalog = path.join(tempDir, "registry.json");
 		const scriptPath = path.join(tempDir, "r/item.beforeInstall.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
@@ -531,11 +657,10 @@ module.exports = {
 			scriptPath,
 			`
 module.exports = async function beforeInstall(ctx) {
-  const name = ctx.variables.prior;
+  const name = ctx.bindings.prior;
   return {
-    variables: { greeting: "Hello " + name },
+    bindings: { greeting: "Hello " + name },
     files: [
-      ...ctx.files,
       { target: "GREETING.md", content: "Hello " + name },
     ],
   };
@@ -543,7 +668,7 @@ module.exports = async function beforeInstall(ctx) {
 `,
 		);
 
-		const runtime = createHandlerRuntime(tempDir, makePromptHost(), {
+		const runtime = createHandlerRuntime(tempDir, {
 			isFile: vi.fn(async () => false),
 			readFile: vi.fn(async () => ""),
 			run: vi.fn(async () => ""),
@@ -555,22 +680,105 @@ module.exports = async function beforeInstall(ctx) {
 			runtime,
 			{
 				itemId: "item",
-				variantId: "default",
+				packIds: ["default"],
 				conditions: {},
-				variables: { prior: "Ada" },
+				bindings: { prior: "Ada" },
 				payload: { files: [{ target: "EXISTING", content: "x" }] },
-				files: [{ target: "EXISTING", content: "x" }],
 			},
 		);
 
-		expect(result.variables).toEqual({ prior: "Ada", greeting: "Hello Ada" });
+		expect(result.bindings).toEqual({ prior: "Ada", greeting: "Hello Ada" });
 		expect(result.files).toEqual([
 			{ target: "EXISTING", content: "x" },
 			{ target: "GREETING.md", content: "Hello Ada" },
 		]);
 	});
 
-	it("runBeforeInstallHook omits variantId from context when unset and preserves files when the hook yields nothing", async () => {
+	it("runBeforeInstallHook upserts by target and honors removeFiles", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeInstall.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeInstall() {
+  return {
+    removeFiles: ["DROP"],
+    files: [{ target: "KEEP", content: "updated" }],
+  };
+};
+`,
+		);
+
+		const result = await runBeforeInstallHook(
+			catalog,
+			"r/item.beforeInstall.0.js",
+			createHandlerRuntime(tempDir, {
+				isFile: vi.fn(async () => false),
+				readFile: vi.fn(async () => ""),
+				run: vi.fn(async () => ""),
+			}),
+			{
+				itemId: "item",
+				conditions: {},
+				payload: {
+					files: [
+						{ target: "KEEP", content: "old" },
+						{ target: "DROP", content: "gone" },
+					],
+				},
+			},
+		);
+
+		expect(result.files).toEqual([{ target: "KEEP", content: "updated" }]);
+	});
+
+	it("runBeforeInstallHook merges commands, dependencies, and secrets when the hook returns them", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeInstall.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeInstall() {
+  return {
+    commands: { npm: { check: "biome check ." } },
+    dependencies: { npm: { dev: ["@biomejs/biome@^2"] } },
+    secrets: ["SONAR_TOKEN"],
+  };
+};
+`,
+		);
+
+		const result = await runBeforeInstallHook(
+			catalog,
+			"r/item.beforeInstall.0.js",
+			createHandlerRuntime(tempDir, {
+				isFile: vi.fn(async () => false),
+				readFile: vi.fn(async () => ""),
+				run: vi.fn(async () => ""),
+			}),
+			{
+				itemId: "item",
+				conditions: {},
+				payload: {
+					files: [],
+					commands: { npm: { test: "vitest run" } },
+					secrets: ["GH_ADMIN_TOKEN"],
+				},
+			},
+		);
+
+		expect(result.commands).toEqual({
+			npm: { test: "vitest run", check: "biome check ." },
+		});
+		expect(result.dependencies).toEqual({
+			npm: { dev: ["@biomejs/biome@^2"] },
+		});
+		expect(result.secrets).toEqual(["GH_ADMIN_TOKEN", "SONAR_TOKEN"]);
+	});
+
+	it("runBeforeInstallHook omits packIds from context when unset and preserves files when the hook yields nothing", async () => {
 		const catalog = path.join(tempDir, "registry.json");
 		const capturePath = path.join(tempDir, "item-capture.json");
 		const scriptPath = path.join(tempDir, "r/item.beforeInstall.0.js");
@@ -582,14 +790,14 @@ const fs = require("node:fs");
 module.exports = async function beforeInstall(ctx) {
   fs.writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify({
     itemId: ctx.itemId,
-    variantId: ctx.variantId,
-    hasVariantId: Object.hasOwn(ctx, "variantId"),
+    packIds: ctx.packIds,
+    hasPackIds: Object.hasOwn(ctx, "packIds"),
   }));
 };
 `,
 		);
 
-		const runtime = createHandlerRuntime(tempDir, makePromptHost(), {
+		const runtime = createHandlerRuntime(tempDir, {
 			isFile: vi.fn(async () => false),
 			readFile: vi.fn(async () => ""),
 			run: vi.fn(async () => ""),
@@ -603,19 +811,18 @@ module.exports = async function beforeInstall(ctx) {
 				itemId: "item",
 				conditions: {},
 				payload: { files: [{ target: "KEEP", content: "yes" }] },
-				files: [{ target: "KEEP", content: "yes" }],
 			},
 		);
 
 		expect(JSON.parse(fs.readFileSync(capturePath, "utf8"))).toEqual({
 			itemId: "item",
-			hasVariantId: false,
+			hasPackIds: false,
 		});
-		expect(result.variables).toEqual({});
+		expect(result.bindings).toEqual({});
 		expect(result.files).toEqual([{ target: "KEEP", content: "yes" }]);
 	});
 
-	it("runBeforeInstallHook includes variantId when provided", async () => {
+	it("runBeforeInstallHook includes packIds when provided", async () => {
 		const catalog = path.join(tempDir, "registry.json");
 		const capturePath = path.join(tempDir, "variant-capture.json");
 		const scriptPath = path.join(tempDir, "r/item.beforeInstall.0.js");
@@ -626,14 +833,14 @@ module.exports = async function beforeInstall(ctx) {
 const fs = require("node:fs");
 module.exports = async function beforeInstall(ctx) {
   fs.writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify({
-    variantId: ctx.variantId,
-    hasVariantId: Object.hasOwn(ctx, "variantId"),
+    packIds: ctx.packIds,
+    hasPackIds: Object.hasOwn(ctx, "packIds"),
   }));
 };
 `,
 		);
 
-		const runtime = createHandlerRuntime(tempDir, makePromptHost(), {
+		const runtime = createHandlerRuntime(tempDir, {
 			isFile: vi.fn(async () => false),
 			readFile: vi.fn(async () => ""),
 			run: vi.fn(async () => ""),
@@ -641,19 +848,18 @@ module.exports = async function beforeInstall(ctx) {
 
 		await runBeforeInstallHook(catalog, "r/item.beforeInstall.0.js", runtime, {
 			itemId: "item",
-			variantId: "v1",
+			packIds: ["v1"],
 			conditions: {},
 			payload: { files: [] },
-			files: [],
 		});
 
 		expect(JSON.parse(fs.readFileSync(capturePath, "utf8"))).toEqual({
-			variantId: "v1",
-			hasVariantId: true,
+			packIds: ["v1"],
+			hasPackIds: true,
 		});
 	});
 
-	it("runAfterInstallHook includes variantId when provided", async () => {
+	it("runAfterInstallHook includes packIds when provided", async () => {
 		const catalog = path.join(tempDir, "registry.json");
 		const capturePath = path.join(tempDir, "after-variant.json");
 		const scriptPath = path.join(tempDir, "r/item.afterInstall.0.js");
@@ -664,14 +870,14 @@ module.exports = async function beforeInstall(ctx) {
 const fs = require("node:fs");
 module.exports = async function afterInstall(ctx) {
   fs.writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify({
-    variantId: ctx.variantId,
-    hasVariantId: Object.hasOwn(ctx, "variantId"),
+    packIds: ctx.packIds,
+    hasPackIds: Object.hasOwn(ctx, "packIds"),
   }));
 };
 `,
 		);
 
-		const runtime = createHandlerRuntime(tempDir, makePromptHost(), {
+		const runtime = createHandlerRuntime(tempDir, {
 			isFile: vi.fn(async () => false),
 			readFile: vi.fn(async () => ""),
 			run: vi.fn(async () => ""),
@@ -679,16 +885,15 @@ module.exports = async function afterInstall(ctx) {
 
 		await runAfterInstallHook(catalog, "r/item.afterInstall.0.js", runtime, {
 			itemId: "item",
-			variantId: "v1",
+			packIds: ["v1"],
 			conditions: {},
-			variables: {},
+			bindings: {},
 			payload: { files: [] },
-			files: [],
 		});
 
 		expect(JSON.parse(fs.readFileSync(capturePath, "utf8"))).toEqual({
-			variantId: "v1",
-			hasVariantId: true,
+			packIds: ["v1"],
+			hasPackIds: true,
 		});
 	});
 
@@ -702,34 +907,33 @@ module.exports = async function afterInstall(ctx) {
 module.exports = async function afterInstall() {
   return {
     files: [{ target: "TOO_LATE", content: "nope" }],
-    variables: { ignored: "yes" },
+    bindings: { ignored: "yes" },
   };
 };
 `,
 		);
 
-		const runtime = createHandlerRuntime(tempDir, makePromptHost(), {
+		const runtime = createHandlerRuntime(tempDir, {
 			isFile: vi.fn(async () => false),
 			readFile: vi.fn(async () => ""),
 			run: vi.fn(async () => ""),
 		});
 
-		const variables = { keep: "1" };
+		const bindings = { keep: "1" };
 		const files = [{ target: "KEEP", content: "yes" }];
 
 		await runAfterInstallHook(catalog, "r/item.afterInstall.0.js", runtime, {
 			itemId: "item",
 			conditions: {},
-			variables,
+			bindings,
 			payload: { files },
-			files,
 		});
 
-		expect(variables).toEqual({ keep: "1" });
+		expect(bindings).toEqual({ keep: "1" });
 		expect(files).toEqual([{ target: "KEEP", content: "yes" }]);
 	});
 
-	it("runBeforeInstallHook starts from empty variables and payload files", async () => {
+	it("runBeforeInstallHook starts from empty bindings and payload files", async () => {
 		const catalog = path.join(tempDir, "registry.json");
 		const scriptPath = path.join(tempDir, "r/item.beforeInstall.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
@@ -738,7 +942,7 @@ module.exports = async function afterInstall() {
 			`module.exports = async function beforeInstall() { return { files: [] }; };\n`,
 		);
 
-		const runtime = createHandlerRuntime(tempDir, makePromptHost(), {
+		const runtime = createHandlerRuntime(tempDir, {
 			isFile: vi.fn(async () => false),
 			readFile: vi.fn(async () => ""),
 			run: vi.fn(async () => ""),
@@ -752,11 +956,10 @@ module.exports = async function afterInstall() {
 				itemId: "item",
 				conditions: {},
 				payload: { files: [] },
-				files: [],
 			},
 		);
 
-		expect(result.variables).toEqual({});
+		expect(result.bindings).toEqual({});
 		expect(result.files).toEqual([]);
 	});
 
@@ -785,7 +988,7 @@ module.exports = async function afterInstall(ctx) {
 `,
 		);
 
-		const runtime = createHandlerRuntime(tempDir, makePromptHost(), {
+		const runtime = createHandlerRuntime(tempDir, {
 			isFile: vi.fn(async () => false),
 			readFile: vi.fn(async () => ""),
 			run: vi.fn(async () => ""),
@@ -794,7 +997,6 @@ module.exports = async function afterInstall(ctx) {
 			itemId: "item",
 			conditions: {},
 			payload: { files: [{ target: "KEEP", content: "yes" }] },
-			files: [{ target: "KEEP", content: "yes" }],
 		};
 
 		await runBeforeInstallHook(

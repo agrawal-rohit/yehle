@@ -2,16 +2,17 @@ import { describe, expect, it } from "vitest";
 import type { ZodType } from "zod";
 import {
 	catalogItemSchema,
-	catalogVariantSchema,
+	catalogPackSchema,
 	registryConditionSchema,
 	registryConditionValueSchema,
 	registryDocumentFieldsSchema,
 	registryFileSchema,
 	registryItemSchema,
 	registryItemTypeSchema,
+	registryPackSchema,
 	registryPayloadFileSchema,
 	registryPayloadSchema,
-	registryVariantSchema,
+	registryWhenSchema,
 } from "./schema";
 
 /** Minimal valid registry file entry. */
@@ -47,14 +48,13 @@ function validCondition(
 	};
 }
 
-/** Minimal valid registry variant. */
-function validVariant(
+/** Minimal valid registry pack. */
+function validPack(
 	overrides: Record<string, unknown> = {},
 ): Record<string, unknown> {
 	return {
-		id: "react",
-		title: "React",
-		description: "React variant",
+		id: "typescript",
+		title: "TypeScript",
 		files: [validFile()],
 		...overrides,
 	};
@@ -69,7 +69,7 @@ function validItem(
 		title: "Button",
 		description: "A button",
 		type: "component",
-		variants: [validVariant()],
+		packs: [validPack()],
 		...overrides,
 	};
 }
@@ -251,6 +251,20 @@ describe("core/schema", () => {
 			).not.toHaveProperty("dependencies");
 		});
 
+		it("keeps commands and secrets on payloads", () => {
+			expect(
+				registryPayloadSchema.parse({
+					files: [{ target: "a.txt", content: "x" }],
+					commands: { npm: { test: "vitest run" } },
+					secrets: ["GH_ADMIN_TOKEN"],
+				}),
+			).toEqual({
+				files: [{ target: "a.txt", content: "x" }],
+				commands: { npm: { test: "vitest run" } },
+				secrets: ["GH_ADMIN_TOKEN"],
+			});
+		});
+
 		it("rejects untagged dependency lists", () => {
 			expect(
 				registryPayloadSchema.safeParse({
@@ -300,12 +314,38 @@ describe("core/schema", () => {
 				).success,
 			).toBe(false);
 		});
+
+		it("accepts non-empty option bindings", () => {
+			expect(
+				registryConditionValueSchema.parse(
+					validConditionValue({
+						bindings: { pmRun: "pnpm", pmExec: "pnpm exec" },
+					}),
+				),
+			).toEqual({
+				value: "typescript",
+				label: "TypeScript",
+				bindings: { pmRun: "pnpm", pmExec: "pnpm exec" },
+			});
+		});
+
+		it("rejects an empty bindings map", () => {
+			expect(
+				rejectMessage(
+					registryConditionValueSchema,
+					validConditionValue({ bindings: {} }),
+				),
+			).toBe("empty_bindings");
+		});
 	});
 
 	describe("registryConditionSchema", () => {
 		it("accepts a labelled condition and omits absent optional fields", () => {
-			expect(registryConditionSchema.parse(validCondition())).toEqual({
+			expect(
+				registryConditionSchema.parse(validCondition({ kind: "select" })),
+			).toEqual({
 				label: "Language",
+				kind: "select",
 				values: [{ value: "typescript", label: "TypeScript" }],
 			});
 		});
@@ -313,13 +353,27 @@ describe("core/schema", () => {
 		it("keeps a non-empty description and omits a blank one", () => {
 			expect(
 				registryConditionSchema.parse(
-					validCondition({ description: "Pick a language." }),
+					validCondition({ kind: "select", description: "Pick a language." }),
 				),
 			).toMatchObject({ description: "Pick a language." });
 
 			expect(
-				registryConditionSchema.parse(validCondition({ description: "" })),
+				registryConditionSchema.parse(
+					validCondition({ kind: "select", description: "" }),
+				),
 			).not.toHaveProperty("description");
+		});
+
+		it("keeps a text condition default", () => {
+			expect(
+				registryConditionSchema.parse(
+					validCondition({
+						kind: "text",
+						default: "45",
+						values: undefined,
+					}),
+				),
+			).toMatchObject({ kind: "text", default: "45" });
 		});
 
 		it("rejects duplicate condition values", () => {
@@ -327,6 +381,7 @@ describe("core/schema", () => {
 				rejectMessage(
 					registryConditionSchema,
 					validCondition({
+						kind: "select",
 						values: [
 							validConditionValue({ value: "ts", label: "TS" }),
 							validConditionValue({ value: "ts", label: "TypeScript" }),
@@ -338,8 +393,9 @@ describe("core/schema", () => {
 
 		it("rejects an empty values list", () => {
 			expect(
-				registryConditionSchema.safeParse(validCondition({ values: [] }))
-					.success,
+				registryConditionSchema.safeParse(
+					validCondition({ kind: "select", values: [] }),
+				).success,
 			).toBe(false);
 		});
 
@@ -383,6 +439,80 @@ describe("core/schema", () => {
 					kind: "multiselect",
 				}),
 			).toBe("select_requires_values");
+		});
+
+		it("rejects option bindings on a multiselect condition", () => {
+			expect(
+				rejectMessage(
+					registryConditionSchema,
+					validCondition({
+						kind: "multiselect",
+						values: [
+							validConditionValue({
+								bindings: { pmRun: "pnpm" },
+							}),
+						],
+					}),
+				),
+			).toBe("bindings_on_multiselect");
+		});
+
+		it("accepts option bindings on a select condition", () => {
+			expect(
+				registryConditionSchema.parse(
+					validCondition({
+						kind: "select",
+						values: [
+							validConditionValue({
+								bindings: { pmRun: "pnpm" },
+							}),
+						],
+					}),
+				),
+			).toMatchObject({
+				values: [
+					{
+						value: "typescript",
+						label: "TypeScript",
+						bindings: { pmRun: "pnpm" },
+					},
+				],
+			});
+		});
+
+		it("accepts condition-level when and multiselect min", () => {
+			expect(
+				registryConditionSchema.parse({
+					label: "Quality tools",
+					kind: "multiselect",
+					when: { language: "typescript" },
+					min: 1,
+					values: [validConditionValue({ value: "biome", label: "Biome" })],
+				}),
+			).toEqual({
+				label: "Quality tools",
+				kind: "multiselect",
+				when: { language: "typescript" },
+				min: 1,
+				values: [{ value: "biome", label: "Biome" }],
+			});
+		});
+
+		it("rejects a condition without kind", () => {
+			expect(rejectMessage(registryConditionSchema, validCondition())).toBe(
+				'Invalid option: expected one of "text"|"select"|"boolean"|"multiselect"',
+			);
+		});
+
+		it("rejects min on non-multiselect conditions", () => {
+			expect(
+				rejectMessage(registryConditionSchema, {
+					label: "Language",
+					kind: "select",
+					min: 1,
+					values: [validConditionValue()],
+				}),
+			).toBe("min_on_non_multiselect");
 		});
 
 		it("accepts a boolean condition without values", () => {
@@ -448,20 +578,35 @@ describe("core/schema", () => {
 		});
 	});
 
-	describe("registryVariantSchema", () => {
+	describe("registryWhenSchema", () => {
+		it("accepts string, string-array, and boolean matchers", () => {
+			expect(
+				registryWhenSchema.parse({
+					language: "typescript",
+					packageManager: ["npm", "pnpm"],
+					ci: true,
+				}),
+			).toEqual({
+				language: "typescript",
+				packageManager: ["npm", "pnpm"],
+				ci: true,
+			});
+		});
+	});
+
+	describe("registryPackSchema", () => {
 		it("accepts required fields and omits absent optional lists", () => {
-			expect(registryVariantSchema.parse(validVariant())).toEqual({
-				id: "react",
-				title: "React",
-				description: "React variant",
+			expect(registryPackSchema.parse(validPack())).toEqual({
+				id: "typescript",
+				title: "TypeScript",
 				files: [validFile()],
 			});
 		});
 
-		it("keeps non-empty when, dependencies, and registryDependencies", () => {
+		it("keeps non-empty when, dependencies, and dependsOn", () => {
 			expect(
-				registryVariantSchema.parse(
-					validVariant({
+				registryPackSchema.parse(
+					validPack({
 						when: { language: "typescript" },
 						dependencies: {
 							npm: {
@@ -469,13 +614,12 @@ describe("core/schema", () => {
 								dev: ["typescript"],
 							},
 						},
-						registryDependencies: ["utils"],
+						dependsOn: ["utils"],
 					}),
 				),
 			).toEqual({
-				id: "react",
-				title: "React",
-				description: "React variant",
+				id: "typescript",
+				title: "TypeScript",
 				files: [validFile()],
 				when: { language: "typescript" },
 				dependencies: {
@@ -484,14 +628,14 @@ describe("core/schema", () => {
 						dev: ["typescript"],
 					},
 				},
-				registryDependencies: ["utils"],
+				dependsOn: ["utils"],
 			});
 		});
 
 		it("omits empty when maps and empty dependency lists", () => {
 			expect(
-				registryVariantSchema.parse(
-					validVariant({
+				registryPackSchema.parse(
+					validPack({
 						when: {},
 						dependencies: {
 							npm: {
@@ -499,41 +643,53 @@ describe("core/schema", () => {
 								dev: [],
 							},
 						},
-						registryDependencies: [],
+						dependsOn: [],
 					}),
 				),
 			).toEqual({
-				id: "react",
-				title: "React",
-				description: "React variant",
+				id: "typescript",
+				title: "TypeScript",
 				files: [validFile()],
+			});
+		});
+
+		it("allows command-only packs without files", () => {
+			expect(
+				registryPackSchema.parse(
+					validPack({
+						files: undefined,
+						commands: { npm: { test: "vitest run" } },
+					}),
+				),
+			).toEqual({
+				id: "typescript",
+				title: "TypeScript",
+				commands: { npm: { test: "vitest run" } },
 			});
 		});
 
 		it("rejects an empty files list", () => {
 			expect(
-				registryVariantSchema.safeParse(validVariant({ files: [] })).success,
+				registryPackSchema.safeParse(validPack({ files: [] })).success,
 			).toBe(false);
 		});
 
 		it("rejects empty required strings, empty when values, and unknown keys", () => {
+			expect(registryPackSchema.safeParse(validPack({ id: "" })).success).toBe(
+				false,
+			);
 			expect(
-				registryVariantSchema.safeParse(validVariant({ id: "" })).success,
+				registryPackSchema.safeParse(validPack({ id: "a/b" })).success,
 			).toBe(false);
 			expect(
-				registryVariantSchema.safeParse(validVariant({ id: "a/b" })).success,
+				registryPackSchema.safeParse(validPack({ id: ".." })).success,
 			).toBe(false);
 			expect(
-				registryVariantSchema.safeParse(validVariant({ id: ".." })).success,
-			).toBe(false);
-			expect(
-				registryVariantSchema.safeParse(
-					validVariant({ when: { language: "" } }),
-				).success,
-			).toBe(false);
-			expect(
-				registryVariantSchema.safeParse(validVariant({ extra: "nope" }))
+				registryPackSchema.safeParse(validPack({ when: { language: "" } }))
 					.success,
+			).toBe(false);
+			expect(
+				registryPackSchema.safeParse(validPack({ extra: "nope" })).success,
 			).toBe(false);
 		});
 	});
@@ -545,22 +701,22 @@ describe("core/schema", () => {
 				title: "Button",
 				description: "A button",
 				type: "component",
-				variants: [registryVariantSchema.parse(validVariant())],
+				packs: [registryPackSchema.parse(validPack())],
 			});
 		});
 
-		it("rejects duplicate variant ids", () => {
+		it("rejects duplicate pack ids", () => {
 			expect(
 				rejectMessage(
 					registryItemSchema,
 					validItem({
-						variants: [
-							validVariant({ id: "default" }),
-							validVariant({ id: "default", title: "Also" }),
+						packs: [
+							validPack({ id: "default" }),
+							validPack({ id: "default", title: "Also" }),
 						],
 					}),
 				),
-			).toBe("duplicate_variant:default");
+			).toBe("duplicate_pack:default");
 		});
 
 		it("keeps item-level files and non-empty dependency lists", () => {
@@ -574,7 +730,7 @@ describe("core/schema", () => {
 								dev: ["vitest"],
 							},
 						},
-						registryDependencies: ["utils"],
+						dependsOn: ["utils"],
 					}),
 				),
 			).toMatchObject({
@@ -585,7 +741,7 @@ describe("core/schema", () => {
 						dev: ["vitest"],
 					},
 				},
-				registryDependencies: ["utils"],
+				dependsOn: ["utils"],
 			});
 		});
 
@@ -598,20 +754,20 @@ describe("core/schema", () => {
 							dev: [],
 						},
 					},
-					registryDependencies: [],
+					dependsOn: [],
 				}),
 			);
 
 			expect(parsed).not.toHaveProperty("files");
 			expect(parsed).not.toHaveProperty("dependencies");
-			expect(parsed).not.toHaveProperty("registryDependencies");
+			expect(parsed).not.toHaveProperty("dependsOn");
 		});
 
-		it("accepts a variant-less item with top-level files", () => {
-			const { variants: _variants, ...withoutVariants } = validItem();
+		it("accepts a pack-less item with top-level files", () => {
+			const { packs: _packs, ...withoutPacks } = validItem();
 			expect(
 				registryItemSchema.parse({
-					...withoutVariants,
+					...withoutPacks,
 					files: [validFile()],
 				}),
 			).toEqual({
@@ -624,36 +780,36 @@ describe("core/schema", () => {
 		});
 
 		it("rejects item-level when", () => {
-			const { variants: _variants, ...withoutVariants } = validItem();
+			const { packs: _packs, ...withoutPacks } = validItem();
 			expect(
 				registryItemSchema.safeParse({
-					...withoutVariants,
+					...withoutPacks,
 					files: [validFile()],
 					when: { language: "typescript" },
 				}).success,
 			).toBe(false);
 		});
 
-		it("omits an empty variants list when files are present", () => {
+		it("omits an empty packs list when files are present", () => {
 			const parsed = registryItemSchema.parse(
-				validItem({ variants: [], files: [validFile()] }),
+				validItem({ packs: [], files: [validFile()] }),
 			);
 
-			expect(parsed).not.toHaveProperty("variants");
+			expect(parsed).not.toHaveProperty("packs");
 			expect(parsed.files).toEqual([validFile()]);
 		});
 
-		it("rejects an item with neither files, variants, nor install scripts", () => {
-			expect(
-				rejectMessage(registryItemSchema, validItem({ variants: [] })),
-			).toBe("missing_files_or_variants");
+		it("rejects an item with neither files, packs, nor install scripts", () => {
+			expect(rejectMessage(registryItemSchema, validItem({ packs: [] }))).toBe(
+				"missing_files_or_packs",
+			);
 		});
 
-		it("accepts a script-only item without files or variants", () => {
-			const { variants: _variants, ...withoutVariants } = validItem();
+		it("accepts a script-only item without files or packs", () => {
+			const { packs: _packs, ...withoutPacks } = validItem();
 			expect(
 				registryItemSchema.parse({
-					...withoutVariants,
+					...withoutPacks,
 					beforeInstall: "handler.ts",
 				}),
 			).toEqual({
@@ -666,10 +822,10 @@ describe("core/schema", () => {
 		});
 
 		it("accepts afterInstall-only script items without beforeInstall", () => {
-			const { variants: _variants, ...withoutVariants } = validItem();
+			const { packs: _packs, ...withoutPacks } = validItem();
 			expect(
 				registryItemSchema.parse({
-					...withoutVariants,
+					...withoutPacks,
 					afterInstall: "cleanup.ts",
 				}),
 			).toEqual({
@@ -682,7 +838,7 @@ describe("core/schema", () => {
 		});
 
 		it("rejects absolute, URL, and parent-escape install script paths", () => {
-			const { variants: _variants, ...withoutVariants } = validItem();
+			const { packs: _packs, ...withoutPacks } = validItem();
 			for (const script of [
 				"/abs/handler.ts",
 				"https://evil.example/h.js",
@@ -691,20 +847,27 @@ describe("core/schema", () => {
 			]) {
 				expect(
 					rejectMessage(registryItemSchema, {
-						...withoutVariants,
+						...withoutPacks,
 						beforeInstall: script,
 					}),
 				).toBe(`invalid_script:${script}`);
 			}
 		});
 
-		it("keeps uses and rejects the old item-level conditions field", () => {
-			const { variants: _variants, ...withoutVariants } = validItem();
+		it("keeps requires and item-level conditions maps", () => {
+			const { packs: _packs, ...withoutPacks } = validItem();
 			expect(
 				registryItemSchema.parse({
-					...withoutVariants,
+					...withoutPacks,
 					beforeInstall: "handler.ts",
-					uses: ["authorName"],
+					requires: ["authorName"],
+					conditions: {
+						coverageThreshold: {
+							kind: "text",
+							label: "Coverage",
+							optional: true,
+						},
+					},
 				}),
 			).toEqual({
 				id: "button",
@@ -712,15 +875,36 @@ describe("core/schema", () => {
 				description: "A button",
 				type: "component",
 				beforeInstall: ["handler.ts"],
-				uses: ["authorName"],
+				requires: ["authorName"],
+				conditions: {
+					coverageThreshold: {
+						kind: "text",
+						label: "Coverage",
+						optional: true,
+					},
+				},
 			});
 			expect(
 				registryItemSchema.safeParse({
-					...withoutVariants,
+					...withoutPacks,
 					beforeInstall: "handler.ts",
 					conditions: ["authorName"],
 				}).success,
 			).toBe(false);
+		});
+
+		it("rejects a key listed in both requires and local conditions", () => {
+			const { packs: _packs, ...withoutPacks } = validItem();
+			expect(
+				rejectMessage(registryItemSchema, {
+					...withoutPacks,
+					beforeInstall: "handler.ts",
+					requires: ["coverageThreshold"],
+					conditions: {
+						coverageThreshold: { kind: "text", label: "Coverage" },
+					},
+				}),
+			).toBe("requires_and_local:coverageThreshold");
 		});
 
 		it("rejects an empty files list when files are declared", () => {
@@ -739,26 +923,26 @@ describe("core/schema", () => {
 		});
 
 		it("keeps beforeInstall and afterInstall scripts and rejects duplicates", () => {
-			const { variants: _variants, ...withoutVariants } = validItem();
+			const { packs: _packs, ...withoutPacks } = validItem();
 			expect(
 				registryItemSchema.parse({
-					...withoutVariants,
+					...withoutPacks,
 					files: [validFile()],
 					beforeInstall: ["handler.ts"],
 					afterInstall: ["./commit.ts"],
-					registryDependencies: ["shared"],
+					dependsOn: ["shared"],
 				}),
 			).toMatchObject({
 				beforeInstall: ["handler.ts"],
 				afterInstall: ["./commit.ts"],
-				registryDependencies: ["shared"],
+				dependsOn: ["shared"],
 			});
 			expect(
 				rejectMessage(
 					registryItemSchema,
 					validItem({
 						files: [validFile()],
-						variants: [],
+						packs: [],
 						beforeInstall: ["handler.ts", "handler.ts"],
 					}),
 				),
@@ -766,40 +950,40 @@ describe("core/schema", () => {
 		});
 	});
 
-	describe("catalogVariantSchema", () => {
-		it("accepts an index variant with a payload source", () => {
+	describe("catalogPackSchema", () => {
+		it("accepts an index pack with a payload source", () => {
 			expect(
-				catalogVariantSchema.parse({
-					id: "react",
-					title: "React",
-					source: "r/button/react.json",
+				catalogPackSchema.parse({
+					id: "typescript",
+					title: "TypeScript",
+					source: "r/button/typescript.json",
 				}),
 			).toEqual({
-				id: "react",
-				title: "React",
-				source: "r/button/react.json",
+				id: "typescript",
+				title: "TypeScript",
+				source: "r/button/typescript.json",
 			});
 		});
 
-		it("keeps when and registryDependencies and rejects files", () => {
+		it("keeps when and dependsOn and rejects files", () => {
 			expect(
-				catalogVariantSchema.parse({
-					id: "react",
-					title: "React",
-					source: "r/button/react.json",
+				catalogPackSchema.parse({
+					id: "typescript",
+					title: "TypeScript",
+					source: "r/button/typescript.json",
 					when: { language: "typescript" },
-					registryDependencies: ["utils"],
+					dependsOn: ["utils"],
 				}),
 			).toMatchObject({
 				when: { language: "typescript" },
-				registryDependencies: ["utils"],
+				dependsOn: ["utils"],
 			});
 
 			expect(
-				catalogVariantSchema.safeParse({
-					id: "react",
-					title: "React",
-					source: "r/button/react.json",
+				catalogPackSchema.safeParse({
+					id: "typescript",
+					title: "TypeScript",
+					source: "r/button/typescript.json",
 					files: [{ source: "a.txt", target: "a.txt" }],
 				}).success,
 			).toBe(false);
@@ -807,17 +991,17 @@ describe("core/schema", () => {
 	});
 
 	describe("catalogItemSchema", () => {
-		it("accepts a variant index without an item id", () => {
+		it("accepts a pack index without an item id", () => {
 			expect(
 				catalogItemSchema.parse({
 					title: "Button",
 					description: "A button",
 					type: "component",
-					variants: [
+					packs: [
 						{
-							id: "react",
-							title: "React",
-							source: "r/button/react.json",
+							id: "typescript",
+							title: "TypeScript",
+							source: "r/button/typescript.json",
 						},
 					],
 				}),
@@ -825,17 +1009,17 @@ describe("core/schema", () => {
 				title: "Button",
 				description: "A button",
 				type: "component",
-				variants: [
+				packs: [
 					{
-						id: "react",
-						title: "React",
-						source: "r/button/react.json",
+						id: "typescript",
+						title: "TypeScript",
+						source: "r/button/typescript.json",
 					},
 				],
 			});
 		});
 
-		it("accepts a variant-less item with a payload source", () => {
+		it("accepts a pack-less item with a payload source", () => {
 			expect(
 				catalogItemSchema.parse({
 					title: "Assign Owner",
@@ -851,14 +1035,62 @@ describe("core/schema", () => {
 			});
 		});
 
-		it("rejects an item with neither source, variants, nor install scripts", () => {
+		it("accepts item-local select values that do not declare bindings", () => {
+			expect(
+				catalogItemSchema.parse({
+					title: "Testing",
+					description: "Tests",
+					type: "configuration",
+					source: "r/testing.json",
+					conditions: {
+						language: {
+							kind: "select",
+							label: "Language",
+							values: [{ value: "typescript", label: "TypeScript" }],
+						},
+					},
+				}).conditions,
+			).toEqual({
+				language: {
+					kind: "select",
+					label: "Language",
+					values: [{ value: "typescript", label: "TypeScript" }],
+				},
+			});
+		});
+
+		it("rejects item-local option bindings that reuse the condition key", () => {
+			expect(
+				rejectMessage(catalogItemSchema, {
+					title: "Testing",
+					description: "Tests",
+					type: "configuration",
+					source: "r/testing.json",
+					conditions: {
+						packageManager: {
+							label: "Package manager",
+							kind: "select",
+							values: [
+								{
+									value: "pnpm",
+									label: "pnpm",
+									bindings: { packageManager: "pnpm" },
+								},
+							],
+						},
+					},
+				}),
+			).toBe("binding_parent_key:packageManager");
+		});
+
+		it("rejects an item with neither source, packs, nor install scripts", () => {
 			expect(
 				rejectMessage(catalogItemSchema, {
 					title: "Button",
 					description: "A button",
 					type: "component",
 				}),
-			).toBe("missing_source_or_variants");
+			).toBe("missing_source_or_packs");
 		});
 
 		it("accepts a script-only catalog item", () => {
@@ -868,14 +1100,14 @@ describe("core/schema", () => {
 					description: "SPDX license",
 					type: "configuration",
 					beforeInstall: ["r/license-configuration.beforeInstall.0.js"],
-					uses: ["authorName"],
+					requires: ["authorName"],
 				}),
 			).toEqual({
 				title: "License",
 				description: "SPDX license",
 				type: "configuration",
 				beforeInstall: ["r/license-configuration.beforeInstall.0.js"],
-				uses: ["authorName"],
+				requires: ["authorName"],
 			});
 		});
 
@@ -895,31 +1127,43 @@ describe("core/schema", () => {
 			});
 		});
 
-		it("rejects an item that declares source together with variants", () => {
+		it("accepts an item that declares source together with packs", () => {
 			expect(
-				rejectMessage(catalogItemSchema, {
+				catalogItemSchema.parse({
 					title: "Button",
 					description: "A button",
 					type: "component",
 					source: "r/button.json",
-					variants: [
+					packs: [
 						{
-							id: "react",
-							title: "React",
-							source: "r/button/react.json",
+							id: "typescript",
+							title: "TypeScript",
+							source: "r/button/typescript.json",
 						},
 					],
 				}),
-			).toBe("source_with_variants");
+			).toEqual({
+				title: "Button",
+				description: "A button",
+				type: "component",
+				source: "r/button.json",
+				packs: [
+					{
+						id: "typescript",
+						title: "TypeScript",
+						source: "r/button/typescript.json",
+					},
+				],
+			});
 		});
 
-		it("rejects duplicate variant ids and unknown keys including id", () => {
+		it("rejects duplicate pack ids and unknown keys including id", () => {
 			expect(
 				rejectMessage(catalogItemSchema, {
 					title: "Button",
 					description: "A button",
 					type: "component",
-					variants: [
+					packs: [
 						{
 							id: "default",
 							title: "One",
@@ -932,7 +1176,7 @@ describe("core/schema", () => {
 						},
 					],
 				}),
-			).toBe("duplicate_variant:default");
+			).toBe("duplicate_pack:default");
 
 			expect(
 				catalogItemSchema.safeParse({

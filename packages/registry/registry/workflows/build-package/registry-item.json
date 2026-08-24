@@ -3,15 +3,21 @@
 	"title": "Build Package",
 	"description": "GitHub Actions workflow for building a package.",
 	"type": "workflow",
-	"variants": [
+	"requires": [
+		"language",
+		"defaultBranch",
+		"packageManager"
+	],
+	"dependsOn": [
+		"setup-workspace-workflow"
+	],
+	"packs": [
 		{
 			"id": "typescript",
 			"title": "TypeScript",
-			"description": "Build workflow for a TypeScript package.",
 			"when": {
 				"language": "typescript"
 			},
-			"registryDependencies": ["setup-workspace-workflow"],
 			"files": [
 				{
 					"source": "typescript/.github/workflows/build.yml",

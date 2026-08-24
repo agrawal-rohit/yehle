@@ -34,6 +34,28 @@ describe("core/condition-kind", () => {
 			expect(context.language).toBe("typescript");
 		});
 
+		it("ignores non-string seed values", () => {
+			const context: RegistryContext = {};
+			policy.seedContext(context, "language", true);
+			policy.seedContext(context, "language", ["typescript"]);
+			expect(context.language).toBeUndefined();
+		});
+
+		it("accepts declared when values and rejects others", () => {
+			expect(() =>
+				policy.assertWhenValue("typescript", selectValues),
+			).not.toThrow();
+			expect(() => policy.assertWhenValue("ruby", selectValues)).toThrow(
+				"undeclared:ruby",
+			);
+			expect(() => policy.assertWhenValue(true, selectValues)).toThrow(
+				"unexpected:true",
+			);
+			expect(() =>
+				policy.assertWhenValue(["typescript"], selectValues),
+			).not.toThrow();
+		});
+
 		it("normalizes a declared inferred string", () => {
 			expect(policy.normalizeInferred("typescript", selectValues)).toBe(
 				"typescript",
@@ -77,6 +99,15 @@ describe("core/condition-kind", () => {
 			expect(context.platforms).toEqual(["web"]);
 		});
 
+		it("seeds from an array when value and ignores empty or non-string seeds", () => {
+			const context: RegistryContext = {};
+			policy.seedContext(context, "platforms", ["ios", "web"]);
+			expect(context.platforms).toEqual(["ios", "web"]);
+			policy.seedContext(context, "platforms", true);
+			policy.seedContext(context, "platforms", []);
+			expect(context.platforms).toEqual(["ios", "web"]);
+		});
+
 		it("normalizes string and string[] inferences", () => {
 			expect(policy.normalizeInferred("ios", values)).toEqual(["ios"]);
 			expect(policy.normalizeInferred(["ios", "web"], values)).toEqual([
@@ -102,17 +133,23 @@ describe("core/condition-kind", () => {
 			expect(policy.allowsInWhen).toBe(true);
 		});
 
-		it("seeds boolean context from when strings", () => {
+		it("seeds boolean context from when booleans", () => {
 			const context: RegistryContext = {};
-			policy.seedContext(context, "enableCi", "true");
+			policy.seedContext(context, "enableCi", true);
 			expect(context.enableCi).toBe(true);
-			policy.seedContext(context, "enableCi", "false");
+			policy.seedContext(context, "enableCi", false);
 			expect(context.enableCi).toBe(false);
 		});
 
 		it("accepts true and false when values", () => {
-			expect(() => policy.assertWhenValue("true", undefined)).not.toThrow();
-			expect(() => policy.assertWhenValue("false", undefined)).not.toThrow();
+			expect(() => policy.assertWhenValue(true, undefined)).not.toThrow();
+			expect(() => policy.assertWhenValue(false, undefined)).not.toThrow();
+		});
+
+		it("ignores non-boolean seed values", () => {
+			const context: RegistryContext = {};
+			policy.seedContext(context, "enableCi", "true");
+			expect(context.enableCi).toBeUndefined();
 		});
 
 		it("normalizes boolean and string inferences", () => {
@@ -143,6 +180,12 @@ describe("core/condition-kind", () => {
 			const context: RegistryContext = {};
 			policy.seedContext(context, "author", "Ada");
 			expect(context.author).toBe("Ada");
+		});
+
+		it("ignores non-string seed values", () => {
+			const context: RegistryContext = {};
+			policy.seedContext(context, "author", true);
+			expect(context.author).toBeUndefined();
 		});
 
 		it("normalizes non-empty string inferences only", () => {

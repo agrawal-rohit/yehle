@@ -1,6 +1,7 @@
 import { type ZodType, z } from "zod";
 import { policyForConditionKind } from "./condition-kind";
 import {
+	assertConditionMapBindingKeys,
 	type CatalogItem,
 	catalogItemSchema,
 	type Registry,
@@ -48,8 +49,7 @@ function messageForCustomIssue(
 ): string | undefined {
 	const customMessages: Record<string, (value: string) => string> = {
 		"duplicate:": (value) => `${label} has duplicate value "${value}".`,
-		"duplicate_variant:": (value) =>
-			`${label} has duplicate variant id "${value}".`,
+		"duplicate_pack:": (value) => `${label} has duplicate pack id "${value}".`,
 		"duplicate_hook:": (value) => {
 			const [listName, entry] = value.split(":");
 			return `${label} lists "${entry}" more than once in ${listName}.`;
@@ -58,16 +58,23 @@ function messageForCustomIssue(
 			String.raw`${fieldLabel} must be a single path segment (no "/", "\", or "..").`,
 		"invalid_script:": () =>
 			`${fieldLabel} must be a relative path under the registry (no absolute paths, URLs, or "..").`,
-		missing_files_or_variants: () =>
-			`${label} must declare files, an install script (beforeInstall/afterInstall), or at least one variant.`,
-		missing_source_or_variants: () =>
-			`${label} must declare source, an install script (beforeInstall/afterInstall), or at least one variant.`,
-		source_with_variants: () =>
-			`${label} cannot declare source together with variants.`,
+		missing_files_or_packs: () =>
+			`${label} must declare files, an install script (beforeInstall/afterInstall), or at least one pack.`,
+		missing_source_or_packs: () =>
+			`${label} must declare source, an install script (beforeInstall/afterInstall), or at least one pack.`,
 		select_requires_values: () => `${label} must declare at least one value.`,
 		text_with_values: () => `${label} of kind "text" cannot declare values.`,
 		boolean_with_values: () =>
 			`${label} of kind "boolean" cannot declare values.`,
+		empty_bindings: () => `${fieldLabel} must declare at least one binding.`,
+		bindings_on_multiselect: () =>
+			`${label} of kind "multiselect" cannot declare option bindings.`,
+		"binding_parent_key:": (value) =>
+			`Registry condition "${value}" option bindings cannot reuse the condition key "${value}".`,
+		"requires_and_local:": (value) =>
+			`${label} lists "${value}" in both requires and local conditions.`,
+		min_on_non_multiselect: () =>
+			`${label} can only declare min for kind "multiselect".`,
 	};
 
 	const prefix =
@@ -240,7 +247,7 @@ export function parseKeyedRecord<T>(
 /**
  * Remap a condition-policy assertion failure into a registry-facing error.
  * @param error - Error thrown by `assertWhenValue`.
- * @param subject - Item/variant label for the message.
+ * @param subject - Item/pack label for the message.
  * @param key - Condition key from the `when` map.
  * @param value - Condition value from the `when` map.
  * @throws Error with a user-facing message, or rethrows unrecognized errors.
@@ -249,7 +256,7 @@ function remapWhenAssertionError(
 	error: unknown,
 	subject: string,
 	key: string,
-	value: string,
+	value: unknown,
 ): never {
 	const code = error instanceof Error ? error.message : String(error);
 	if (code === "text_in_when")
@@ -258,31 +265,27 @@ function remapWhenAssertionError(
 		);
 	if (code.startsWith("boolean:"))
 		throw new Error(
-			`${subject} uses invalid when value "${value}" for boolean key "${key}" (expected "true" or "false").`,
+			`${subject} uses invalid when value "${String(value)}" for boolean key "${key}" (expected true or false).`,
 		);
 	if (code.startsWith("undeclared:"))
 		throw new Error(
-			`${subject} uses undeclared when value "${value}" for key "${key}".`,
+			`${subject} uses undeclared when value "${code.slice("undeclared:".length)}" for key "${key}".`,
 		);
 	throw error;
 }
 
 /**
  * Validate a single `when` map against declared conditions.
- * @param itemId - Registry item id for error messages.
+ * @param subject - Error label naming the item or pack.
  * @param when - Condition matcher to validate.
- * @param conditions - Shared condition definitions.
- * @param variantId - Variant id being validated.
+ * @param conditions - Shared and item-local condition definitions in scope.
  * @throws Error when a condition key or value is undeclared.
  */
 function validateWhenEntries(
-	itemId: string,
-	when: Record<string, string> | undefined,
+	subject: string,
+	when: RegistryCondition["when"] | undefined,
 	conditions: Record<string, RegistryCondition> | undefined,
-	variantId: string,
 ): void {
-	const subject = `Registry item "${itemId}" variant "${variantId}"`;
-
 	for (const [key, value] of Object.entries(when ?? {})) {
 		const condition = conditions?.[key];
 		if (!condition)
@@ -300,26 +303,75 @@ function validateWhenEntries(
 }
 
 /**
- * Ensure every variant `when` key/value is declared in the conditions map,
- * and that item-level `uses` keys exist.
+ * Reject requires / local-condition collisions for one item.
+ * @param itemId - Registry item id.
+ * @param item - Catalog item.
+ * @param conditions - Shared condition definitions.
+ * @param localOwners - Map of local condition key → declaring item id.
+ * @throws Error when a key is unknown, collides with shared, or is claimed twice.
+ */
+function assertItemConditionOwnership(
+	itemId: string,
+	item: CatalogItem,
+	conditions: Record<string, RegistryCondition> | undefined,
+	localOwners: Map<string, string>,
+): void {
+	for (const key of item.requires ?? []) {
+		if (!conditions?.[key])
+			throw new Error(
+				`Registry item "${itemId}" requires unknown condition "${key}".`,
+			);
+	}
+
+	for (const key of Object.keys(item.conditions ?? {})) {
+		if (conditions?.[key])
+			throw new Error(
+				`Registry item "${itemId}" condition "${key}" collides with a shared condition.`,
+			);
+
+		const owner = localOwners.get(key);
+		if (owner !== undefined && owner !== itemId)
+			throw new Error(
+				`Item-level condition "${key}" is declared by both "${owner}" and "${itemId}".`,
+			);
+		localOwners.set(key, itemId);
+	}
+}
+
+/**
+ * Ensure pack `when`, item `requires`, and item-level conditions are consistent.
  * @param items - Registry items to validate.
  * @param conditions - Shared condition definitions.
- * @throws Error when a condition key or value is undeclared.
+ * @throws Error when a condition key or value is undeclared or collides.
  */
 function crossValidateWhen(
 	items: Record<string, CatalogItem>,
 	conditions: Record<string, RegistryCondition> | undefined,
 ): void {
+	const localOwners = new Map<string, string>();
+
 	for (const [itemId, item] of Object.entries(items)) {
-		for (const variant of item.variants ?? []) {
-			validateWhenEntries(itemId, variant.when, conditions, variant.id);
+		// Pack and local-condition `when` may reference shared or this item's conditions.
+		const inScope: Record<string, RegistryCondition> = {
+			...conditions,
+			...item.conditions,
+		};
+
+		for (const pack of item.packs ?? []) {
+			validateWhenEntries(
+				`Registry item "${itemId}" pack "${pack.id}"`,
+				pack.when,
+				inScope,
+			);
 		}
-		for (const key of item.uses ?? []) {
-			if (!conditions?.[key])
-				throw new Error(
-					`Registry item "${itemId}" uses unknown condition "${key}".`,
-				);
+		for (const [key, condition] of Object.entries(item.conditions ?? {})) {
+			validateWhenEntries(
+				`Registry item "${itemId}" condition "${key}"`,
+				condition.when,
+				inScope,
+			);
 		}
+		assertItemConditionOwnership(itemId, item, conditions, localOwners);
 	}
 }
 
@@ -365,6 +417,7 @@ export function parseRegistryDocument(raw: unknown): Registry {
 		"Registry conditions",
 		(key) => `Registry condition "${key}"`,
 	);
+	assertConditionMapBindingKeys(conditions);
 	crossValidateWhen(items, conditions);
 
 	const types = parseKeyedRecord(

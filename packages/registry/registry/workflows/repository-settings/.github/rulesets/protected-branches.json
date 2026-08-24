@@ -5,7 +5,7 @@
 	"conditions": {
 		"ref_name": {
 			"exclude": [],
-			"include": ["refs/heads/main", "refs/heads/release/*"]
+			"include": ["refs/heads/{{defaultBranch}}", "refs/heads/release/*"]
 		}
 	},
 	"rules": [
@@ -38,6 +38,24 @@
 		},
 		{
 			"type": "non_fast_forward"
+		},
+		{
+			"type": "required_status_checks",
+			"parameters": {
+				"strict_required_status_checks_policy": true,
+				"do_not_enforce_on_create": false,
+				"required_status_checks": [
+					{ "context": "Build" },
+					{ "context": "Test (Coverage)" },
+					{ "context": "Code Quality (Biome)" },
+					{ "context": "Code Quality (SonarQube)" },
+					{ "context": "Code Quality (Fallow)" },
+					{ "context": "Workflow Security (Zizmor)" },
+					{ "context": "Code Security (CodeQL)" },
+					{ "context": "Code Security (Semgrep)" },
+					{ "context": "Code Security (Dependency Review)" }
+				]
+			}
 		},
 		{
 			"type": "code_quality",

@@ -1,12 +1,12 @@
-name: Test (Coverage)
+name: Code Quality (Biome)
 
 on:
   push:
     branches:
-      - {{defaultBranch}}
+      - main
   pull_request:
     branches:
-      - {{defaultBranch}}
+      - main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,10 +16,10 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Test (Coverage)
+  biome:
+    name: Code Quality (Biome)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,5 +29,5 @@ jobs:
       - name: Setup workspace
         uses: ./.github/actions/setup
 
-      - name: Run tests with coverage
-        run: {{pmRun}} cov
+      - name: Run Biome check
+        run: pnpm exec biome check .

@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
 	NpmPackageManager,
 	RegistryDependencyKind,
@@ -9,14 +12,8 @@ const mockConfirmInput = vi.fn();
 const mockSelectInput = vi.fn();
 const mockRunAsync = vi.fn();
 const mockRunWithTasks = vi.fn();
-const mockDetectPackageManagerFromLockfile = vi.fn();
 const mockBuildPackageInstallCommands = vi.fn();
-const mockMergeEcosystemDependencies = vi.fn();
-
-const FakeEcosystem = {
-	NPM: "npm",
-	PYTHON: "python",
-} as const;
+const mockMergeEcosystemMaps = vi.fn();
 
 vi.mock("../cli/prompts", () => ({
 	confirmInput: (...args: unknown[]) => mockConfirmInput(...args),
@@ -30,42 +27,20 @@ vi.mock("../cli/tasks", () => ({
 vi.mock("@tuckshop/core", async () => {
 	const actual =
 		await vi.importActual<typeof import("@tuckshop/core")>("@tuckshop/core");
-	const FakeEcosystem = {
-		NPM: "npm",
-		PYTHON: "python",
-	} as const;
 	return {
 		...actual,
-		RegistryEcosystem: FakeEcosystem,
-		detectPackageManagerFromLockfile: (...args: unknown[]) =>
-			mockDetectPackageManagerFromLockfile(...args),
 		buildPackageInstallCommands: (...args: unknown[]) =>
 			mockBuildPackageInstallCommands(...args),
-		mergeEcosystemDependencies: (...args: unknown[]) =>
-			mockMergeEcosystemDependencies(...args),
+		mergeEcosystemMaps: (...args: unknown[]) => mockMergeEcosystemMaps(...args),
 		runAsync: (...args: unknown[]) => mockRunAsync(...args),
-		ecosystemManagers: {
-			[FakeEcosystem.NPM]: [
-				{
-					manager: actual.NpmPackageManager.NPM,
-					lockfiles: ["package-lock.json"],
-					[actual.RegistryDependencyKind.RUNTIME]: "npm install",
-					[actual.RegistryDependencyKind.DEV]: "npm install -D",
-				},
-			],
-			[FakeEcosystem.PYTHON]: [
-				{
-					manager: "pip",
-					lockfiles: ["requirements.txt"],
-					[actual.RegistryDependencyKind.RUNTIME]: "pip install",
-					[actual.RegistryDependencyKind.DEV]: "pip install",
-				},
-			],
-		},
 	};
 });
 
-import { installDeclaredPackages } from "./add-packages";
+import {
+	installDeclaredPackages,
+	mergeProjectCommands,
+	npmPackageManagerFromConditions,
+} from "./add-packages";
 
 describe("commands/add-packages", () => {
 	beforeEach(() => {
@@ -79,10 +54,9 @@ describe("commands/add-packages", () => {
 		mockBuildPackageInstallCommands.mockReturnValue([
 			"npm install -D vitest@^3",
 		]);
-		mockMergeEcosystemDependencies.mockReturnValue({
+		mockMergeEcosystemMaps.mockReturnValue({
 			npm: { [RegistryDependencyKind.DEV]: ["vitest@^3"] },
 		} satisfies RegistryEcosystemDependencies);
-		mockDetectPackageManagerFromLockfile.mockReturnValue(undefined);
 		mockConfirmInput.mockResolvedValue(true);
 		mockSelectInput.mockResolvedValue(NpmPackageManager.NPM);
 		mockRunAsync.mockResolvedValue("");
@@ -92,35 +66,57 @@ describe("commands/add-packages", () => {
 		vi.restoreAllMocks();
 	});
 
+	it("npmPackageManagerFromConditions reads a supported manager from conditions", () => {
+		expect(npmPackageManagerFromConditions({ packageManager: "pnpm" })).toBe(
+			NpmPackageManager.PNPM,
+		);
+	});
+
+	it("npmPackageManagerFromConditions fails when the condition is missing", () => {
+		expect(() => npmPackageManagerFromConditions({})).toThrow(
+			'Missing condition "packageManager"',
+		);
+	});
+
+	it("npmPackageManagerFromConditions fails when the manager is unknown", () => {
+		expect(() =>
+			npmPackageManagerFromConditions({ packageManager: "pip" }),
+		).toThrow('Unknown packageManager "pip"');
+	});
+
 	it("returns early when there are no package declarations", async () => {
-		await expect(installDeclaredPackages([], "/project")).resolves.toEqual([]);
+		await expect(
+			installDeclaredPackages([], "/project", { packageManager: "npm" }),
+		).resolves.toEqual([]);
 		expect(mockConfirmInput).not.toHaveBeenCalled();
 	});
 
 	it("returns early when merged packages are empty", async () => {
-		mockMergeEcosystemDependencies.mockReturnValue(undefined);
+		mockMergeEcosystemMaps.mockReturnValue(undefined);
 
 		await expect(
 			installDeclaredPackages(
 				[{ npm: { [RegistryDependencyKind.RUNTIME]: [] } }],
 				"/project",
+				{ packageManager: "npm" },
 			),
 		).resolves.toEqual([]);
 		expect(mockConfirmInput).toHaveBeenCalled();
 		expect(mockBuildPackageInstallCommands).not.toHaveBeenCalled();
 	});
 
-	it("auto-selects the sole ecosystem manager when no lockfile is detected", async () => {
+	it("installs with the packageManager condition and does not prompt for a manager", async () => {
 		await expect(
 			installDeclaredPackages(
 				[{ npm: { [RegistryDependencyKind.DEV]: ["vitest@^3"] } }],
 				"/project",
+				{ packageManager: "npm" },
 			),
 		).resolves.toEqual([]);
 
 		expect(mockSelectInput).not.toHaveBeenCalled();
 		expect(mockBuildPackageInstallCommands).toHaveBeenCalledWith(
-			FakeEcosystem.NPM,
+			"npm",
 			NpmPackageManager.NPM,
 			{ [RegistryDependencyKind.DEV]: ["vitest@^3"] },
 		);
@@ -130,36 +126,123 @@ describe("commands/add-packages", () => {
 		);
 	});
 
-	it("uses a detected lockfile manager for next-step commands when install is declined", async () => {
+	it("uses the packageManager condition for next-step commands when install is declined", async () => {
 		mockConfirmInput.mockResolvedValue(false);
-		mockDetectPackageManagerFromLockfile.mockReturnValue({
-			manager: NpmPackageManager.NPM,
-			lockfile: "package-lock.json",
-		});
+		mockBuildPackageInstallCommands.mockReturnValue(["pnpm add -D vitest@^3"]);
 
 		await expect(
 			installDeclaredPackages(
 				[{ npm: { [RegistryDependencyKind.DEV]: ["vitest@^3"] } }],
 				"/project",
+				{ packageManager: "pnpm" },
 			),
-		).resolves.toEqual(["npm install -D vitest@^3"]);
+		).resolves.toEqual(["pnpm add -D vitest@^3"]);
 
-		expect(mockDetectPackageManagerFromLockfile).toHaveBeenCalled();
+		expect(mockSelectInput).not.toHaveBeenCalled();
+		expect(mockBuildPackageInstallCommands).toHaveBeenCalledWith(
+			"npm",
+			NpmPackageManager.PNPM,
+			{ [RegistryDependencyKind.DEV]: ["vitest@^3"] },
+		);
 		expect(mockRunAsync).not.toHaveBeenCalled();
 	});
 
-	it("skips ecosystems that are absent from the merged package map", async () => {
-		await installDeclaredPackages(
-			[{ npm: { dev: ["vitest@^3"] } }],
-			"/project",
-		);
+	it("throws when npm commands are declared but package.json is missing", async () => {
+		mockMergeEcosystemMaps.mockReturnValue({ npm: { test: "vitest run" } });
 
-		// FakeEcosystem has npm + python; merge only returns npm, so python is skipped.
-		expect(mockBuildPackageInstallCommands).toHaveBeenCalledTimes(1);
-		expect(mockBuildPackageInstallCommands).toHaveBeenCalledWith(
-			FakeEcosystem.NPM,
-			NpmPackageManager.NPM,
-			{ [RegistryDependencyKind.DEV]: ["vitest@^3"] },
+		await expect(
+			mergeProjectCommands("/missing-project", [
+				{ files: [], commands: { npm: { test: "vitest run" } } },
+			]),
+		).rejects.toThrow(
+			"Cannot merge package.json scripts: package.json was not found in the project root.",
 		);
+	});
+
+	it("skips merging when there are no npm commands", async () => {
+		mockMergeEcosystemMaps.mockReturnValue(undefined);
+
+		await expect(
+			mergeProjectCommands("/project", [{ files: [] }]),
+		).resolves.toBe(undefined);
+	});
+
+	it("merges new scripts and skips identical existing scripts", async () => {
+		const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-packages-"));
+		fs.writeFileSync(
+			path.join(projectDir, "package.json"),
+			JSON.stringify({ scripts: { test: "vitest run" } }),
+			"utf8",
+		);
+		mockMergeEcosystemMaps.mockReturnValue({
+			npm: { test: "vitest run", cov: "vitest run --coverage" },
+		});
+
+		try {
+			await mergeProjectCommands(projectDir, [
+				{
+					files: [],
+					commands: {
+						npm: { test: "vitest run", cov: "vitest run --coverage" },
+					},
+				},
+			]);
+			const written = JSON.parse(
+				fs.readFileSync(path.join(projectDir, "package.json"), "utf8"),
+			) as { scripts: Record<string, string> };
+			expect(written.scripts).toEqual({
+				test: "vitest run",
+				cov: "vitest run --coverage",
+			});
+			expect(mockConfirmInput).not.toHaveBeenCalled();
+		} finally {
+			fs.rmSync(projectDir, { recursive: true, force: true });
+		}
+	});
+
+	it("overwrites a conflicting script when the user confirms", async () => {
+		const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-packages-"));
+		fs.writeFileSync(
+			path.join(projectDir, "package.json"),
+			JSON.stringify({ scripts: { test: "jest" } }),
+			"utf8",
+		);
+		mockMergeEcosystemMaps.mockReturnValue({ npm: { test: "vitest run" } });
+		mockConfirmInput.mockResolvedValue(true);
+
+		try {
+			await mergeProjectCommands(projectDir, [
+				{ files: [], commands: { npm: { test: "vitest run" } } },
+			]);
+			const written = JSON.parse(
+				fs.readFileSync(path.join(projectDir, "package.json"), "utf8"),
+			) as { scripts: Record<string, string> };
+			expect(written.scripts.test).toBe("vitest run");
+		} finally {
+			fs.rmSync(projectDir, { recursive: true, force: true });
+		}
+	});
+
+	it("keeps a conflicting script when the user declines overwrite", async () => {
+		const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-packages-"));
+		fs.writeFileSync(
+			path.join(projectDir, "package.json"),
+			JSON.stringify({ scripts: { test: "jest" } }),
+			"utf8",
+		);
+		mockMergeEcosystemMaps.mockReturnValue({ npm: { test: "vitest run" } });
+		mockConfirmInput.mockResolvedValue(false);
+
+		try {
+			await mergeProjectCommands(projectDir, [
+				{ files: [], commands: { npm: { test: "vitest run" } } },
+			]);
+			const written = JSON.parse(
+				fs.readFileSync(path.join(projectDir, "package.json"), "utf8"),
+			) as { scripts: Record<string, string> };
+			expect(written.scripts.test).toBe("jest");
+		} finally {
+			fs.rmSync(projectDir, { recursive: true, force: true });
+		}
 	});
 });

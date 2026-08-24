@@ -3,6 +3,12 @@
 	"title": "Repository Settings",
 	"description": "GitOps workflow that configures branch/tag rulesets and applies repository merge/security settings.",
 	"type": "workflow",
+	"requires": [
+		"defaultBranch"
+	],
+	"secrets": [
+		"GH_ADMIN_TOKEN"
+	],
 	"files": [
 		{
 			"source": ".github/workflows/settings.yml",

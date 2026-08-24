@@ -79,7 +79,7 @@ describe("commands/index", () => {
 				title: "Theme A",
 				description: "A theme",
 				type: "theme",
-				variants: [],
+				packs: [],
 			},
 		},
 	} as Registry;

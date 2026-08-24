@@ -3,26 +3,34 @@ import { RegistryConditionKind } from "./condition-kind";
 import {
 	assumeContextFromSelectedItems,
 	buildInstallPlan,
+	collectItemLocalConditions,
 	collectRegistryDependencies,
 	collectRequiredConditions,
 	parseItemId,
-	selectRegistryVariant,
+	selectRegistryPacks,
 	whenMatchesContext,
 } from "./plan";
-import type { CatalogItem } from "./schema";
+import type { CatalogItem, CatalogPack } from "./schema";
 
-function makeVariant(
-	overrides: Partial<NonNullable<CatalogItem["variants"]>[number]> &
-		Pick<
-			NonNullable<CatalogItem["variants"]>[number],
-			"id" | "title" | "source"
-		>,
-): NonNullable<CatalogItem["variants"]>[number] {
+/**
+ * Build a catalog pack fixture.
+ * @param overrides - Pack fields including required id, title, and source.
+ * @returns Catalog pack.
+ */
+function makePack(
+	overrides: Partial<CatalogPack> &
+		Pick<CatalogPack, "id" | "title" | "source">,
+): CatalogPack {
 	return {
 		...overrides,
 	};
 }
 
+/**
+ * Build a catalog item fixture.
+ * @param overrides - Item fields to merge over defaults.
+ * @returns Catalog item.
+ */
 function makeItem(overrides: Partial<CatalogItem> = {}): CatalogItem {
 	return {
 		title: "Item",
@@ -34,11 +42,11 @@ function makeItem(overrides: Partial<CatalogItem> = {}): CatalogItem {
 
 describe("core/plan", () => {
 	describe("parseItemId", () => {
-		it("parses bare ids and id@variant values", () => {
+		it("parses bare ids and id@pack values", () => {
 			expect(parseItemId("git-hooks")).toEqual({ id: "git-hooks" });
 			expect(parseItemId("git-hooks@typescript")).toEqual({
 				id: "git-hooks",
-				variantId: "typescript",
+				packId: "typescript",
 			});
 		});
 
@@ -53,16 +61,16 @@ describe("core/plan", () => {
 		});
 	});
 
-	describe("selectRegistryVariant", () => {
-		it("selects the most specific matching variant", () => {
+	describe("selectRegistryPacks", () => {
+		it("selects every pack whose when matches, including unconditional packs", () => {
 			const item = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "default",
 						title: "Default",
 						source: "r/item/default.json",
 					}),
-					makeVariant({
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/item/typescript.json",
@@ -72,16 +80,16 @@ describe("core/plan", () => {
 			});
 
 			expect(
-				selectRegistryVariant("item", item, { language: "typescript" }),
+				selectRegistryPacks("item", item, { language: "typescript" }),
 			).toEqual({
-				variantId: "typescript",
-				source: "r/item/typescript.json",
+				packIds: ["default", "typescript"],
+				sources: ["r/item/default.json", "r/item/typescript.json"],
 			});
 		});
 
-		it("returns source and/or install scripts for a variant-less item", () => {
+		it("returns source and/or install scripts for a pack-less item", () => {
 			expect(
-				selectRegistryVariant(
+				selectRegistryPacks(
 					"item",
 					makeItem({
 						source: "r/item.json",
@@ -90,14 +98,14 @@ describe("core/plan", () => {
 					{},
 				),
 			).toEqual({
-				source: "r/item.json",
+				sources: ["r/item.json"],
 				beforeInstallScripts: ["r/item.beforeInstall.0.js"],
 			});
 		});
 
-		it("returns install scripts only when a variant-less item has no payload source", () => {
+		it("returns install scripts only when a pack-less item has no payload source", () => {
 			expect(
-				selectRegistryVariant(
+				selectRegistryPacks(
 					"item",
 					makeItem({ beforeInstall: ["r/item.beforeInstall.0.js"] }),
 					{},
@@ -105,11 +113,11 @@ describe("core/plan", () => {
 			).toEqual({ beforeInstallScripts: ["r/item.beforeInstall.0.js"] });
 		});
 
-		it("includes item-level install scripts on a matched variant", () => {
+		it("includes item-level install scripts on matching packs", () => {
 			const item = makeItem({
 				beforeInstall: ["r/item.beforeInstall.0.js"],
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "default",
 						title: "Default",
 						source: "r/item/default.json",
@@ -117,18 +125,18 @@ describe("core/plan", () => {
 				],
 			});
 
-			expect(selectRegistryVariant("item", item, {})).toEqual({
-				variantId: "default",
-				source: "r/item/default.json",
+			expect(selectRegistryPacks("item", item, {})).toEqual({
+				packIds: ["default"],
+				sources: ["r/item/default.json"],
 				beforeInstallScripts: ["r/item.beforeInstall.0.js"],
 			});
 		});
 
-		it("stacks item-level and selected-variant install scripts", () => {
+		it("stacks item-level and selected-pack install scripts", () => {
 			const item = makeItem({
 				beforeInstall: ["r/item.beforeInstall.0.js"],
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/item/typescript.json",
@@ -137,9 +145,9 @@ describe("core/plan", () => {
 				],
 			});
 
-			expect(selectRegistryVariant("item", item, {})).toEqual({
-				variantId: "typescript",
-				source: "r/item/typescript.json",
+			expect(selectRegistryPacks("item", item, {})).toEqual({
+				packIds: ["typescript"],
+				sources: ["r/item/typescript.json"],
 				beforeInstallScripts: [
 					"r/item.beforeInstall.0.js",
 					"r/item/typescript.beforeInstall.0.js",
@@ -147,36 +155,54 @@ describe("core/plan", () => {
 			});
 		});
 
-		it("rejects pinning a variant on a variant-less item", () => {
+		it("layers a base item source under matching pack sources", () => {
+			const item = makeItem({
+				source: "r/item.json",
+				packs: [
+					makePack({
+						id: "typescript",
+						title: "TypeScript",
+						source: "r/item/typescript.json",
+					}),
+				],
+			});
+
+			expect(selectRegistryPacks("item", item, {})).toEqual({
+				packIds: ["typescript"],
+				sources: ["r/item.json", "r/item/typescript.json"],
+			});
+		});
+
+		it("rejects pinning a pack on a pack-less item", () => {
 			expect(() =>
-				selectRegistryVariant(
+				selectRegistryPacks(
 					"item",
 					makeItem({ source: "r/item.json" }),
 					{},
 					"react",
 				),
-			).toThrow('Registry item "item" has no variants.');
+			).toThrow('Registry item "item" has no packs.');
 		});
 
-		it("rejects a missing pinned variant id", () => {
+		it("rejects a missing pinned pack id", () => {
 			const item = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "default",
 						title: "Default",
 						source: "r/item/default.json",
 					}),
 				],
 			});
-			expect(() => selectRegistryVariant("item", item, {}, "missing")).toThrow(
-				'Registry item "item" has no variant "missing".',
+			expect(() => selectRegistryPacks("item", item, {}, "missing")).toThrow(
+				'Registry item "item" has no pack "missing".',
 			);
 		});
 
-		it("rejects when no variant matches and no unconditional fallback exists", () => {
+		it("returns empty sources when no pack matches and the item has no base source", () => {
 			const item = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/item/typescript.json",
@@ -184,26 +210,26 @@ describe("core/plan", () => {
 					}),
 				],
 			});
-			expect(() => selectRegistryVariant("item", item, {})).toThrow(
-				"no variant matching the current context",
-			);
+			expect(selectRegistryPacks("item", item, {})).toEqual({
+				sources: [],
+			});
 		});
 
-		it("rejects a variant-less item with neither source nor install phases", () => {
-			expect(() => selectRegistryVariant("item", makeItem(), {})).toThrow(
+		it("rejects a pack-less item with neither source nor install phases", () => {
+			expect(() => selectRegistryPacks("item", makeItem(), {})).toThrow(
 				"missing a payload source or install phase",
 			);
 		});
 
-		it("falls back to an unconditional variant", () => {
+		it("keeps unconditional packs when a conditional pack does not match", () => {
 			const item = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "default",
 						title: "Default",
 						source: "r/item/default.json",
 					}),
-					makeVariant({
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/item/typescript.json",
@@ -212,51 +238,26 @@ describe("core/plan", () => {
 				],
 			});
 
-			expect(
-				selectRegistryVariant("item", item, { language: "python" }),
-			).toEqual({
-				variantId: "default",
-				source: "r/item/default.json",
-			});
+			expect(selectRegistryPacks("item", item, { language: "python" })).toEqual(
+				{
+					packIds: ["default"],
+					sources: ["r/item/default.json"],
+				},
+			);
 		});
 
-		it("prefers a more specific matcher when an unconditional variant also matches", () => {
-			const item = makeItem({
-				variants: [
-					makeVariant({
-						id: "default",
-						title: "Default",
-						source: "r/item/default.json",
-					}),
-					makeVariant({
-						id: "typescript",
-						title: "TypeScript",
-						source: "r/item/typescript.json",
-						when: { language: "typescript" },
-					}),
-				],
-			});
-
-			expect(
-				selectRegistryVariant("item", item, { language: "typescript" }),
-			).toEqual({
-				variantId: "typescript",
-				source: "r/item/typescript.json",
-			});
-		});
-
-		it("returns a variant-less item source", () => {
+		it("returns a pack-less item source", () => {
 			const item = makeItem({ source: "r/assign-owner.json" });
 
-			expect(selectRegistryVariant("assign-owner", item, {})).toEqual({
-				source: "r/assign-owner.json",
+			expect(selectRegistryPacks("assign-owner", item, {})).toEqual({
+				sources: ["r/assign-owner.json"],
 			});
 		});
 
-		it("honors a pinned variant regardless of when", () => {
+		it("honors a pinned pack even when its when does not match", () => {
 			const item = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/item/typescript.json",
@@ -266,15 +267,10 @@ describe("core/plan", () => {
 			});
 
 			expect(
-				selectRegistryVariant(
-					"item",
-					item,
-					{ language: "python" },
-					"typescript",
-				),
+				selectRegistryPacks("item", item, { language: "python" }, "typescript"),
 			).toEqual({
-				variantId: "typescript",
-				source: "r/item/typescript.json",
+				packIds: ["typescript"],
+				sources: ["r/item/typescript.json"],
 			});
 		});
 	});
@@ -284,7 +280,7 @@ describe("core/plan", () => {
 			const shared = makeItem({ source: "r/shared.json" });
 			const root = makeItem({
 				source: "r/root.json",
-				registryDependencies: ["shared"],
+				dependsOn: ["shared"],
 			});
 
 			const plan = buildInstallPlan(["root"], { root, shared }, {});
@@ -292,17 +288,17 @@ describe("core/plan", () => {
 			expect(plan.map((node) => node.itemId)).toEqual(["shared", "root"]);
 		});
 
-		it("walks item-level and selected-variant registryDependencies", () => {
+		it("walks item-level and selected-pack dependsOn", () => {
 			const shared = makeItem({ source: "r/shared.json" });
 			const eslint = makeItem({ source: "r/eslint.json" });
 			const item = makeItem({
-				registryDependencies: ["shared"],
-				variants: [
-					makeVariant({
+				dependsOn: ["shared"],
+				packs: [
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/item/typescript.json",
-						registryDependencies: ["eslint"],
+						dependsOn: ["eslint"],
 					}),
 				],
 			});
@@ -332,10 +328,10 @@ describe("core/plan", () => {
 			]);
 		});
 
-		it("records selected variant id and source on planned items", () => {
+		it("records selected pack ids and sources on planned items", () => {
 			const item = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/item/typescript.json",
@@ -349,8 +345,8 @@ describe("core/plan", () => {
 			).toEqual([
 				{
 					itemId: "item",
-					variantId: "typescript",
-					source: "r/item/typescript.json",
+					packIds: ["typescript"],
+					sources: ["r/item/typescript.json"],
 				},
 			]);
 		});
@@ -358,11 +354,11 @@ describe("core/plan", () => {
 		it("detects dependency cycles", () => {
 			const a = makeItem({
 				source: "r/a.json",
-				registryDependencies: ["b"],
+				dependsOn: ["b"],
 			});
 			const b = makeItem({
 				source: "r/b.json",
-				registryDependencies: ["a"],
+				dependsOn: ["a"],
 			});
 
 			expect(() => buildInstallPlan(["a"], { a, b }, {})).toThrow(
@@ -374,11 +370,11 @@ describe("core/plan", () => {
 			const shared = makeItem({ source: "r/shared.json" });
 			const a = makeItem({
 				source: "r/a.json",
-				registryDependencies: ["shared"],
+				dependsOn: ["shared"],
 			});
 			const b = makeItem({
 				source: "r/b.json",
-				registryDependencies: ["shared"],
+				dependsOn: ["shared"],
 			});
 
 			const plan = buildInstallPlan(["a", "b"], { a, b, shared }, {});
@@ -386,16 +382,16 @@ describe("core/plan", () => {
 			expect(plan.map((node) => node.itemId)).toEqual(["shared", "a", "b"]);
 		});
 
-		it("throws when the same item selects conflicting variants across selections", () => {
+		it("throws when the same item selects conflicting packs across selections", () => {
 			const shared = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/shared/typescript.json",
 						when: { language: "typescript" },
 					}),
-					makeVariant({
+					makePack({
 						id: "python",
 						title: "Python",
 						source: "r/shared/python.json",
@@ -405,28 +401,28 @@ describe("core/plan", () => {
 			});
 			const a = makeItem({
 				source: "r/a.json",
-				registryDependencies: ["shared@typescript"],
+				dependsOn: ["shared@typescript"],
 			});
 			const b = makeItem({
 				source: "r/b.json",
-				registryDependencies: ["shared@python"],
+				dependsOn: ["shared@python"],
 			});
 
 			expect(() => buildInstallPlan(["a", "b"], { a, b, shared }, {})).toThrow(
-				"conflicting variants",
+				"conflicting packs",
 			);
 		});
 
-		it("allows revisiting a shared dependency with the same pinned variant", () => {
+		it("allows revisiting a shared dependency with the same pinned pack", () => {
 			const shared = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/shared/typescript.json",
 						when: { language: "typescript" },
 					}),
-					makeVariant({
+					makePack({
 						id: "python",
 						title: "Python",
 						source: "r/shared/python.json",
@@ -436,11 +432,11 @@ describe("core/plan", () => {
 			});
 			const a = makeItem({
 				source: "r/a.json",
-				registryDependencies: ["shared@typescript"],
+				dependsOn: ["shared@typescript"],
 			});
 			const b = makeItem({
 				source: "r/b.json",
-				registryDependencies: ["shared@typescript"],
+				dependsOn: ["shared@typescript"],
 			});
 
 			const plan = buildInstallPlan(["a", "b"], { a, b, shared }, {});
@@ -448,13 +444,13 @@ describe("core/plan", () => {
 			expect(plan.map((node) => node.itemId)).toEqual(["shared", "a", "b"]);
 			expect(plan[0]).toMatchObject({
 				itemId: "shared",
-				variantId: "typescript",
+				packIds: ["typescript"],
 			});
 		});
 
 		it("treats phase lists as this item's scripts, not other registry items", () => {
 			expect(
-				selectRegistryVariant(
+				selectRegistryPacks(
 					"template",
 					makeItem({
 						beforeInstall: ["r/template.beforeInstall.0.js"],
@@ -468,7 +464,7 @@ describe("core/plan", () => {
 			});
 		});
 
-		it("orders registryDependencies before the consumer and ignores phase item-like names", () => {
+		it("orders dependsOn before the consumer and ignores phase item-like names", () => {
 			const license = makeItem({ source: "r/license.json" });
 			const gitInit = makeItem({
 				afterInstall: ["r/git-init.afterInstall.0.js"],
@@ -476,7 +472,7 @@ describe("core/plan", () => {
 			const template = makeItem({
 				source: "r/template.json",
 				beforeInstall: ["r/template.beforeInstall.0.js"],
-				registryDependencies: ["license", "git-init"],
+				dependsOn: ["license", "git-init"],
 			});
 
 			const plan = buildInstallPlan(
@@ -496,17 +492,17 @@ describe("core/plan", () => {
 			});
 		});
 
-		it("places a shared registryDependency once before every consumer", () => {
+		it("places a shared dependsOn once before every consumer", () => {
 			const gitInit = makeItem({
 				afterInstall: ["r/git-init.afterInstall.0.js"],
 			});
 			const left = makeItem({
 				source: "r/left.json",
-				registryDependencies: ["git-init"],
+				dependsOn: ["git-init"],
 			});
 			const right = makeItem({
 				source: "r/right.json",
-				registryDependencies: ["git-init"],
+				dependsOn: ["git-init"],
 			});
 
 			const plan = buildInstallPlan(
@@ -521,16 +517,31 @@ describe("core/plan", () => {
 				"right",
 			]);
 		});
+
+		it("allows an unpinned revisit of an already-planned item", () => {
+			const shared = makeItem({ source: "r/shared.json" });
+			const a = makeItem({
+				source: "r/a.json",
+				dependsOn: ["shared"],
+			});
+			const b = makeItem({
+				source: "r/b.json",
+				dependsOn: ["shared", "a"],
+			});
+
+			const plan = buildInstallPlan(["b"], { a, b, shared }, {});
+			expect(plan.map((node) => node.itemId)).toEqual(["shared", "a", "b"]);
+		});
 	});
 
 	describe("collectRegistryDependencies", () => {
-		it("walks registryDependencies and ignores install-phase scripts", () => {
+		it("walks dependsOn and ignores install-phase scripts", () => {
 			const gitInit = makeItem({
 				afterInstall: ["r/git-init.afterInstall.0.js"],
 			});
 			const template = makeItem({
 				source: "r/template.json",
-				registryDependencies: ["git-init"],
+				dependsOn: ["git-init"],
 				afterInstall: ["r/template.afterInstall.0.js"],
 			});
 
@@ -545,10 +556,10 @@ describe("core/plan", () => {
 			]);
 		});
 
-		it("includes selected items and walks registryDependencies from all variants", () => {
+		it("includes selected items and walks dependsOn from all packs", () => {
 			const setup = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/setup/typescript.json",
@@ -557,13 +568,13 @@ describe("core/plan", () => {
 				],
 			});
 			const testing = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/testing/typescript.json",
 						when: { language: "typescript" },
-						registryDependencies: ["setup-workspace"],
+						dependsOn: ["setup-workspace"],
 					}),
 				],
 			});
@@ -586,11 +597,11 @@ describe("core/plan", () => {
 			const shared = makeItem({ source: "r/shared.json" });
 			const left = makeItem({
 				source: "r/left.json",
-				registryDependencies: ["shared", "shared@default"],
+				dependsOn: ["shared", "shared@default"],
 			});
 			const right = makeItem({
 				source: "r/right.json",
-				registryDependencies: ["shared"],
+				dependsOn: ["shared"],
 			});
 
 			const dependencies = collectRegistryDependencies(["left", "right"], {
@@ -616,8 +627,8 @@ describe("core/plan", () => {
 	describe("collectRequiredConditions", () => {
 		it("returns missing keys with intersected prompt values", () => {
 			const item = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/item/typescript.json",
@@ -630,6 +641,7 @@ describe("core/plan", () => {
 				[{ itemId: "item", item }],
 				{
 					language: {
+						kind: RegistryConditionKind.SELECT,
 						label: "Language",
 						description: "Pick a language",
 						values: [
@@ -654,8 +666,8 @@ describe("core/plan", () => {
 
 		it("omits description and handler when the condition does not declare them", () => {
 			const item = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/item/typescript.json",
@@ -668,6 +680,7 @@ describe("core/plan", () => {
 				[{ itemId: "item", item }],
 				{
 					language: {
+						kind: RegistryConditionKind.SELECT,
 						label: "Language",
 						values: [{ value: "typescript", label: "TypeScript" }],
 					},
@@ -681,14 +694,44 @@ describe("core/plan", () => {
 				kind: "select",
 				values: [{ value: "typescript", label: "TypeScript" }],
 			});
-			// toEqual treats explicit undefined like a missing key; assert absence directly.
 			expect(Object.hasOwn(required, "description")).toBe(false);
 			expect(Object.hasOwn(required, "handler")).toBe(false);
 		});
 
+		it("includes default and optional flags when declared", () => {
+			const item = makeItem({
+				source: "r/item.json",
+				requires: ["authorName"],
+			});
+
+			expect(
+				collectRequiredConditions(
+					[{ itemId: "item", item }],
+					{
+						authorName: {
+							kind: RegistryConditionKind.TEXT,
+							label: "Author",
+							default: "Ada",
+							optional: true,
+						},
+					},
+					{},
+				),
+			).toEqual([
+				{
+					key: "authorName",
+					label: "Author",
+					kind: "text",
+					values: [],
+					default: "Ada",
+					optional: true,
+				},
+			]);
+		});
+
 		it("sorts required conditions by key", () => {
 			const item = makeItem({
-				uses: ["zebra", "alpha"],
+				requires: ["zebra", "alpha"],
 				source: "r/item.json",
 			});
 
@@ -710,10 +753,10 @@ describe("core/plan", () => {
 			).toEqual(["alpha", "zebra"]);
 		});
 
-		it("includes text conditions listed in item uses", () => {
+		it("includes text conditions listed in item requires", () => {
 			const item = makeItem({
 				source: "r/item.json",
-				uses: ["authorName"],
+				requires: ["authorName"],
 			});
 
 			const required = collectRequiredConditions(
@@ -741,8 +784,8 @@ describe("core/plan", () => {
 
 		it("skips conditions already present in context", () => {
 			const item = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/item/typescript.json",
@@ -756,6 +799,7 @@ describe("core/plan", () => {
 					[{ itemId: "item", item }],
 					{
 						language: {
+							kind: RegistryConditionKind.SELECT,
 							label: "Language",
 							values: [{ value: "typescript", label: "TypeScript" }],
 						},
@@ -765,17 +809,31 @@ describe("core/plan", () => {
 			).toEqual([]);
 		});
 
-		it("returns full select values when a key comes only from uses", () => {
+		it("skips conditions whose own when is not satisfied", () => {
 			const item = makeItem({
 				source: "r/item.json",
-				uses: ["language"],
-				variants: [
-					makeVariant({
-						id: "default",
-						title: "Default",
-						source: "r/item/default.json",
-					}),
-				],
+				requires: ["coverage"],
+			});
+
+			expect(
+				collectRequiredConditions(
+					[{ itemId: "item", item }],
+					{
+						coverage: {
+							kind: RegistryConditionKind.TEXT,
+							label: "Coverage",
+							when: { enableCi: true },
+						},
+					},
+					{},
+				),
+			).toEqual([]);
+		});
+
+		it("returns full select values when a key comes only from requires", () => {
+			const item = makeItem({
+				source: "r/item.json",
+				requires: ["language"],
 			});
 
 			expect(
@@ -783,6 +841,7 @@ describe("core/plan", () => {
 					[{ itemId: "item", item }],
 					{
 						language: {
+							kind: RegistryConditionKind.SELECT,
 							label: "Language",
 							values: [
 								{ value: "typescript", label: "TypeScript" },
@@ -805,10 +864,10 @@ describe("core/plan", () => {
 			]);
 		});
 
-		it("includes boolean and multiselect conditions listed in item uses", () => {
+		it("includes boolean and multiselect conditions listed in item requires", () => {
 			const item = makeItem({
 				source: "r/item.json",
-				uses: ["enableCi", "platforms"],
+				requires: ["enableCi", "platforms"],
 			});
 
 			const required = collectRequiredConditions(
@@ -849,10 +908,151 @@ describe("core/plan", () => {
 			]);
 		});
 
+		it("collects distinct when values from string and array matchers", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "ios",
+						title: "iOS",
+						source: "r/item/ios.json",
+						when: { platforms: "ios" },
+					}),
+					makePack({
+						id: "mobile",
+						title: "Mobile",
+						source: "r/item/mobile.json",
+						when: { platforms: ["android", "ios"] },
+					}),
+				],
+			});
+
+			expect(
+				collectRequiredConditions(
+					[{ itemId: "item", item }],
+					{
+						platforms: {
+							kind: RegistryConditionKind.MULTISELECT,
+							label: "Platforms",
+							values: [
+								{ value: "ios", label: "iOS" },
+								{ value: "android", label: "Android" },
+								{ value: "web", label: "Web" },
+							],
+						},
+					},
+					{},
+				),
+			).toEqual([
+				{
+					key: "platforms",
+					label: "Platforms",
+					kind: "multiselect",
+					values: [
+						{ value: "ios", label: "iOS" },
+						{ value: "android", label: "Android" },
+					],
+				},
+			]);
+		});
+
+		it("ignores boolean when values when intersecting select options", () => {
+			const item = makeItem({
+				source: "r/item.json",
+				requires: ["language"],
+				packs: [
+					makePack({
+						id: "ci",
+						title: "CI",
+						source: "r/item/ci.json",
+						when: { enableCi: true },
+					}),
+				],
+			});
+
+			expect(
+				collectRequiredConditions(
+					[{ itemId: "item", item }],
+					{
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [
+								{ value: "typescript", label: "TypeScript" },
+								{ value: "python", label: "Python" },
+							],
+						},
+						enableCi: {
+							kind: RegistryConditionKind.BOOLEAN,
+							label: "Enable CI",
+						},
+					},
+					{},
+				),
+			).toEqual([
+				{
+					key: "enableCi",
+					label: "Enable CI",
+					kind: "boolean",
+					values: [],
+				},
+				{
+					key: "language",
+					label: "Language",
+					kind: "select",
+					values: [
+						{ value: "typescript", label: "TypeScript" },
+						{ value: "python", label: "Python" },
+					],
+				},
+			]);
+		});
+
+		it("walks packs that omit when without recording present values", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "default",
+						title: "Default",
+						source: "r/item/default.json",
+					}),
+					makePack({
+						id: "typescript",
+						title: "TypeScript",
+						source: "r/item/typescript.json",
+						when: { language: "typescript" },
+					}),
+				],
+			});
+
+			expect(
+				collectRequiredConditions(
+					[{ itemId: "item", item }],
+					{
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [
+								{ value: "typescript", label: "TypeScript" },
+								{ value: "python", label: "Python" },
+							],
+						},
+					},
+					{},
+				),
+			).toEqual([
+				{
+					key: "language",
+					label: "Language",
+					kind: "select",
+					values: [{ value: "typescript", label: "TypeScript" }],
+				},
+			]);
+		});
+
 		it("rejects undeclared condition keys", () => {
 			const item = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/item/typescript.json",
@@ -868,8 +1068,8 @@ describe("core/plan", () => {
 
 		it("rejects select conditions whose intersected values are empty", () => {
 			const item = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "python",
 						title: "Python",
 						source: "r/item/python.json",
@@ -883,6 +1083,7 @@ describe("core/plan", () => {
 					[{ itemId: "item", item }],
 					{
 						language: {
+							kind: RegistryConditionKind.SELECT,
 							label: "Language",
 							values: [{ value: "typescript", label: "TypeScript" }],
 						},
@@ -897,13 +1098,18 @@ describe("core/plan", () => {
 		it("rejects select conditions that declare no values list", () => {
 			const item = makeItem({
 				source: "r/item.json",
-				uses: ["language"],
+				requires: ["language"],
 			});
 
 			expect(() =>
 				collectRequiredConditions(
 					[{ itemId: "item", item }],
-					{ language: { label: "Language" } },
+					{
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+						},
+					},
 					{},
 				),
 			).toThrow(
@@ -925,6 +1131,9 @@ describe("core/plan", () => {
 				),
 			).toBe(true);
 			expect(whenMatchesContext({ language: "typescript" }, {})).toBe(false);
+			expect(
+				whenMatchesContext({ language: "typescript" }, { language: "python" }),
+			).toBe(false);
 		});
 
 		it("matches multiselect when the expected value is selected", () => {
@@ -939,21 +1148,48 @@ describe("core/plan", () => {
 			).toBe(false);
 		});
 
-		it("matches boolean when against true/false strings", () => {
-			expect(whenMatchesContext({ enableCi: "true" }, { enableCi: true })).toBe(
+		it("matches when both the matcher and captured value are arrays", () => {
+			expect(
+				whenMatchesContext(
+					{ platforms: ["web", "ios"] },
+					{ platforms: ["ios", "android"] },
+				),
+			).toBe(true);
+			expect(
+				whenMatchesContext({ platforms: ["web"] }, { platforms: ["ios"] }),
+			).toBe(false);
+		});
+
+		it("matches a string context value against an array matcher", () => {
+			expect(
+				whenMatchesContext({ platforms: ["ios", "web"] }, { platforms: "ios" }),
+			).toBe(true);
+			expect(
+				whenMatchesContext({ platforms: ["web"] }, { platforms: "ios" }),
+			).toBe(false);
+		});
+
+		it("matches boolean when against boolean context values", () => {
+			expect(whenMatchesContext({ enableCi: true }, { enableCi: true })).toBe(
 				true,
 			);
-			expect(
-				whenMatchesContext({ enableCi: "false" }, { enableCi: true }),
-			).toBe(false);
+			expect(whenMatchesContext({ enableCi: false }, { enableCi: true })).toBe(
+				false,
+			);
+		});
+
+		it("does not match a boolean context against a non-boolean matcher", () => {
+			expect(whenMatchesContext({ enableCi: "true" }, { enableCi: true })).toBe(
+				false,
+			);
 		});
 	});
 
 	describe("assumeContextFromSelectedItems", () => {
-		it("seeds from a pinned variant when map", () => {
+		it("seeds from a pinned pack when map", () => {
 			const item = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/item/typescript.json",
@@ -968,6 +1204,7 @@ describe("core/plan", () => {
 					{ item },
 					{
 						language: {
+							kind: RegistryConditionKind.SELECT,
 							label: "Language",
 							values: [{ value: "typescript", label: "TypeScript" }],
 						},
@@ -976,10 +1213,10 @@ describe("core/plan", () => {
 			).toEqual({ language: "typescript" });
 		});
 
-		it("does not seed context without a pinned variant", () => {
+		it("does not seed context without a pinned pack", () => {
 			const item = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "default",
 						title: "Default",
 						source: "r/item/default.json",
@@ -991,10 +1228,10 @@ describe("core/plan", () => {
 			expect(assumeContextFromSelectedItems(["item"], { item })).toEqual({});
 		});
 
-		it("skips a pinned variant that has no when map", () => {
+		it("skips a pinned pack that has no when map", () => {
 			const item = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "default",
 						title: "Default",
 						source: "r/item/default.json",
@@ -1007,16 +1244,32 @@ describe("core/plan", () => {
 			).toEqual({});
 		});
 
+		it("skips a pinned pack id that is not on the item", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "default",
+						title: "Default",
+						source: "r/item/default.json",
+					}),
+				],
+			});
+
+			expect(
+				assumeContextFromSelectedItems(["item@missing"], { item }),
+			).toEqual({});
+		});
+
 		it("rejects a pinned item missing from the catalog", () => {
 			expect(() =>
 				assumeContextFromSelectedItems(["missing@typescript"], {}),
 			).toThrow('Registry item not found: "missing".');
 		});
 
-		it("rejects undeclared condition keys on a pinned variant", () => {
+		it("rejects undeclared condition keys on a pinned pack", () => {
 			const item = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/item/typescript.json",
@@ -1028,18 +1281,18 @@ describe("core/plan", () => {
 			expect(() =>
 				assumeContextFromSelectedItems(["item@typescript"], { item }, {}),
 			).toThrow(
-				'Pinned variant "item@typescript" references undeclared condition "language".',
+				'Pinned pack "item@typescript" references undeclared condition "language".',
 			);
 		});
 
 		it("coerces boolean and multiselect when values when conditions are provided", () => {
 			const item = makeItem({
-				variants: [
-					makeVariant({
+				packs: [
+					makePack({
 						id: "mobile",
 						title: "Mobile",
 						source: "r/mobile.json",
-						when: { enableCi: "true", platforms: "ios" },
+						when: { enableCi: true, platforms: "ios" },
 					}),
 				],
 			});
@@ -1067,6 +1320,106 @@ describe("core/plan", () => {
 				enableCi: true,
 				platforms: ["ios"],
 			});
+		});
+	});
+
+	describe("collectItemLocalConditions", () => {
+		it("returns missing item-level conditions sorted by key", () => {
+			const item = makeItem({
+				conditions: {
+					coverageThreshold: {
+						kind: RegistryConditionKind.TEXT,
+						label: "Coverage",
+						optional: true,
+					},
+					qualityTools: {
+						kind: RegistryConditionKind.MULTISELECT,
+						label: "Tools",
+						values: [
+							{ value: "biome", label: "Biome" },
+							{ value: "sonar", label: "Sonar" },
+						],
+					},
+				},
+			});
+
+			expect(
+				collectItemLocalConditions([{ itemId: "item", item }], {}),
+			).toEqual([
+				{
+					key: "coverageThreshold",
+					label: "Coverage",
+					kind: RegistryConditionKind.TEXT,
+					values: [],
+					optional: true,
+				},
+				{
+					key: "qualityTools",
+					label: "Tools",
+					kind: RegistryConditionKind.MULTISELECT,
+					values: [
+						{ value: "biome", label: "Biome" },
+						{ value: "sonar", label: "Sonar" },
+					],
+				},
+			]);
+		});
+
+		it("skips keys already present in context", () => {
+			const item = makeItem({
+				conditions: {
+					coverageThreshold: {
+						kind: RegistryConditionKind.TEXT,
+						label: "Coverage",
+					},
+				},
+			});
+
+			expect(
+				collectItemLocalConditions([{ itemId: "item", item }], {
+					coverageThreshold: "45",
+				}),
+			).toEqual([]);
+		});
+
+		it("skips local conditions whose when is not satisfied", () => {
+			const item = makeItem({
+				conditions: {
+					coverageThreshold: {
+						kind: RegistryConditionKind.TEXT,
+						label: "Coverage",
+						when: { enableCi: true },
+					},
+				},
+			});
+
+			expect(
+				collectItemLocalConditions([{ itemId: "item", item }], {}),
+			).toEqual([]);
+		});
+
+		it("skips items without local conditions", () => {
+			expect(
+				collectItemLocalConditions(
+					[{ itemId: "item", item: makeItem({ source: "r/item.json" }) }],
+					{},
+				),
+			).toEqual([]);
+		});
+
+		it("rejects a local select condition with no values", () => {
+			const item = makeItem({
+				conditions: {
+					language: {
+						kind: RegistryConditionKind.SELECT,
+						label: "Language",
+					},
+				},
+			});
+
+			expect(() =>
+				collectItemLocalConditions([{ itemId: "item", item }], {}),
+			).toThrow('Item-level condition "language" has no selectable values.');
 		});
 	});
 });
