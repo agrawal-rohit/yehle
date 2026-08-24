@@ -109,7 +109,7 @@ describe("commands/index", () => {
 		mockConfigUnsetCommand.mockResolvedValue(true);
 		mockLoadRegistry.mockResolvedValue({
 			registry,
-			catalogLocation: "/workspace/registry.json",
+			indexLocation: "/workspace/registry.json",
 		});
 	});
 

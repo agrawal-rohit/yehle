@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	assertSafeRemoteUrl,
 	isAbsoluteHttpUrl,
-	joinCatalogSource,
+	joinIndexSource,
 	joinRelativePathUnderRoot,
 	publishedRegistryUrl,
 } from "./urls";
@@ -102,7 +102,7 @@ describe("joinRelativePathUnderRoot", () => {
 				"/tmp/root",
 				"r/item.json",
 				"Payload",
-				"catalog directory",
+				"registry directory",
 			),
 		).toBe(path.join("/tmp/root", "r/item.json"));
 	});
@@ -113,7 +113,7 @@ describe("joinRelativePathUnderRoot", () => {
 				"/tmp/root",
 				"  ",
 				"Payload",
-				"catalog directory",
+				"registry directory",
 			),
 		).toThrow("Payload must not be empty.");
 		expect(() =>
@@ -121,40 +121,40 @@ describe("joinRelativePathUnderRoot", () => {
 				"/tmp/root",
 				"/etc/passwd",
 				"Payload",
-				"catalog directory",
+				"registry directory",
 			),
-		).toThrow("must be a relative path under the catalog directory");
+		).toThrow("must be a relative path under the registry directory");
 		expect(() =>
 			joinRelativePathUnderRoot(
 				"/tmp/root",
 				"foo\\bar.txt",
 				"Payload",
-				"catalog directory",
+				"registry directory",
 			),
-		).toThrow("must be a relative path under the catalog directory");
+		).toThrow("must be a relative path under the registry directory");
 		expect(() =>
 			joinRelativePathUnderRoot(
 				"/tmp/root",
 				"../secret.json",
 				"Payload",
-				"catalog directory",
+				"registry directory",
 			),
-		).toThrow("must be a relative path under the catalog directory");
+		).toThrow("must be a relative path under the registry directory");
 	});
 });
 
 describe("publishedRegistryUrl", () => {
-	it("builds the release-tag catalog URL for a version", () => {
+	it("builds the release-tag index URL for a version", () => {
 		expect(publishedRegistryUrl("1.2.3")).toBe(
 			"https://raw.githubusercontent.com/agrawal-rohit/tuckshop/tuckshop@1.2.3/packages/registry/registry.json",
 		);
 	});
 });
 
-describe("joinCatalogSource", () => {
+describe("joinIndexSource", () => {
 	it("passes absolute payload URLs through unchanged", () => {
 		expect(
-			joinCatalogSource(
+			joinIndexSource(
 				"https://example.com/registry.json",
 				"https://cdn.example.com/payloads/button.json",
 			),
@@ -163,68 +163,68 @@ describe("joinCatalogSource", () => {
 
 	it("trims whitespace before treating a source as an absolute URL", () => {
 		expect(
-			joinCatalogSource(
+			joinIndexSource(
 				"/tmp/my-registry/registry.json",
 				"  https://cdn.example.com/payloads/button.json  ",
 			),
 		).toBe("https://cdn.example.com/payloads/button.json");
 	});
 
-	it("joins relative payloads against an http(s) catalog URL", () => {
+	it("joins relative payloads against an http(s) index URL", () => {
 		expect(
-			joinCatalogSource(
+			joinIndexSource(
 				"https://example.com/reg/registry.json",
 				"r/button/react.json",
 			),
 		).toBe("https://example.com/reg/r/button/react.json");
 	});
 
-	it("joins relative payloads against a local catalog path", () => {
+	it("joins relative payloads against a local registry path", () => {
 		const catalog = "/tmp/my-registry/registry.json";
-		expect(joinCatalogSource(catalog, "r/button/react.json")).toBe(
+		expect(joinIndexSource(catalog, "r/button/react.json")).toBe(
 			"/tmp/my-registry/r/button/react.json",
 		);
 	});
 
 	it("rejects local path traversal", () => {
 		expect(() =>
-			joinCatalogSource("/tmp/my-registry/registry.json", "../secret.json"),
+			joinIndexSource("/tmp/my-registry/registry.json", "../secret.json"),
 		).toThrow('Registry file source "../secret.json" must be a relative path');
 	});
 
 	it("rejects an empty file source", () => {
 		expect(() =>
-			joinCatalogSource("/tmp/my-registry/registry.json", "   "),
+			joinIndexSource("/tmp/my-registry/registry.json", "   "),
 		).toThrow("Registry file source must not be empty.");
 	});
 
-	it("rejects an empty catalog location", () => {
-		expect(() => joinCatalogSource("  ", "r/button/react.json")).toThrow(
-			"Registry catalog location must not be empty.",
+	it("rejects an empty index location", () => {
+		expect(() => joinIndexSource("  ", "r/button/react.json")).toThrow(
+			"Registry index location must not be empty.",
 		);
 	});
 
 	it("rejects absolute local source paths", () => {
 		expect(() =>
-			joinCatalogSource("/tmp/my-registry/registry.json", "/etc/passwd"),
+			joinIndexSource("/tmp/my-registry/registry.json", "/etc/passwd"),
 		).toThrow(
-			'Registry file source "/etc/passwd" must be a relative path under the catalog directory.',
+			'Registry file source "/etc/passwd" must be a relative path under the registry directory.',
 		);
 	});
 
-	it("rejects sources that escape the catalog directory after joining", () => {
+	it("rejects sources that escape the registry directory after joining", () => {
 		const relativeSpy = vi
 			.spyOn(path, "relative")
 			.mockReturnValueOnce("../escaped.json");
 
 		try {
 			expect(() =>
-				joinCatalogSource(
+				joinIndexSource(
 					"/tmp/my-registry/registry.json",
 					"r/button/react.json",
 				),
 			).toThrow(
-				'Registry file source "r/button/react.json" escapes the catalog directory.',
+				'Registry file source "r/button/react.json" escapes the registry directory.',
 			);
 		} finally {
 			relativeSpy.mockRestore();
@@ -238,12 +238,12 @@ describe("joinCatalogSource", () => {
 
 		try {
 			expect(() =>
-				joinCatalogSource(
+				joinIndexSource(
 					"/tmp/my-registry/registry.json",
 					"r/button/react.json",
 				),
 			).toThrow(
-				'Registry file source "r/button/react.json" escapes the catalog directory.',
+				'Registry file source "r/button/react.json" escapes the registry directory.',
 			);
 		} finally {
 			relativeSpy.mockRestore();

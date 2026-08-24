@@ -193,16 +193,16 @@ packages/registry/registry/
 └── …
 ```
 
-The compiled artefacts are written next to the package root by `pnpm run build:registry` (`buildRegistry` from `@tuckshop/core`):
+The compiled items are written next to the package root by `pnpm run build:registry` (`buildRegistry` from `@tuckshop/core`):
 
-- `packages/registry/registry.json` — lean catalog metadata (committed; regenerated and staged by the pre-commit hook)
-- `packages/registry/r/{itemId}.json` or `packages/registry/r/{itemId}/{variantId}.json` — install payloads (gitignored; generated locally and copied into the CLI npm tarball at `prepack`)
+- `packages/registry/registry.json` — lean index metadata (committed; regenerated and staged by the pre-commit hook)
+- `packages/registry/r/{itemId}.json` or `packages/registry/r/{itemId}/{variantId}.json` — compiled items (gitignored; generated locally and copied into the CLI npm tarball at `prepack`)
 
-`registry.json` is regenerated and staged automatically by the pre-commit hook whenever anything under `packages/registry/registry/` or the core compiler changes. Payload files under `r/` are build output only — not committed — and ship with the published `tuckshop` package.
+`registry.json` is regenerated and staged automatically by the pre-commit hook whenever anything under `packages/registry/registry/` or the core compiler changes. Compiled item files under `r/` are build output only — not committed — and ship with the published `tuckshop` package.
 
-`registry.json` only holds index metadata for individual items, so the catalog stays lean as the registry grows. Authoring manifests keep item-relative file `source` paths, ecosystem-tagged `dependencies`, optional `beforeInstall` / `afterInstall` scripts, and variant descriptions. The build inlines those files into compact payloads under `r/`, bundles install scripts to `r/{itemId}.beforeInstall.{index}.js` and `r/{itemId}/{variantId}.beforeInstall.{index}.js` (and condition handlers to `r/_handlers/{key}.handler.js`), and writes a compact catalog entry keyed by item id. Payloads keep `target`, inlined `content`, and `dependencies` keyed by ecosystem — no item or variant identity fields. Consumers join catalog `source` values and script URIs against the catalog location. Third-party registries that host remotely should keep `registry.json` and `r/` side by side (GitHub raw, S3, or a CDN). The default registry ships payloads inside the CLI package instead.
+`registry.json` only holds index metadata for individual items, so the index stays lean as the registry grows. Source manifests keep item-relative file `source` paths, ecosystem-tagged `dependencies`, optional `beforeInstall` / `afterInstall` scripts, and variant descriptions. The build inlines those files into compact payloads under `r/`, bundles install scripts to `r/{itemId}.beforeInstall.{index}.js` and `r/{itemId}/{variantId}.beforeInstall.{index}.js` (and condition handlers to `r/_handlers/{key}.handler.js`), and writes a compact index entry keyed by item id. Payloads keep `target`, inlined `content`, and `dependencies` keyed by ecosystem — no item or variant identity fields. Consumers join index `source` values and script URIs against the index location. Third-party registries that host remotely should keep `registry.json` and `r/` side by side (GitHub raw, S3, or a CDN). The default registry ships payloads inside the CLI package instead.
 
-Payload `content` is the authored template text. Condition defaults and install lifecycle scripts run on the client after the payload is loaded — not at compile time. **Install scripts execute only for local catalogs** (bundled CLI registry, a local `--registry` path, or a third-party package). Remote HTTPS catalogs cannot execute custom scripts.
+Payload `content` is the source template text. Condition defaults and install lifecycle scripts run on the client after the payload is loaded — not at compile time. **Install scripts execute only for local registries** (bundled CLI registry, a local `--registry` path, or a third-party package). Remote HTTPS registries cannot execute custom scripts.
 
 ### Install scripts and condition handlers
 
@@ -226,7 +226,7 @@ Point the manifest at it with `"beforeInstall": "before-install.ts"`. Script-onl
 
 See `packages/registry/registry/configurations/license/` for an SPDX license picker that generates a `LICENSE` file during `beforeInstall`.
 
-Third-party registries compile the same way — pass the authoring tree and output directory explicitly:
+Third-party registries compile the same way — pass the registry source tree and output directory explicitly:
 
 ```ts
 import { buildRegistry } from "@tuckshop/core";
@@ -237,7 +237,7 @@ await buildRegistry({
 });
 ```
 
-### Authoring Guidelines
+### Source guidelines
 
 - Keep items atomic and colocate the manifest and every file it ships in one folder.
 - Extract reusable concerns into their own items and reference them via `registryDependencies`.

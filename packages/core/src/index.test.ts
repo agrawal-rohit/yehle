@@ -33,10 +33,10 @@ describe("package entry", () => {
 		expect(typeof core.runAfterInstallHook).toBe("function");
 		expect(typeof core.inferConditionDefault).toBe("function");
 		expect(typeof core.buildInterpolationContext).toBe("function");
-		expect(typeof core.interpolatePayload).toBe("function");
+		expect(typeof core.interpolateCompiledItem).toBe("function");
 		expect(typeof core.mergeSecretNames).toBe("function");
 		expect(typeof core.collectItemLocalConditions).toBe("function");
-		expect(core.registryPayloadSchema).toBeDefined();
+		expect(core.compiledItemSchema).toBeDefined();
 		expect(core.RegistryConditionKind).toBeDefined();
 		expect(core.RegistryEcosystem).toBeDefined();
 	});

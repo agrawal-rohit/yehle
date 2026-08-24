@@ -21,7 +21,7 @@ vi.mock("@tuckshop/core", async () => {
 });
 
 import {
-	loadRegistryPayloads,
+	loadCompiledItems,
 	loadRuntimeRegistry,
 	locateRegistry,
 } from "./registry";
@@ -288,7 +288,7 @@ describe("loadRuntimeRegistry", () => {
 			loadRuntimeRegistry("/workspace/registry.json"),
 		).resolves.toEqual({
 			registry: sampleRegistry,
-			catalogLocation: "/workspace/registry.json",
+			indexLocation: "/workspace/registry.json",
 		});
 		expect(mockReadJsonFileAsync).toHaveBeenCalledWith(
 			"/workspace/registry.json",
@@ -360,7 +360,7 @@ describe("loadRuntimeRegistry", () => {
 			loadRuntimeRegistry("https://example.com/registry.json"),
 		).resolves.toEqual({
 			registry: sampleRegistry,
-			catalogLocation: "https://example.com/registry.json",
+			indexLocation: "https://example.com/registry.json",
 		});
 		expect(mockParseRegistryDocument).toHaveBeenCalled();
 		expect(mockFetch).toHaveBeenCalledWith(
@@ -410,7 +410,7 @@ describe("loadRuntimeRegistry", () => {
 			loadRuntimeRegistry("https://example.com/buffer-registry.json"),
 		).resolves.toEqual({
 			registry: sampleRegistry,
-			catalogLocation: "https://example.com/buffer-registry.json",
+			indexLocation: "https://example.com/buffer-registry.json",
 		});
 	});
 
@@ -435,7 +435,7 @@ describe("loadRuntimeRegistry", () => {
 			loadRuntimeRegistry("https://example.com/exact-header-registry.json"),
 		).resolves.toEqual({
 			registry: sampleRegistry,
-			catalogLocation: "https://example.com/exact-header-registry.json",
+			indexLocation: "https://example.com/exact-header-registry.json",
 		});
 	});
 
@@ -563,7 +563,7 @@ describe("loadRuntimeRegistry", () => {
 	});
 });
 
-describe("loadRegistryPayloads", () => {
+describe("loadCompiledItems", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.stubGlobal("fetch", mockFetch);
@@ -575,12 +575,12 @@ describe("loadRegistryPayloads", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("loads unique payloads relative to the given catalog location", async () => {
+	it("loads unique payloads relative to the given index location", async () => {
 		mockReadJsonFileAsync.mockResolvedValueOnce({
 			files: [{ target: "a.txt", content: "hello" }],
 		});
 
-		const payloads = await loadRegistryPayloads("/workspace/registry.json", [
+		const payloads = await loadCompiledItems("/workspace/registry.json", [
 			"r/item.json",
 			"r/item.json",
 		]);
@@ -591,26 +591,26 @@ describe("loadRegistryPayloads", () => {
 		});
 		expect(mockReadJsonFileAsync).toHaveBeenCalledWith(
 			"/workspace/r/item.json",
-			"registry payload at /workspace/r/item.json",
+			"compiled item at /workspace/r/item.json",
 		);
 	});
 
-	it("returns an empty map when no payload sources are provided", async () => {
-		const payloads = await loadRegistryPayloads("/workspace/registry.json", []);
+	it("returns an empty map when no compiled item sources are provided", async () => {
+		const payloads = await loadCompiledItems("/workspace/registry.json", []);
 
 		expect(payloads.size).toBe(0);
 		expect(mockReadJsonFileAsync).not.toHaveBeenCalled();
 		expect(mockFetch).not.toHaveBeenCalled();
 	});
 
-	it("loads remote payloads relative to an HTTPS catalog", async () => {
+	it("loads remote payloads relative to an HTTPS registry", async () => {
 		mockFetchOk({
 			body: JSON.stringify({
 				files: [{ target: "b.txt", content: "remote" }],
 			}),
 		});
 
-		const payloads = await loadRegistryPayloads(
+		const payloads = await loadCompiledItems(
 			"https://example.com/registry.json",
 			["r/item.json"],
 		);
@@ -624,7 +624,7 @@ describe("loadRegistryPayloads", () => {
 		);
 	});
 
-	it("loads mixed local-relative and absolute HTTPS payload sources", async () => {
+	it("loads mixed local-relative and absolute HTTPS compiled item sources", async () => {
 		mockReadJsonFileAsync.mockResolvedValueOnce({
 			files: [{ target: "local.txt", content: "a" }],
 		});
@@ -632,7 +632,7 @@ describe("loadRegistryPayloads", () => {
 			body: JSON.stringify({ files: [{ target: "abs.txt", content: "b" }] }),
 		});
 
-		const payloads = await loadRegistryPayloads("/workspace/registry.json", [
+		const payloads = await loadCompiledItems("/workspace/registry.json", [
 			"r/local.json",
 			"https://cdn.example.com/abs.json",
 		]);
@@ -645,7 +645,7 @@ describe("loadRegistryPayloads", () => {
 		});
 		expect(mockReadJsonFileAsync).toHaveBeenCalledWith(
 			"/workspace/r/local.json",
-			"registry payload at /workspace/r/local.json",
+			"compiled item at /workspace/r/local.json",
 		);
 		expect(mockFetch).toHaveBeenCalledWith(
 			new URL("https://cdn.example.com/abs.json"),
@@ -662,21 +662,21 @@ describe("loadRegistryPayloads", () => {
 		});
 
 		await expect(
-			loadRegistryPayloads("https://example.com/registry.json", [
+			loadCompiledItems("https://example.com/registry.json", [
 				"r/missing.json",
 			]),
-		).rejects.toThrow("Failed to fetch registry payload (404 Not Found).");
+		).rejects.toThrow("Failed to fetch compiled item (404 Not Found).");
 	});
 
 	it("propagates labeled local payload JSON parse failures", async () => {
 		const failure = new InvalidJsonError(
-			"registry payload at /workspace/r/bad.json",
+			"compiled item at /workspace/r/bad.json",
 			new SyntaxError("Unexpected token"),
 		);
 		mockReadJsonFileAsync.mockRejectedValueOnce(failure);
 
 		await expect(
-			loadRegistryPayloads("/workspace/registry.json", ["r/bad.json"]),
+			loadCompiledItems("/workspace/registry.json", ["r/bad.json"]),
 		).rejects.toBe(failure);
 	});
 });

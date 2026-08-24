@@ -18,15 +18,15 @@ vi.mock("@tuckshop/core", async () => {
 	};
 });
 
-import { type RegistryPayload, writeFileAsync } from "@tuckshop/core";
+import { type CompiledItem, writeFileAsync } from "@tuckshop/core";
 import {
 	absoluteProjectTarget,
 	confirmFileOverwrites,
-	writePayloadFiles,
+	writeCompiledItemFiles,
 } from "./files";
 
 /** Payload that omits `files` at runtime (parsed payloads always include it). */
-const payloadWithoutFiles = {} as RegistryPayload;
+const compiledItemWithoutFiles = {} as CompiledItem;
 
 describe("utils/files", () => {
 	let tempDir: string;
@@ -45,30 +45,30 @@ describe("utils/files", () => {
 
 	it("treats missing files arrays as empty during overwrite checks", async () => {
 		await expect(
-			confirmFileOverwrites(tempDir, [payloadWithoutFiles], false),
+			confirmFileOverwrites(tempDir, [compiledItemWithoutFiles], false),
 		).resolves.toBeUndefined();
 		expect(mockConfirmInput).not.toHaveBeenCalled();
 	});
 
 	it("writes payloads that omit the files array", async () => {
-		await writePayloadFiles(tempDir, payloadWithoutFiles, new Set());
+		await writeCompiledItemFiles(tempDir, compiledItemWithoutFiles, new Set());
 		expect(writeFileAsync).not.toHaveBeenCalled();
 	});
 
 	it("rejects a destination already claimed in writtenTargets", async () => {
 		const destination = absoluteProjectTarget(tempDir, "HELLO.md");
 		await expect(
-			writePayloadFiles(
+			writeCompiledItemFiles(
 				tempDir,
 				{ files: [{ target: "HELLO.md", content: "hi" }] },
 				new Set([destination]),
 			),
-		).rejects.toThrow("Multiple registry payloads write to the same target");
+		).rejects.toThrow("Multiple compiled items write to the same target");
 	});
 
 	it("rejects path traversal with a payload-target label", () => {
 		expect(() => absoluteProjectTarget(tempDir, "../escape.txt")).toThrow(
-			'Payload file target "../escape.txt" must be a relative path under the project directory.',
+			'Compiled item file target "../escape.txt" must be a relative path under the project directory.',
 		);
 	});
 

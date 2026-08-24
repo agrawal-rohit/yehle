@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ZodType } from "zod";
 import {
-	catalogItemSchema,
-	catalogPackSchema,
+	compiledItemFileSchema,
+	compiledItemSchema,
+	indexItemSchema,
+	indexPackSchema,
 	registryConditionSchema,
 	registryConditionValueSchema,
 	registryDocumentFieldsSchema,
@@ -10,8 +12,6 @@ import {
 	registryItemSchema,
 	registryItemTypeSchema,
 	registryPackSchema,
-	registryPayloadFileSchema,
-	registryPayloadSchema,
 	registryWhenSchema,
 } from "./schema";
 
@@ -112,10 +112,10 @@ describe("core/schema", () => {
 		});
 	});
 
-	describe("registryPayloadFileSchema", () => {
-		it("accepts inlined content without an authoring source", () => {
+	describe("compiledItemFileSchema", () => {
+		it("accepts inlined content without a raw registry source", () => {
 			expect(
-				registryPayloadFileSchema.parse({
+				compiledItemFileSchema.parse({
 					target: "a.txt",
 					content: "hello",
 				}),
@@ -127,12 +127,12 @@ describe("core/schema", () => {
 
 		it("rejects files without content and leftover authoring source", () => {
 			expect(
-				registryPayloadFileSchema.safeParse({
+				compiledItemFileSchema.safeParse({
 					target: "a.txt",
 				}).success,
 			).toBe(false);
 			expect(
-				registryPayloadFileSchema.safeParse({
+				compiledItemFileSchema.safeParse({
 					source: "a.txt",
 					target: "a.txt",
 					content: "hello",
@@ -141,10 +141,10 @@ describe("core/schema", () => {
 		});
 	});
 
-	describe("registryPayloadSchema", () => {
+	describe("compiledItemSchema", () => {
 		it("accepts a payload with files", () => {
 			expect(
-				registryPayloadSchema.parse({
+				compiledItemSchema.parse({
 					files: [
 						{
 							target: "a.txt",
@@ -163,21 +163,21 @@ describe("core/schema", () => {
 		});
 
 		it("accepts a payload with an empty files list", () => {
-			expect(registryPayloadSchema.parse({ files: [] })).toEqual({
+			expect(compiledItemSchema.parse({ files: [] })).toEqual({
 				files: [],
 			});
-			expect(registryPayloadSchema.parse({})).toEqual({ files: [] });
+			expect(compiledItemSchema.parse({})).toEqual({ files: [] });
 		});
 
 		it("rejects leftover identity fields", () => {
 			expect(
-				registryPayloadSchema.safeParse({
+				compiledItemSchema.safeParse({
 					id: "button",
 					files: [{ target: "a.txt", content: "hello" }],
 				}).success,
 			).toBe(false);
 			expect(
-				registryPayloadSchema.safeParse({
+				compiledItemSchema.safeParse({
 					variantId: "react",
 					files: [{ target: "a.txt", content: "hello" }],
 				}).success,
@@ -186,7 +186,7 @@ describe("core/schema", () => {
 
 		it("keeps non-empty dependency maps and omits empty ones", () => {
 			expect(
-				registryPayloadSchema.parse({
+				compiledItemSchema.parse({
 					files: [{ target: "a.txt", content: "x" }],
 					dependencies: {
 						npm: {
@@ -205,7 +205,7 @@ describe("core/schema", () => {
 			});
 
 			expect(
-				registryPayloadSchema.parse({
+				compiledItemSchema.parse({
 					files: [{ target: "a.txt", content: "x" }],
 					dependencies: {
 						npm: {
@@ -222,7 +222,7 @@ describe("core/schema", () => {
 			});
 
 			expect(
-				registryPayloadSchema.parse({
+				compiledItemSchema.parse({
 					files: [{ target: "a.txt", content: "x" }],
 					dependencies: {
 						npm: {
@@ -239,7 +239,7 @@ describe("core/schema", () => {
 			});
 
 			expect(
-				registryPayloadSchema.parse({
+				compiledItemSchema.parse({
 					files: [{ target: "a.txt", content: "x" }],
 					dependencies: {
 						npm: {
@@ -253,7 +253,7 @@ describe("core/schema", () => {
 
 		it("keeps commands and secrets on payloads", () => {
 			expect(
-				registryPayloadSchema.parse({
+				compiledItemSchema.parse({
 					files: [{ target: "a.txt", content: "x" }],
 					commands: { npm: { test: "vitest run" } },
 					secrets: ["GH_ADMIN_TOKEN"],
@@ -267,7 +267,7 @@ describe("core/schema", () => {
 
 		it("rejects untagged dependency lists", () => {
 			expect(
-				registryPayloadSchema.safeParse({
+				compiledItemSchema.safeParse({
 					files: [{ target: "a.txt", content: "x" }],
 					dependencies: ["react"],
 				}).success,
@@ -276,7 +276,7 @@ describe("core/schema", () => {
 
 		it("rejects unknown ecosystem keys", () => {
 			expect(
-				registryPayloadSchema.safeParse({
+				compiledItemSchema.safeParse({
 					files: [{ target: "a.txt", content: "x" }],
 					dependencies: { pypi: { runtime: ["ruff"] } },
 				}).success,
@@ -950,10 +950,10 @@ describe("core/schema", () => {
 		});
 	});
 
-	describe("catalogPackSchema", () => {
-		it("accepts an index pack with a payload source", () => {
+	describe("indexPackSchema", () => {
+		it("accepts an index pack with a compiled item source", () => {
 			expect(
-				catalogPackSchema.parse({
+				indexPackSchema.parse({
 					id: "typescript",
 					title: "TypeScript",
 					source: "r/button/typescript.json",
@@ -967,7 +967,7 @@ describe("core/schema", () => {
 
 		it("keeps when and dependsOn and rejects files", () => {
 			expect(
-				catalogPackSchema.parse({
+				indexPackSchema.parse({
 					id: "typescript",
 					title: "TypeScript",
 					source: "r/button/typescript.json",
@@ -980,7 +980,7 @@ describe("core/schema", () => {
 			});
 
 			expect(
-				catalogPackSchema.safeParse({
+				indexPackSchema.safeParse({
 					id: "typescript",
 					title: "TypeScript",
 					source: "r/button/typescript.json",
@@ -990,10 +990,10 @@ describe("core/schema", () => {
 		});
 	});
 
-	describe("catalogItemSchema", () => {
+	describe("indexItemSchema", () => {
 		it("accepts a pack index without an item id", () => {
 			expect(
-				catalogItemSchema.parse({
+				indexItemSchema.parse({
 					title: "Button",
 					description: "A button",
 					type: "component",
@@ -1019,9 +1019,9 @@ describe("core/schema", () => {
 			});
 		});
 
-		it("accepts a pack-less item with a payload source", () => {
+		it("accepts a pack-less item with a compiled item source", () => {
 			expect(
-				catalogItemSchema.parse({
+				indexItemSchema.parse({
 					title: "Assign Owner",
 					description: "Assigns the owner",
 					type: "workflow",
@@ -1037,7 +1037,7 @@ describe("core/schema", () => {
 
 		it("accepts item-local select values that do not declare bindings", () => {
 			expect(
-				catalogItemSchema.parse({
+				indexItemSchema.parse({
 					title: "Testing",
 					description: "Tests",
 					type: "configuration",
@@ -1061,7 +1061,7 @@ describe("core/schema", () => {
 
 		it("rejects item-local option bindings that reuse the condition key", () => {
 			expect(
-				rejectMessage(catalogItemSchema, {
+				rejectMessage(indexItemSchema, {
 					title: "Testing",
 					description: "Tests",
 					type: "configuration",
@@ -1085,7 +1085,7 @@ describe("core/schema", () => {
 
 		it("rejects an item with neither source, packs, nor install scripts", () => {
 			expect(
-				rejectMessage(catalogItemSchema, {
+				rejectMessage(indexItemSchema, {
 					title: "Button",
 					description: "A button",
 					type: "component",
@@ -1093,9 +1093,9 @@ describe("core/schema", () => {
 			).toBe("missing_source_or_packs");
 		});
 
-		it("accepts a script-only catalog item", () => {
+		it("accepts a script-only index item", () => {
 			expect(
-				catalogItemSchema.parse({
+				indexItemSchema.parse({
 					title: "License",
 					description: "SPDX license",
 					type: "configuration",
@@ -1111,9 +1111,9 @@ describe("core/schema", () => {
 			});
 		});
 
-		it("accepts afterInstall-only catalog items", () => {
+		it("accepts afterInstall-only index items", () => {
 			expect(
-				catalogItemSchema.parse({
+				indexItemSchema.parse({
 					title: "Cleanup",
 					description: "Post-install cleanup",
 					type: "configuration",
@@ -1129,7 +1129,7 @@ describe("core/schema", () => {
 
 		it("accepts an item that declares source together with packs", () => {
 			expect(
-				catalogItemSchema.parse({
+				indexItemSchema.parse({
 					title: "Button",
 					description: "A button",
 					type: "component",
@@ -1159,7 +1159,7 @@ describe("core/schema", () => {
 
 		it("rejects duplicate pack ids and unknown keys including id", () => {
 			expect(
-				rejectMessage(catalogItemSchema, {
+				rejectMessage(indexItemSchema, {
 					title: "Button",
 					description: "A button",
 					type: "component",
@@ -1179,7 +1179,7 @@ describe("core/schema", () => {
 			).toBe("duplicate_pack:default");
 
 			expect(
-				catalogItemSchema.safeParse({
+				indexItemSchema.safeParse({
 					id: "button",
 					title: "Button",
 					description: "A button",

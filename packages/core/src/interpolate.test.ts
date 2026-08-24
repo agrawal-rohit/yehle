@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildInterpolationContext, interpolatePayload } from "./interpolate";
-import type { RegistryPayload } from "./schema";
+import {
+	buildInterpolationContext,
+	interpolateCompiledItem,
+} from "./interpolate";
+import type { CompiledItem } from "./schema";
 
 describe("core/interpolate", () => {
 	describe("buildInterpolationContext", () => {
@@ -64,10 +67,10 @@ describe("core/interpolate", () => {
 		});
 	});
 
-	describe("interpolatePayload", () => {
+	describe("interpolateCompiledItem", () => {
 		it("replaces {{key}} in files and commands without touching GitHub Actions expressions", () => {
 			const ghaSha = "${{" + " github.sha }}";
-			const payload = interpolatePayload(
+			const payload = interpolateCompiledItem(
 				{
 					files: [
 						{
@@ -97,7 +100,7 @@ describe("core/interpolate", () => {
 
 		it("treats boolean and array conditions as typed Mustache sections", () => {
 			expect(
-				interpolatePayload(
+				interpolateCompiledItem(
 					{
 						files: [
 							{
@@ -114,13 +117,13 @@ describe("core/interpolate", () => {
 
 		it("substitutes empty strings for missing keys", () => {
 			expect(
-				interpolatePayload(
+				interpolateCompiledItem(
 					{ files: [{ target: "a.txt", content: "n={{missing}}" }] },
 					{},
 				).files[0].content,
 			).toBe("n=");
 			expect(
-				interpolatePayload(
+				interpolateCompiledItem(
 					{ files: [{ target: "a.txt", content: "n={{empty}}" }] },
 					{ empty: "" },
 				).files[0].content,
@@ -129,7 +132,7 @@ describe("core/interpolate", () => {
 
 		it("does not HTML-escape interpolated values", () => {
 			expect(
-				interpolatePayload(
+				interpolateCompiledItem(
 					{ files: [{ target: "a.txt", content: "name={{authorName}}" }] },
 					{ authorName: "Ada & Bob <dev>" },
 				).files[0].content,
@@ -138,13 +141,13 @@ describe("core/interpolate", () => {
 
 		it("skips undefined command sets and still interpolates defined ecosystems", () => {
 			expect(
-				interpolatePayload(
+				interpolateCompiledItem(
 					{
 						files: [],
 						commands: {
 							npm: { test: "{{pmExec}} vitest" },
 							pypi: undefined,
-						} as RegistryPayload["commands"],
+						} as CompiledItem["commands"],
 					},
 					{ pmExec: "pnpm exec" },
 				).commands,

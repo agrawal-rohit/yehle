@@ -10,7 +10,7 @@ const mockSelectInput = vi.fn();
 const mockConfirmInput = vi.fn();
 const mockTextInput = vi.fn();
 const mockBuildInstallPlan = vi.fn();
-const mockLoadRegistryPayloads = vi.fn();
+const mockLoadCompiledItems = vi.fn();
 const mockWriteFileAsync = vi.fn();
 const mockIsFileAsync = vi.fn();
 const mockRunAsync = vi.fn();
@@ -30,8 +30,7 @@ vi.mock("../cli/prompts", () => ({
 }));
 
 vi.mock("../utils/registry", () => ({
-	loadRegistryPayloads: (...args: unknown[]) =>
-		mockLoadRegistryPayloads(...args),
+	loadCompiledItems: (...args: unknown[]) => mockLoadCompiledItems(...args),
 }));
 
 vi.mock("@tuckshop/core", async () => {
@@ -73,7 +72,7 @@ describe("commands/add", () => {
 	let tempDir: string;
 	let consoleLogSpy: ReturnType<typeof vi.spyOn>;
 	const registry = makeRegistry();
-	const catalogLocation = "/workspace/registry.json";
+	const indexLocation = "/workspace/registry.json";
 
 	beforeEach(() => {
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-command-"));
@@ -88,7 +87,7 @@ describe("commands/add", () => {
 				sources: ["r/pr-template-configuration.json"],
 			},
 		]);
-		mockLoadRegistryPayloads.mockResolvedValue(
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
 				[
 					"r/pr-template-configuration.json",
@@ -123,17 +122,17 @@ describe("commands/add", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("installs a positional item and writes payload files", async () => {
-		await addCommand(registry, catalogLocation, {
+	it("installs a positional item and writes compiled item files", async () => {
+		await addCommand(registry, indexLocation, {
 			items: ["pr-template-configuration"],
 		});
 
 		expect(mockMultiselectInput).not.toHaveBeenCalled();
-		expect(mockLoadRegistryPayloads).toHaveBeenCalledWith(catalogLocation, [
+		expect(mockLoadCompiledItems).toHaveBeenCalledWith(indexLocation, [
 			"r/pr-template-configuration.json",
 		]);
 		expect(mockRunWithTasks).toHaveBeenCalledWith(
-			"Fetching payloads",
+			"Fetching compiled items",
 			expect.any(Function),
 		);
 		expect(mockWriteFileAsync).toHaveBeenCalledWith(
@@ -153,7 +152,7 @@ describe("commands/add", () => {
 			"pr-template-configuration",
 		]);
 
-		await addCommand(registry, catalogLocation, {});
+		await addCommand(registry, indexLocation, {});
 
 		expect(mockGroupedMultiselectInput).toHaveBeenCalledWith(
 			"Which registry items should be added?",
@@ -175,7 +174,7 @@ describe("commands/add", () => {
 			"pr-template-configuration",
 		]);
 
-		await addCommand(registry, catalogLocation, { items: [] });
+		await addCommand(registry, indexLocation, { items: [] });
 
 		expect(mockGroupedMultiselectInput).toHaveBeenCalled();
 	});
@@ -205,11 +204,11 @@ describe("commands/add", () => {
 				sources: ["r/alpha.json"],
 			},
 		]);
-		mockLoadRegistryPayloads.mockResolvedValue(
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([["r/alpha.json", { files: [] }]]),
 		);
 
-		await addCommand(sortedRegistry, catalogLocation, {});
+		await addCommand(sortedRegistry, indexLocation, {});
 
 		expect(mockGroupedMultiselectInput).toHaveBeenCalledWith(
 			"Which registry items should be added?",
@@ -265,7 +264,7 @@ describe("commands/add", () => {
 				sources: ["r/code-quality-workflow.json"],
 			},
 		]);
-		mockLoadRegistryPayloads.mockResolvedValue(
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
 				[
 					"r/pr-template-configuration.json",
@@ -292,7 +291,7 @@ describe("commands/add", () => {
 			]),
 		);
 
-		await addCommand(groupedRegistry, catalogLocation, {});
+		await addCommand(groupedRegistry, indexLocation, {});
 
 		expect(mockGroupedMultiselectInput).toHaveBeenCalledTimes(1);
 		expect(mockGroupedMultiselectInput).toHaveBeenCalledWith(
@@ -324,18 +323,18 @@ describe("commands/add", () => {
 		mockConfirmInput.mockResolvedValueOnce(false);
 
 		await expect(
-			addCommand(registry, catalogLocation, {
+			addCommand(registry, indexLocation, {
 				items: ["pr-template-configuration"],
 			}),
 		).rejects.toThrow("Installation canceled before overwriting");
 
 		mockConfirmInput.mockResolvedValueOnce(true);
 
-		await addCommand(registry, catalogLocation, {
+		await addCommand(registry, indexLocation, {
 			items: ["pr-template-configuration"],
 		});
 
-		await addCommand(registry, catalogLocation, {
+		await addCommand(registry, indexLocation, {
 			items: ["pr-template-configuration"],
 			overwrite: true,
 		});
@@ -344,19 +343,19 @@ describe("commands/add", () => {
 		expect(mockWriteFileAsync).toHaveBeenCalledTimes(2);
 	});
 
-	it("rejects when a payload target exists as a directory", async () => {
+	it("rejects when a compiled item target exists as a directory", async () => {
 		const targetDir = path.join(tempDir, ".github/pull_request_template.md");
 		fs.mkdirSync(targetDir, { recursive: true });
 
 		await expect(
-			addCommand(registry, catalogLocation, {
+			addCommand(registry, indexLocation, {
 				items: ["pr-template-configuration"],
 				overwrite: true,
 			}),
 		).rejects.toThrow("exists and is a directory");
 	});
 
-	it("rejects colliding payload targets across items", async () => {
+	it("rejects colliding compiled item targets across items", async () => {
 		const multiRegistry: Registry = {
 			...registry,
 			items: {
@@ -379,7 +378,7 @@ describe("commands/add", () => {
 				sources: ["r/other.json"],
 			},
 		]);
-		mockLoadRegistryPayloads.mockResolvedValue(
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
 				[
 					"r/pr-template-configuration.json",
@@ -407,11 +406,11 @@ describe("commands/add", () => {
 		);
 
 		await expect(
-			addCommand(multiRegistry, catalogLocation, {
+			addCommand(multiRegistry, indexLocation, {
 				items: ["pr-template-configuration", "other"],
 				overwrite: true,
 			}),
-		).rejects.toThrow("Multiple registry payloads write to the same target");
+		).rejects.toThrow("Multiple compiled items write to the same target");
 	});
 
 	it("merges duplicate package declarations into one install command", async () => {
@@ -439,7 +438,7 @@ describe("commands/add", () => {
 				sources: ["r/other.json"],
 			},
 		]);
-		mockLoadRegistryPayloads.mockResolvedValue(
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
 				[
 					"r/pr-template-configuration.json",
@@ -474,7 +473,7 @@ describe("commands/add", () => {
 		mockSelectInput.mockResolvedValue("npm");
 		mockConfirmInput.mockResolvedValue(true);
 
-		await addCommand(multiRegistry, catalogLocation, {
+		await addCommand(multiRegistry, indexLocation, {
 			items: ["pr-template-configuration", "other"],
 			overwrite: true,
 		});
@@ -514,7 +513,7 @@ describe("commands/add", () => {
 			},
 		};
 
-		await addCommand(conditionRegistry, catalogLocation, {
+		await addCommand(conditionRegistry, indexLocation, {
 			items: ["pr-template-configuration"],
 			overwrite: true,
 		});
@@ -524,15 +523,15 @@ describe("commands/add", () => {
 	});
 
 	it("rejects a missing payload document", async () => {
-		mockLoadRegistryPayloads.mockResolvedValue(new Map());
+		mockLoadCompiledItems.mockResolvedValue(new Map());
 
 		await expect(
-			addCommand(registry, catalogLocation, {
+			addCommand(registry, indexLocation, {
 				items: ["pr-template-configuration"],
 				overwrite: true,
 			}),
 		).rejects.toThrow(
-			'Missing payload for registry item "pr-template-configuration"',
+			'Missing compiled item for registry item "pr-template-configuration"',
 		);
 	});
 
@@ -540,7 +539,7 @@ describe("commands/add", () => {
 		await expect(
 			addCommand(
 				{ types: { configuration: { label: "Configurations" } }, items: {} },
-				catalogLocation,
+				indexLocation,
 				{},
 			),
 		).rejects.toThrow("No registry items are available.");
@@ -549,7 +548,7 @@ describe("commands/add", () => {
 	it("rejects when the grouped item prompt selects nothing", async () => {
 		mockGroupedMultiselectInput.mockResolvedValue([]);
 
-		await expect(addCommand(registry, catalogLocation, {})).rejects.toThrow(
+		await expect(addCommand(registry, indexLocation, {})).rejects.toThrow(
 			"Select at least one registry item to add.",
 		);
 	});
@@ -573,7 +572,7 @@ describe("commands/add", () => {
 			"pr-template-configuration",
 		]);
 
-		await addCommand(sparseRegistry, catalogLocation, {});
+		await addCommand(sparseRegistry, indexLocation, {});
 
 		expect(mockGroupedMultiselectInput).toHaveBeenCalledWith(
 			"Which registry items should be added?",
@@ -630,7 +629,7 @@ describe("commands/add", () => {
 		mockSelectInput.mockResolvedValue("typescript");
 		mockMultiselectInput.mockResolvedValue(["ios"]);
 
-		await addCommand(conditionRegistry, catalogLocation, {
+		await addCommand(conditionRegistry, indexLocation, {
 			items: ["pr-template-configuration"],
 			overwrite: true,
 		});
@@ -843,7 +842,7 @@ module.exports = {
 	});
 
 	it("ignores empty package maps that merge to nothing", async () => {
-		mockLoadRegistryPayloads.mockResolvedValue(
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
 				[
 					"r/pr-template-configuration.json",
@@ -866,7 +865,7 @@ module.exports = {
 		);
 		mockConfirmInput.mockResolvedValue(true);
 
-		await addCommand(registry, catalogLocation, {
+		await addCommand(registry, indexLocation, {
 			items: ["pr-template-configuration"],
 			overwrite: true,
 		});
@@ -878,7 +877,7 @@ module.exports = {
 		);
 	});
 
-	it("falls back to the item id when the catalog has no title", async () => {
+	it("falls back to the item id when the index has no title", async () => {
 		const untitledRegistry: Registry = {
 			types: { configuration: { label: "Configurations" } },
 			items: {
@@ -897,7 +896,7 @@ module.exports = {
 			},
 		]);
 
-		await addCommand(untitledRegistry, catalogLocation, {
+		await addCommand(untitledRegistry, indexLocation, {
 			items: ["untitled-item"],
 			overwrite: true,
 		});
@@ -908,7 +907,7 @@ module.exports = {
 		);
 	});
 
-	it("falls back to the item id when the catalog entry is missing", async () => {
+	it("falls back to the item id when the index entry is missing", async () => {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "ghost-item",
@@ -916,7 +915,7 @@ module.exports = {
 			},
 		]);
 
-		await addCommand(registry, catalogLocation, {
+		await addCommand(registry, indexLocation, {
 			items: ["pr-template-configuration"],
 			overwrite: true,
 		});
@@ -931,7 +930,7 @@ module.exports = {
 		mockBuildInstallPlan.mockReturnValue([]);
 
 		await expect(
-			addCommand(registry, catalogLocation, {
+			addCommand(registry, indexLocation, {
 				items: ["pr-template-configuration"],
 			}),
 		).rejects.toThrow("No registry items were selected for installation.");
@@ -1016,7 +1015,7 @@ module.exports = async function afterInstall(ctx) {
 				afterInstallScripts: ["r/hello.afterInstall.0.js"],
 			},
 		]);
-		mockLoadRegistryPayloads.mockResolvedValue(
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
 				[
 					"r/hello.json",
@@ -1052,21 +1051,21 @@ module.exports = async function afterInstall(ctx) {
 		}
 	});
 
-	it("rejects an invalid registry payload with the item label", async () => {
-		mockLoadRegistryPayloads.mockResolvedValue(
+	it("rejects an invalid compiled item with the item label", async () => {
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([["r/pr-template-configuration.json", { files: 1 }]]),
 		);
 
 		await expect(
-			addCommand(registry, catalogLocation, {
+			addCommand(registry, indexLocation, {
 				items: ["pr-template-configuration"],
 				overwrite: true,
 			}),
-		).rejects.toThrow('Registry payload for "pr-template-configuration"');
+		).rejects.toThrow('Compiled item for "pr-template-configuration"');
 	});
 
-	it("rejects path traversal in payload targets", async () => {
-		mockLoadRegistryPayloads.mockResolvedValue(
+	it("rejects path traversal in compiled item targets", async () => {
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
 				[
 					"r/pr-template-configuration.json",
@@ -1078,12 +1077,12 @@ module.exports = async function afterInstall(ctx) {
 		);
 
 		await expect(
-			addCommand(registry, catalogLocation, {
+			addCommand(registry, indexLocation, {
 				items: ["pr-template-configuration"],
 				overwrite: true,
 			}),
 		).rejects.toThrow(
-			'Payload file target "../escape.txt" must be a relative path under the project directory.',
+			'Compiled item file target "../escape.txt" must be a relative path under the project directory.',
 		);
 	});
 
@@ -1091,7 +1090,7 @@ module.exports = async function afterInstall(ctx) {
 		fs.rmSync(path.join(tempDir, "pnpm-lock.yaml"));
 		fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}\n");
 		fs.writeFileSync(path.join(tempDir, "package.json"), "{}\n");
-		mockLoadRegistryPayloads.mockResolvedValue(
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
 				[
 					"r/pr-template-configuration.json",
@@ -1113,7 +1112,7 @@ module.exports = async function afterInstall(ctx) {
 		);
 		mockConfirmInput.mockResolvedValue(true);
 
-		await addCommand(registry, catalogLocation, {
+		await addCommand(registry, indexLocation, {
 			items: ["pr-template-configuration"],
 			overwrite: true,
 		});
@@ -1136,7 +1135,7 @@ module.exports = async function afterInstall(ctx) {
 
 	it("uses the selected package manager for next-step commands when install is declined", async () => {
 		fs.writeFileSync(path.join(tempDir, "package.json"), "{}\n");
-		mockLoadRegistryPayloads.mockResolvedValue(
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
 				[
 					"r/pr-template-configuration.json",
@@ -1158,7 +1157,7 @@ module.exports = async function afterInstall(ctx) {
 		);
 		mockConfirmInput.mockResolvedValue(false);
 
-		await addCommand(registry, catalogLocation, {
+		await addCommand(registry, indexLocation, {
 			items: ["pr-template-configuration"],
 			overwrite: true,
 		});
@@ -1175,7 +1174,7 @@ module.exports = async function afterInstall(ctx) {
 	it("prompts for a package manager when no lockfile is present", async () => {
 		fs.rmSync(path.join(tempDir, "pnpm-lock.yaml"));
 		fs.writeFileSync(path.join(tempDir, "package.json"), "{}\n");
-		mockLoadRegistryPayloads.mockResolvedValue(
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
 				[
 					"r/pr-template-configuration.json",
@@ -1198,7 +1197,7 @@ module.exports = async function afterInstall(ctx) {
 		mockSelectInput.mockResolvedValue("npm");
 		mockConfirmInput.mockResolvedValue(true);
 
-		await addCommand(registry, catalogLocation, {
+		await addCommand(registry, indexLocation, {
 			items: ["pr-template-configuration"],
 			overwrite: true,
 		});
@@ -1278,7 +1277,7 @@ module.exports = async function beforeInstall(ctx) {
 				{ required: true },
 				undefined,
 			);
-			expect(mockLoadRegistryPayloads).not.toHaveBeenCalled();
+			expect(mockLoadCompiledItems).not.toHaveBeenCalled();
 			expect(mockWriteFileAsync).toHaveBeenCalledWith(
 				path.join(tempDir, "HELLO.md"),
 				"Hello Ada",
@@ -1325,7 +1324,7 @@ module.exports = async function afterInstall() {
 				afterInstallScripts: ["r/lifecycle.afterInstall.0.js"],
 			},
 		]);
-		mockLoadRegistryPayloads.mockResolvedValue(
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
 				[
 					"r/lifecycle.json",
@@ -1389,7 +1388,7 @@ module.exports = async function afterInstall() {
 		mockBuildInstallPlan.mockReturnValue([
 			{ itemId: "demo", sources: ["r/demo.json"] },
 		]);
-		mockLoadRegistryPayloads.mockResolvedValue(
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
 				[
 					"r/demo.json",
@@ -1405,7 +1404,7 @@ module.exports = async function afterInstall() {
 			]),
 		);
 
-		await addCommand(local, catalogLocation, {
+		await addCommand(local, indexLocation, {
 			items: ["demo"],
 			overwrite: true,
 		});
@@ -1421,7 +1420,7 @@ module.exports = async function afterInstall() {
 			path.join(tempDir, "package.json"),
 			`${JSON.stringify({ name: "app", scripts: { start: "node ." } }, null, 2)}\n`,
 		);
-		mockLoadRegistryPayloads.mockResolvedValue(
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
 				[
 					"r/pr-template-configuration.json",
@@ -1438,7 +1437,7 @@ module.exports = async function afterInstall() {
 			]),
 		);
 
-		await addCommand(registry, catalogLocation, {
+		await addCommand(registry, indexLocation, {
 			items: ["pr-template-configuration"],
 			overwrite: true,
 		});
@@ -1450,7 +1449,7 @@ module.exports = async function afterInstall() {
 	});
 
 	it("logs repository secret names in Next steps", async () => {
-		mockLoadRegistryPayloads.mockResolvedValue(
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
 				[
 					"r/pr-template-configuration.json",
@@ -1467,7 +1466,7 @@ module.exports = async function afterInstall() {
 			]),
 		);
 
-		await addCommand(registry, catalogLocation, {
+		await addCommand(registry, indexLocation, {
 			items: ["pr-template-configuration"],
 			overwrite: true,
 		});
@@ -1480,14 +1479,14 @@ module.exports = async function afterInstall() {
 		);
 	});
 
-	it("rejects duplicate payload targets across merged sources", async () => {
+	it("rejects duplicate compiled item targets across merged sources", async () => {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "pr-template-configuration",
 				sources: ["r/base.json", "r/pack.json"],
 			},
 		]);
-		mockLoadRegistryPayloads.mockResolvedValue(
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
 				["r/base.json", { files: [{ target: "README.md", content: "base" }] }],
 				["r/pack.json", { files: [{ target: "README.md", content: "pack" }] }],
@@ -1495,16 +1494,16 @@ module.exports = async function afterInstall() {
 		);
 
 		await expect(
-			addCommand(registry, catalogLocation, {
+			addCommand(registry, indexLocation, {
 				items: ["pr-template-configuration"],
 				overwrite: true,
 			}),
 		).rejects.toThrow(
-			'Registry item "pr-template-configuration" has duplicate payload target "README.md".',
+			'Registry item "pr-template-configuration" has duplicate compiled item target "README.md".',
 		);
 	});
 
-	it("folds beforeInstall hook dependencies into the working payload", async () => {
+	it("folds beforeInstall hook dependencies into the working compiled item", async () => {
 		const handlerDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-deps-"));
 		const catalogPath = path.join(handlerDir, "registry.json");
 		const scriptPath = path.join(handlerDir, "r/hello.beforeInstall.0.js");
@@ -1577,7 +1576,7 @@ module.exports = async function beforeInstall() {
 				sources: [],
 			},
 		]);
-		mockLoadRegistryPayloads.mockResolvedValue(
+		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
 				[
 					"r/hello.json",
@@ -1611,7 +1610,7 @@ module.exports = async function beforeInstall() {
 			},
 		};
 
-		await addCommand(localRegistry, catalogLocation, {
+		await addCommand(localRegistry, indexLocation, {
 			items: ["hello"],
 			overwrite: true,
 		});

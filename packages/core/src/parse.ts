@@ -6,8 +6,8 @@ import {
 import { isNpmPackageManager, PACKAGE_MANAGER_KEY } from "./packages";
 import {
 	assertConditionMapBindingKeys,
-	type CatalogItem,
-	catalogItemSchema,
+	type IndexItem,
+	indexItemSchema,
 	type Registry,
 	type RegistryCondition,
 	type RegistryItemTypeDefinition,
@@ -15,20 +15,6 @@ import {
 	registryDocumentFieldsSchema,
 	registryItemTypeSchema,
 } from "./schema";
-
-/**
- * Fail when a shared condition is named `packageManager` (owned by core at install time).
- * @param conditions - Shared condition definitions.
- * @throws Error when `packageManager` is declared as a registry condition.
- */
-function assertNoPackageManagerCondition(
-	conditions: Record<string, RegistryCondition> | undefined,
-): void {
-	if (conditions?.[PACKAGE_MANAGER_KEY] !== undefined)
-		throw new Error(
-			`Registry condition "${PACKAGE_MANAGER_KEY}" collides with the core-owned package manager.`,
-		);
-}
 
 /**
  * Append a Zod issue path to a parse label.
@@ -354,15 +340,11 @@ function validateWhenEntries(
  */
 function assertItemConditionOwnership(
 	itemId: string,
-	item: CatalogItem,
+	item: IndexItem,
 	conditions: Record<string, RegistryCondition> | undefined,
 	localOwners: Map<string, string>,
 ): void {
 	for (const key of item.requires ?? []) {
-		if (key === PACKAGE_MANAGER_KEY)
-			throw new Error(
-				`Registry item "${itemId}" requires "${PACKAGE_MANAGER_KEY}" which is selected by core at install time.`,
-			);
 		if (!conditions?.[key])
 			throw new Error(
 				`Registry item "${itemId}" requires unknown condition "${key}".`,
@@ -370,10 +352,6 @@ function assertItemConditionOwnership(
 	}
 
 	for (const key of Object.keys(item.conditions ?? {})) {
-		if (key === PACKAGE_MANAGER_KEY)
-			throw new Error(
-				`Registry item "${itemId}" condition "${PACKAGE_MANAGER_KEY}" collides with the core-owned package manager.`,
-			);
 		if (conditions?.[key])
 			throw new Error(
 				`Registry item "${itemId}" condition "${key}" collides with a shared condition.`,
@@ -395,7 +373,7 @@ function assertItemConditionOwnership(
  * @throws Error when a condition key or value is undeclared or collides.
  */
 function crossValidateWhen(
-	items: Record<string, CatalogItem>,
+	items: Record<string, IndexItem>,
 	conditions: Record<string, RegistryCondition> | undefined,
 ): void {
 	const localOwners = new Map<string, string>();
@@ -432,7 +410,7 @@ function crossValidateWhen(
  * @throws Error when an item type is undeclared.
  */
 function crossValidateItemTypes(
-	items: Record<string, CatalogItem>,
+	items: Record<string, IndexItem>,
 	types: Record<string, RegistryItemTypeDefinition>,
 ): void {
 	for (const [itemId, item] of Object.entries(items)) {
@@ -452,10 +430,10 @@ function crossValidateItemTypes(
 export function parseRegistryDocument(raw: unknown): Registry {
 	const source = parseWithSchema(registryDocumentFieldsSchema, raw, "Registry");
 
-	const items: Record<string, CatalogItem> = {};
+	const items: Record<string, IndexItem> = {};
 	for (const [key, item] of Object.entries(source.items)) {
 		items[key] = parseWithSchema(
-			catalogItemSchema,
+			indexItemSchema,
 			item,
 			`Registry items["${key}"]`,
 		);
@@ -468,7 +446,6 @@ export function parseRegistryDocument(raw: unknown): Registry {
 		(key) => `Registry condition "${key}"`,
 	);
 	assertConditionMapBindingKeys(conditions);
-	assertNoPackageManagerCondition(conditions);
 	crossValidateWhen(items, conditions);
 
 	const types = parseKeyedRecord(

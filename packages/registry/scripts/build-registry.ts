@@ -1,7 +1,7 @@
 import path from "node:path";
 import { buildRegistry } from "@tuckshop/core";
 
-/** Compile the registry authoring tree under this package (or `process.argv[2]`). */
+/** Compile the registry registry source tree under this package (or `process.argv[2]`). */
 async function main(): Promise<void> {
 	const root = path.resolve(process.argv[2] ?? path.join(__dirname, ".."));
 	const document = await buildRegistry({

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { type ZodType, z } from "zod";
 import { conditionKindPolicy, RegistryConditionKind } from "./condition-kind";
-import { PACKAGE_MANAGER_KEY } from "./packages";
 import {
 	parseKeyedRecord,
 	parseRegistryDocument,
@@ -9,11 +8,11 @@ import {
 } from "./parse";
 import {
 	assertConditionMapBindingKeys,
-	catalogItemSchema,
+	compiledItemSchema,
+	indexItemSchema,
 	registryConditionSchema,
 	registryItemSchema,
 	registryItemTypeSchema,
-	registryPayloadSchema,
 } from "./schema";
 
 /** Parse conditions the same way build/document parsing does. */
@@ -25,10 +24,6 @@ function parseRegistryConditions(raw: unknown) {
 		(key) => `Registry condition "${key}"`,
 	);
 	assertConditionMapBindingKeys(parsed);
-	if (parsed?.[PACKAGE_MANAGER_KEY] !== undefined)
-		throw new Error(
-			`Registry condition "${PACKAGE_MANAGER_KEY}" collides with the core-owned package manager.`,
-		);
 	return parsed;
 }
 
@@ -46,21 +41,21 @@ function parseRegistryItemTypes(raw: unknown) {
 	);
 }
 
-/** Minimal valid catalog item for parseRegistryDocument tests. */
-function validCatalogItem(
+/** Minimal valid index item for parseRegistryDocument tests. */
+function validIndexItem(
 	overrides: Record<string, unknown> = {},
 ): Record<string, unknown> {
 	return {
 		title: "Button",
 		description: "A button",
 		type: "component",
-		packs: [validCatalogPack()],
+		packs: [validIndexPack()],
 		...overrides,
 	};
 }
 
-/** Minimal valid catalog pack. */
-function validCatalogPack(
+/** Minimal valid index pack. */
+function validIndexPack(
 	overrides: Record<string, unknown> = {},
 ): Record<string, unknown> {
 	return {
@@ -80,7 +75,7 @@ function validDocument(
 			component: { label: "Components" },
 		},
 		items: {
-			button: validCatalogItem(),
+			button: validIndexItem(),
 		},
 		...overrides,
 	};
@@ -98,8 +93,8 @@ describe("registry/parse", () => {
 					},
 				},
 				items: {
-					button: validCatalogItem({
-						packs: [validCatalogPack({ when: { language: "typescript" } })],
+					button: validIndexItem({
+						packs: [validIndexPack({ when: { language: "typescript" } })],
 					}),
 				},
 			}),
@@ -116,7 +111,7 @@ describe("registry/parse", () => {
 			parseRegistryDocument(
 				validDocument({
 					items: {
-						button: validCatalogItem({ packs: [] }),
+						button: validIndexItem({ packs: [] }),
 					},
 				}),
 			),
@@ -130,7 +125,7 @@ describe("registry/parse", () => {
 			parseRegistryDocument(
 				validDocument({
 					items: {
-						button: validCatalogItem({ source: "r/button.json" }),
+						button: validIndexItem({ source: "r/button.json" }),
 					},
 				}),
 			).items.button,
@@ -149,12 +144,12 @@ describe("registry/parse", () => {
 		});
 	});
 
-	it("accepts a pack-less item with a payload source", () => {
+	it("accepts a pack-less item with a compiled item source", () => {
 		expect(
 			parseRegistryDocument(
 				validDocument({
 					items: {
-						"assign-owner": validCatalogItem({
+						"assign-owner": validIndexItem({
 							title: "Assign Owner",
 							description: "Assigns the owner",
 							packs: undefined,
@@ -177,12 +172,12 @@ describe("registry/parse", () => {
 		).not.toHaveProperty("id");
 	});
 
-	it("rejects a catalog item that declares id", () => {
+	it("rejects a index item that declares id", () => {
 		expect(() =>
 			parseRegistryDocument(
 				validDocument({
 					items: {
-						button: validCatalogItem({ id: "button" }),
+						button: validIndexItem({ id: "button" }),
 					},
 				}),
 			),
@@ -214,11 +209,11 @@ describe("registry/parse", () => {
 		});
 	});
 
-	it("parses catalog items with catalogItemSchema", () => {
+	it("parses index items with indexItemSchema", () => {
 		expect(
 			parseWithSchema(
-				catalogItemSchema,
-				validCatalogItem(),
+				indexItemSchema,
+				validIndexItem(),
 				'Registry items["button"]',
 			),
 		).toEqual({
@@ -247,7 +242,7 @@ describe("registry/parse", () => {
 				parseRegistryDocument(
 					validDocument({
 						items: {
-							button: validCatalogItem({ typo: true }),
+							button: validIndexItem({ typo: true }),
 						},
 					}),
 				),
@@ -259,8 +254,8 @@ describe("registry/parse", () => {
 				parseRegistryDocument(
 					validDocument({
 						items: {
-							button: validCatalogItem({
-								packs: [validCatalogPack({ extra: "nope" })],
+							button: validIndexItem({
+								packs: [validIndexPack({ extra: "nope" })],
 							}),
 						},
 					}),
@@ -379,7 +374,7 @@ describe("registry/parse", () => {
 		expect(() =>
 			parseRegistryDocument({
 				items: {
-					button: validCatalogItem(),
+					button: validIndexItem(),
 				},
 			}),
 		).toThrow("Registry types must be declared.");
@@ -414,19 +409,19 @@ describe("registry/parse", () => {
 			parseRegistryDocument(
 				validDocument({
 					items: {
-						button: validCatalogItem({ packs: "react" }),
+						button: validIndexItem({ packs: "react" }),
 					},
 				}),
 			),
 		).toThrow('Registry items["button"].packs must be an array.');
 	});
 
-	it("rejects a pack without a payload source", () => {
+	it("rejects a pack without a compiled item source", () => {
 		expect(() =>
 			parseRegistryDocument(
 				validDocument({
 					items: {
-						button: validCatalogItem({
+						button: validIndexItem({
 							packs: [
 								{
 									id: "react",
@@ -498,8 +493,8 @@ describe("registry/parse", () => {
 			);
 		});
 
-		it("rejects a condition key reserved for the core-owned package manager", () => {
-			expect(() =>
+		it("allows a shared condition named packageManager", () => {
+			expect(
 				parseRegistryConditions({
 					packageManager: {
 						kind: "select",
@@ -507,9 +502,13 @@ describe("registry/parse", () => {
 						values: [{ value: "pnpm", label: "pnpm" }],
 					},
 				}),
-			).toThrow(
-				'Registry condition "packageManager" collides with the core-owned package manager.',
-			);
+			).toEqual({
+				packageManager: {
+					kind: "select",
+					label: "Package manager",
+					values: [{ value: "pnpm", label: "pnpm" }],
+				},
+			});
 		});
 
 		it("rejects a conditions value that is not an object", () => {
@@ -594,8 +593,8 @@ describe("registry/parse", () => {
 				parseRegistryDocument(
 					validDocument({
 						items: {
-							button: validCatalogItem({
-								packs: [validCatalogPack({ when: { language: "typescript" } })],
+							button: validIndexItem({
+								packs: [validIndexPack({ when: { language: "typescript" } })],
 							}),
 						},
 					}),
@@ -617,8 +616,8 @@ describe("registry/parse", () => {
 							},
 						},
 						items: {
-							button: validCatalogItem({
-								packs: [validCatalogPack({ when: { language: "javascript" } })],
+							button: validIndexItem({
+								packs: [validIndexPack({ when: { language: "javascript" } })],
 							}),
 						},
 					}),
@@ -633,7 +632,7 @@ describe("registry/parse", () => {
 				parseRegistryDocument(
 					validDocument({
 						items: {
-							"assign-owner": validCatalogItem({
+							"assign-owner": validIndexItem({
 								title: "Assign Owner",
 								description: "Assigns the owner",
 								when: { language: "typescript" },
@@ -651,7 +650,7 @@ describe("registry/parse", () => {
 				parseRegistryDocument(
 					validDocument({
 						items: {
-							license: validCatalogItem({
+							license: validIndexItem({
 								title: "License",
 								description: "License file",
 								requires: ["authorName"],
@@ -666,20 +665,44 @@ describe("registry/parse", () => {
 			);
 		});
 
-		it("rejects requiring the core-owned package manager", () => {
+		it("rejects requiring an undeclared packageManager condition", () => {
 			expect(() =>
 				parseRegistryDocument(
 					validDocument({
 						items: {
-							button: validCatalogItem({
+							button: validIndexItem({
 								requires: ["packageManager"],
 							}),
 						},
 					}),
 				),
 			).toThrow(
-				'Registry item "button" requires "packageManager" which is selected by core at install time.',
+				'Registry item "button" requires unknown condition "packageManager".',
 			);
+		});
+
+		it("allows requiring a declared packageManager condition", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						conditions: {
+							packageManager: {
+								kind: "select",
+								label: "Package manager",
+								values: [
+									{ value: "pnpm", label: "pnpm" },
+									{ value: "npm", label: "npm" },
+								],
+							},
+						},
+						items: {
+							button: validIndexItem({
+								requires: ["packageManager"],
+							}),
+						},
+					}),
+				),
+			).not.toThrow();
 		});
 
 		it("allows pack when to reference the built-in packageManager key", () => {
@@ -687,9 +710,9 @@ describe("registry/parse", () => {
 				parseRegistryDocument(
 					validDocument({
 						items: {
-							button: validCatalogItem({
+							button: validIndexItem({
 								packs: [
-									validCatalogPack({
+									validIndexPack({
 										when: { packageManager: "pnpm" },
 									}),
 								],
@@ -705,9 +728,9 @@ describe("registry/parse", () => {
 				parseRegistryDocument(
 					validDocument({
 						items: {
-							button: validCatalogItem({
+							button: validIndexItem({
 								packs: [
-									validCatalogPack({
+									validIndexPack({
 										when: { packageManager: "pip" },
 									}),
 								],
@@ -728,7 +751,7 @@ describe("registry/parse", () => {
 							authorName: { kind: "text", label: "Author" },
 						},
 						items: {
-							license: validCatalogItem({
+							license: validIndexItem({
 								title: "License",
 								description: "License file",
 								conditions: {
@@ -753,7 +776,7 @@ describe("registry/parse", () => {
 							coverageThreshold: { kind: "text", label: "Coverage" },
 						},
 						items: {
-							button: validCatalogItem({
+							button: validIndexItem({
 								requires: ["coverageThreshold"],
 								conditions: {
 									coverageThreshold: { kind: "text", label: "Coverage" },
@@ -772,7 +795,7 @@ describe("registry/parse", () => {
 				parseRegistryDocument(
 					validDocument({
 						items: {
-							left: validCatalogItem({
+							left: validIndexItem({
 								title: "Left",
 								description: "Left item",
 								packs: undefined,
@@ -781,7 +804,7 @@ describe("registry/parse", () => {
 									coverageThreshold: { kind: "text", label: "Coverage" },
 								},
 							}),
-							right: validCatalogItem({
+							right: validIndexItem({
 								title: "Right",
 								description: "Right item",
 								packs: undefined,
@@ -806,11 +829,11 @@ describe("registry/parse", () => {
 							authorName: { kind: "text", label: "Author" },
 						},
 						items: {
-							license: validCatalogItem({
+							license: validIndexItem({
 								title: "License",
 								description: "License file",
 								packs: [
-									validCatalogPack({
+									validIndexPack({
 										id: "default",
 										when: { authorName: "Ada" },
 									}),
@@ -832,11 +855,11 @@ describe("registry/parse", () => {
 							enableCi: { kind: "boolean", label: "Enable CI" },
 						},
 						items: {
-							ci: validCatalogItem({
+							ci: validIndexItem({
 								title: "CI",
 								description: "CI workflow",
 								packs: [
-									validCatalogPack({
+									validIndexPack({
 										id: "default",
 										when: { enableCi: "yes" },
 									}),
@@ -866,11 +889,11 @@ describe("registry/parse", () => {
 							},
 						},
 						items: {
-							mobile: validCatalogItem({
+							mobile: validIndexItem({
 								title: "Mobile",
 								description: "Mobile app",
 								packs: [
-									validCatalogPack({
+									validIndexPack({
 										id: "ios",
 										when: { enableCi: true, platforms: "ios" },
 									}),
@@ -975,7 +998,7 @@ describe("registry/parse", () => {
 		it("maps item-local option bindings that reuse the condition key", () => {
 			expect(() =>
 				parseWithSchema(
-					catalogItemSchema,
+					indexItemSchema,
 					{
 						title: "Testing",
 						description: "Tests",
@@ -1112,10 +1135,8 @@ describe("registry/parse", () => {
 								},
 							},
 							items: {
-								button: validCatalogItem({
-									packs: [
-										validCatalogPack({ when: { language: "typescript" } }),
-									],
+								button: validIndexItem({
+									packs: [validIndexPack({ when: { language: "typescript" } })],
 								}),
 							},
 						}),
@@ -1168,11 +1189,11 @@ describe("registry/parse", () => {
 		});
 	});
 
-	describe("registry payload parsing", () => {
+	describe("compiled item parsing", () => {
 		it("parses a payload with inlined content", () => {
 			expect(
 				parseWithSchema(
-					registryPayloadSchema,
+					compiledItemSchema,
 					{
 						files: [
 							{
@@ -1181,7 +1202,7 @@ describe("registry/parse", () => {
 							},
 						],
 					},
-					"Registry payload",
+					"Compiled item",
 				),
 			).toEqual({
 				files: [
@@ -1196,15 +1217,13 @@ describe("registry/parse", () => {
 		it("rejects files without content", () => {
 			expect(() =>
 				parseWithSchema(
-					registryPayloadSchema,
+					compiledItemSchema,
 					{
 						files: [{ target: "a.txt" }],
 					},
-					"Registry payload",
+					"Compiled item",
 				),
-			).toThrow(
-				"Registry payload.files[0].content must be a non-empty string.",
-			);
+			).toThrow("Compiled item.files[0].content must be a non-empty string.");
 		});
 	});
 

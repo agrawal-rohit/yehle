@@ -1,5 +1,5 @@
 import type {
-	CatalogItem,
+	IndexItem,
 	Registry,
 	RegistryItemTypeDefinition,
 } from "@tuckshop/core";
@@ -53,11 +53,11 @@ function parseTypeFilter(
  * @param typeMeta - Display metadata keyed by type value.
  */
 function printItemsByType(
-	matches: CatalogItem[],
+	matches: IndexItem[],
 	typeOrder: string[],
 	typeMeta: Record<string, RegistryItemTypeDefinition>,
 ): void {
-	const byType = new Map<string, CatalogItem[]>();
+	const byType = new Map<string, IndexItem[]>();
 
 	for (const item of matches) {
 		const group = byType.get(item.type) ?? [];

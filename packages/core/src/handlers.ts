@@ -14,11 +14,11 @@ import {
 } from "./packages";
 import type { RequiredCondition } from "./plan";
 import type {
+	CompiledItem,
+	CompiledItemFile,
 	RegistryConditionValue,
 	RegistryEcosystemCommands,
 	RegistryEcosystemDependencies,
-	RegistryPayload,
-	RegistryPayloadFile,
 } from "./schema";
 import { isAbsoluteHttpUrl, joinRelativePathUnderRoot } from "./urls";
 
@@ -114,7 +114,7 @@ export interface RunInstallHookOptions {
 	/** Selected npm package manager for this install. */
 	packageManager: RegistryPackageManager;
 	bindings?: Record<string, string>;
-	payload: RegistryPayload;
+	compiledItem: CompiledItem;
 }
 
 /** Context passed to install lifecycle scripts. */
@@ -129,15 +129,15 @@ export interface InstallHookContext extends HandlerRuntime {
 	packageManager: RegistryPackageManager;
 	/** Bindings collected from earlier install scripts in this run. */
 	bindings: Record<string, string>;
-	/** Working install payload (files may be empty before scripts run). */
-	payload: RegistryPayload;
+	/** Working compiled item (files may be empty before scripts run). */
+	compiledItem: CompiledItem;
 }
 
 /** Optional result from a `beforeInstall` script. */
 export interface BeforeInstallHookResult {
-	/** Files to upsert into the working payload by `target`. */
-	files?: RegistryPayloadFile[];
-	/** Target paths to remove from the working payload. */
+	/** Files to upsert into the working compiled item by `target`. */
+	files?: CompiledItemFile[];
+	/** Target paths to remove from the working compiled item. */
 	removeFiles?: string[];
 	/** Bindings merged into the shared install context. */
 	bindings?: Record<string, string>;
@@ -190,10 +190,10 @@ export interface ConditionHandler {
  * @param upserts - Files returned from a beforeInstall hook.
  * @returns Updated file list.
  */
-function upsertPayloadFiles(
-	files: RegistryPayloadFile[],
-	upserts: RegistryPayloadFile[],
-): RegistryPayloadFile[] {
+function upsertCompiledItemFiles(
+	files: CompiledItemFile[],
+	upserts: CompiledItemFile[],
+): CompiledItemFile[] {
 	const next = [...files];
 	for (const file of upserts) {
 		const index = next.findIndex((entry) => entry.target === file.target);
@@ -209,48 +209,48 @@ function upsertPayloadFiles(
  * @param removeFiles - Targets to drop.
  * @returns Filtered file list.
  */
-function removePayloadFiles(
-	files: RegistryPayloadFile[],
+function removeCompiledItemFiles(
+	files: CompiledItemFile[],
 	removeFiles: string[],
-): RegistryPayloadFile[] {
+): CompiledItemFile[] {
 	const removed = new Set(removeFiles);
 	return files.filter((file) => !removed.has(file.target));
 }
 
 /**
- * Join a catalog-relative script URI to an absolute local file path (rejects remote catalogs, absolute paths, URLs, and parent-directory escapes).
- * @param catalogLocation - Absolute path or HTTPS URL of registry.json.
+ * Join a index-relative script URI to an absolute local file path (rejects remote registries, absolute paths, URLs, and parent-directory escapes).
+ * @param indexLocation - Absolute path or HTTPS URL of registry.json.
  * @param scriptUri - Catalog script URI such as `r/item.beforeInstall.0.js`.
  * @returns Absolute path to the script module.
- * @throws Error when the catalog is remote or the URI is unsafe.
+ * @throws Error when the index is remote or the URI is unsafe.
  */
 export function localScriptPath(
-	catalogLocation: string,
+	indexLocation: string,
 	scriptUri: string,
 ): string {
-	if (isAbsoluteHttpUrl(catalogLocation))
+	if (isAbsoluteHttpUrl(indexLocation))
 		throw new Error(
-			"Registry scripts require a local catalog. Remote HTTPS registries cannot execute custom scripts.",
+			"Registry scripts require a local registry. Remote HTTPS registries cannot execute custom scripts.",
 		);
 
-	const catalogDir = path.dirname(path.resolve(catalogLocation));
+	const indexDir = path.dirname(path.resolve(indexLocation));
 	const trimmed = scriptUri.trim();
 	if (!trimmed || isAbsoluteHttpUrl(trimmed))
 		throw new Error(
-			`Script URI "${scriptUri}" must be a relative path under the catalog directory.`,
+			`Script URI "${scriptUri}" must be a relative path under the registry directory.`,
 		);
 
 	return joinRelativePathUnderRoot(
-		catalogDir,
+		indexDir,
 		trimmed,
 		"Script URI",
-		"catalog directory",
+		"registry directory",
 	);
 }
 
 /**
  * Dynamically import a local script module and validate its export shape.
- * @param catalogLocation - Absolute path to registry.json (must be local).
+ * @param indexLocation - Absolute path to registry.json (must be local).
  * @param scriptUri - Catalog script URI.
  * @param isValid - Predicate that accepts a usable export.
  * @param errorMessage - Error when the export shape is invalid.
@@ -258,12 +258,12 @@ export function localScriptPath(
  * @throws Error when the module cannot be loaded or has no usable export.
  */
 async function loadScriptModule<T>(
-	catalogLocation: string,
+	indexLocation: string,
 	scriptUri: string,
 	isValid: (value: unknown) => value is T,
 	errorMessage: string,
 ): Promise<T> {
-	const absolutePath = localScriptPath(catalogLocation, scriptUri);
+	const absolutePath = localScriptPath(indexLocation, scriptUri);
 	// Delete the script from the require cache so rebuilt scripts are picked up in long-lived processes.
 	Reflect.deleteProperty(requireScript.cache, absolutePath);
 	const imported = requireScript(absolutePath) as Record<string, unknown>;
@@ -287,7 +287,7 @@ async function loadScriptModule<T>(
  */
 function applyBeforeInstallResult(
 	state: {
-		files: RegistryPayloadFile[];
+		files: CompiledItemFile[];
 		bindings: Record<string, string>;
 		commands?: RegistryEcosystemCommands;
 		dependencies?: RegistryEcosystemDependencies;
@@ -295,7 +295,7 @@ function applyBeforeInstallResult(
 	},
 	result: BeforeInstallHookResult,
 ): {
-	files: RegistryPayloadFile[];
+	files: CompiledItemFile[];
 	bindings: Record<string, string>;
 	commands?: RegistryEcosystemCommands;
 	dependencies?: RegistryEcosystemDependencies;
@@ -303,8 +303,9 @@ function applyBeforeInstallResult(
 } {
 	const bindings = { ...state.bindings, ...result.bindings };
 	let files = state.files;
-	if (result.removeFiles) files = removePayloadFiles(files, result.removeFiles);
-	if (result.files) files = upsertPayloadFiles(files, result.files);
+	if (result.removeFiles)
+		files = removeCompiledItemFiles(files, result.removeFiles);
+	if (result.files) files = upsertCompiledItemFiles(files, result.files);
 
 	return {
 		files,
@@ -334,42 +335,42 @@ function applyBeforeInstallResult(
 
 /**
  * Run one compiled `beforeInstall` script.
- * @param catalogLocation - Absolute local path to registry.json.
+ * @param indexLocation - Absolute local path to registry.json.
  * @param scriptUri - Catalog script URI.
  * @param runtime - Shared handler runtime.
  * @param options - Item identity, payload, and install state.
  * @returns Updated files, bindings, and merged payload fields.
  */
 export async function runBeforeInstallHook(
-	catalogLocation: string,
+	indexLocation: string,
 	scriptUri: string,
 	runtime: HandlerRuntime,
 	options: RunInstallHookOptions,
 ): Promise<{
-	files: RegistryPayloadFile[];
+	files: CompiledItemFile[];
 	bindings: Record<string, string>;
 	commands?: RegistryEcosystemCommands;
 	dependencies?: RegistryEcosystemDependencies;
 	secrets?: string[];
 }> {
 	const hook = await loadScriptModule(
-		catalogLocation,
+		indexLocation,
 		scriptUri,
 		(script): script is BeforeInstallHook => typeof script === "function",
 		`Script at "${scriptUri}" must export a \`beforeInstall\` hook function.`,
 	);
 	let state: {
-		files: RegistryPayloadFile[];
+		files: CompiledItemFile[];
 		bindings: Record<string, string>;
 		commands?: RegistryEcosystemCommands;
 		dependencies?: RegistryEcosystemDependencies;
 		secrets?: string[];
 	} = {
-		files: [...options.payload.files],
+		files: [...options.compiledItem.files],
 		bindings: { ...options.bindings },
-		commands: options.payload.commands,
-		dependencies: options.payload.dependencies,
-		secrets: options.payload.secrets,
+		commands: options.compiledItem.commands,
+		dependencies: options.compiledItem.dependencies,
+		secrets: options.compiledItem.secrets,
 	};
 
 	const ctx: InstallHookContext = {
@@ -379,7 +380,7 @@ export async function runBeforeInstallHook(
 		conditions: options.conditions,
 		packageManager: options.packageManager,
 		bindings: state.bindings,
-		payload: { ...options.payload, files: state.files },
+		compiledItem: { ...options.compiledItem, files: state.files },
 	};
 
 	const result: BeforeInstallHookResult | undefined = await hook(ctx);
@@ -396,19 +397,19 @@ export async function runBeforeInstallHook(
 
 /**
  * Run one compiled `afterInstall` script.
- * @param catalogLocation - Absolute local path to registry.json.
+ * @param indexLocation - Absolute local path to registry.json.
  * @param scriptUri - Catalog script URI.
  * @param runtime - Shared handler runtime.
  * @param options - Item identity, payload, and install state.
  */
 export async function runAfterInstallHook(
-	catalogLocation: string,
+	indexLocation: string,
 	scriptUri: string,
 	runtime: HandlerRuntime,
 	options: RunInstallHookOptions,
 ): Promise<void> {
 	const hook = await loadScriptModule(
-		catalogLocation,
+		indexLocation,
 		scriptUri,
 		(script): script is AfterInstallHook => typeof script === "function",
 		`Script at "${scriptUri}" must export an afterInstall hook function.`,
@@ -420,7 +421,7 @@ export async function runAfterInstallHook(
 		conditions: options.conditions,
 		packageManager: options.packageManager,
 		bindings: { ...options.bindings },
-		payload: options.payload,
+		compiledItem: options.compiledItem,
 	};
 	await hook(ctx);
 }
@@ -452,21 +453,21 @@ export function createHandlerRuntime(
 
 /**
  * Infer a prompt default for one required condition.
- * @param catalogLocation - Absolute local path to registry.json.
+ * @param indexLocation - Absolute local path to registry.json.
  * @param condition - Required condition from the install plan.
  * @param runtime - Shared handler runtime.
  * @param context - Condition values already captured.
  * @returns Suggested default when confident, otherwise undefined.
  */
 export async function inferConditionDefault(
-	catalogLocation: string,
+	indexLocation: string,
 	condition: RequiredCondition,
 	runtime: HandlerRuntime,
 	context: RegistryContext,
 ): Promise<RegistryContextValue | undefined> {
 	if (condition.handler) {
 		const handler = await loadScriptModule(
-			catalogLocation,
+			indexLocation,
 			condition.handler,
 			(
 				loaded,

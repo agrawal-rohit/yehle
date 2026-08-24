@@ -37,7 +37,7 @@ export function assertSafeRemoteUrl(url: URL): void {
 }
 
 /**
- * Catalog URL for the published default registry at a release tag.
+ * Index URL for the published default registry at a release tag.
  * @param version - Published CLI / registry package version (used in the `tuckshop@` tag).
  * @returns Absolute HTTPS URL to `packages/registry/registry.json`.
  */
@@ -49,7 +49,7 @@ export function publishedRegistryUrl(version: string): string {
  * Join a relative path under a root directory, rejecting escapes and absolute inputs.
  * @param rootDir - Absolute directory the result must stay under.
  * @param relativePath - Candidate relative path (may include surrounding whitespace).
- * @param label - Noun phrase used in error messages (e.g. `"Payload file target"`).
+ * @param label - Noun phrase used in error messages (e.g. `"Compiled item file target"`).
  * @param rootLabel - Human label for the root (e.g. `"project directory"`).
  * @returns Absolute path under `rootDir`.
  * @throws Error when the path is empty, absolute, uses `..`, or escapes `rootDir`.
@@ -81,39 +81,36 @@ export function joinRelativePathUnderRoot(
 }
 
 /**
- * Join a catalog item or variant `source` against the catalog location.
+ * Join a index item or variant `source` against the index location.
  * Absolute http(s) sources pass through unchanged. Relative sources use
- * WHATWG URL joining against http(s) catalogs, or a traversal-safe join
- * under the catalog directory for local file paths.
- * @param catalogLocation - Absolute path or http(s) URL of `registry.json`.
- * @param source - Opaque URI from a compiled catalog item or variant `source`.
+ * WHATWG URL joining against http(s) registries, or a traversal-safe join
+ * under the registry directory for local file paths.
+ * @param indexLocation - Absolute path or http(s) URL of `registry.json`.
+ * @param source - Opaque URI from a compiled index item or variant `source`.
  * @returns Absolute http(s) URL or absolute local filesystem path.
- * @throws Error when a local relative source escapes the catalog directory.
+ * @throws Error when a local relative source escapes the registry directory.
  */
-export function joinCatalogSource(
-	catalogLocation: string,
-	source: string,
-): string {
+export function joinIndexSource(indexLocation: string, source: string): string {
 	const trimmedSource = source.trim();
 	if (!trimmedSource)
 		throw new Error("Registry file source must not be empty.");
 
-	// Absolute URLs are already fetchable; skip catalog-relative joining.
+	// Absolute URLs are already fetchable; skip index-relative joining.
 	if (isAbsoluteHttpUrl(trimmedSource)) return trimmedSource;
 
-	const trimmedCatalog = catalogLocation.trim();
+	const trimmedCatalog = indexLocation.trim();
 	if (!trimmedCatalog)
-		throw new Error("Registry catalog location must not be empty.");
+		throw new Error("Registry index location must not be empty.");
 
-	// Remote catalogs: WHATWG URL path joining (…/registry.json + r/x.json → …/r/x.json).
+	// Remote registries: WHATWG URL path joining (…/registry.json + r/x.json → …/r/x.json).
 	if (isAbsoluteHttpUrl(trimmedCatalog))
 		return new URL(trimmedSource, trimmedCatalog).href;
 
-	const catalogDir = path.dirname(path.resolve(trimmedCatalog));
+	const indexDir = path.dirname(path.resolve(trimmedCatalog));
 	return joinRelativePathUnderRoot(
-		catalogDir,
+		indexDir,
 		trimmedSource,
 		"Registry file source",
-		"catalog directory",
+		"registry directory",
 	);
 }

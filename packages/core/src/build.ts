@@ -15,7 +15,6 @@ import {
 	mergeDependencySet,
 	mergeEcosystemMaps,
 	mergeSecretNames,
-	PACKAGE_MANAGER_KEY,
 } from "./packages";
 import {
 	parseKeyedRecord,
@@ -23,60 +22,199 @@ import {
 	parseWithSchema,
 } from "./parse";
 import {
-	type AuthoredRegistryItem,
-	type AuthoredRegistryPack,
 	assertConditionMapBindingKeys,
-	type CatalogItem,
-	type CatalogPack,
+	type CompiledItemFile,
+	compiledItemSchema,
+	type IndexItem,
+	type IndexPack,
 	InstallPhase,
+	type RawRegistryItem,
+	type RawRegistryPack,
 	type Registry,
 	type RegistryCondition,
 	type RegistryEcosystemCommands,
 	type RegistryEcosystemDependencies,
 	type RegistryFile,
 	type RegistryItemTypeDefinition,
-	type RegistryPayloadFile,
 	registryConditionSchema,
 	registryItemSchema,
 	registryItemTypeSchema,
-	registryPayloadSchema,
 } from "./schema";
 import { joinRelativePathUnderRoot } from "./urls";
 
 export interface BuildRegistryOptions {
-	/** Absolute path to the authoring tree: item folders, `types.json`, and optional `conditions/conditions.json`. */
+	/** Absolute path to the registry source tree: item folders, types file, and optional shared conditions file. */
 	sourceDir: string;
-	/** Absolute path where compiled artefacts are written: catalog JSON and `r/{itemId}.json` or `r/{itemId}/{variantId}.json`. */
+	/** Absolute path where compiled output is written: the index JSON and compiled items/scripts. */
 	outDir: string;
-	/** Basename of the catalog file written under `outDir`. */
+	/** Basename of the index file written under `outDir`. Defaults to `"registry.json"`. */
 	registryFileName?: string;
+	/** Basename of each item manifest under an item folder. Defaults to `"registry-item.json"`. */
+	itemManifestFileName?: string;
+	/** Path under `sourceDir` for the types document. Defaults to `"types.json"`. */
+	typesFileName?: string;
+	/** Path under `sourceDir` for shared conditions. Defaults to `"conditions/conditions.json"`. */
+	conditionsFileName?: string;
+	/** Index-relative directory for compiled items, install scripts, and condition handlers. */
+	compiledDirName?: string;
+	/** Extra packages marked external for install/handler bundles */
+	bundleExternalPackages?: string[];
 }
 
-/** Authored item paired with its source folder. */
-interface AuthoredItemEntry {
+/** Build inputs after defaults and validation. */
+interface BuildConfig {
+	sourceDir: string;
+	outDir: string;
+	registryFileName: string;
+	itemManifestFileName: string;
+	typesFileName: string;
+	conditionsFileName: string;
+	compiledDirName: string;
+	bundleExternalPackages: readonly string[];
+}
+
+/** Raw item paired with its source folder. */
+interface RawItemEntry {
 	itemDir: string;
-	item: AuthoredRegistryItem;
+	item: RawRegistryItem;
 }
 
 /**
- * Catalog-relative payload URI for an item or pack.
+ * Escape a string for safe use inside a RegExp pattern.
+ * @param value - Literal string to escape.
+ * @returns Escaped pattern fragment.
+ */
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+}
+
+/**
+ * Fail when a basename option is empty, `.`, `..`, or contains a path separator.
+ * @param optionName - Options field name for the error message.
+ * @param value - Candidate basename.
+ * @throws Error when the value is not a single path segment.
+ */
+function assertSinglePathSegment(optionName: string, value: string): void {
+	if (
+		!value ||
+		value === "." ||
+		value === ".." ||
+		value.includes("/") ||
+		value.includes("\\")
+	)
+		throw new Error(
+			String.raw`${optionName} must be a single path segment (no "/", "\", or "..").`,
+		);
+}
+
+/**
+ * Fail when a basename is not a single `.json` path segment.
+ * @param optionName - Options field name for the error message.
+ * @param value - Candidate basename.
+ * @throws Error when the value is invalid or does not end with `.json`.
+ */
+function assertJsonFileName(optionName: string, value: string): void {
+	assertSinglePathSegment(optionName, value);
+	if (!value.endsWith(".json"))
+		throw new Error(`${optionName} must end with ".json".`);
+}
+
+/**
+ * Always include `@tuckshop/core`, then fold in caller extras (deduping core).
+ * @param extras - Optional additional external package names.
+ * @returns External package list for install/handler bundles.
+ * @throws Error when an entry is empty or whitespace-only.
+ */
+function normalizeBundleExternalPackages(
+	extras: string[] | undefined,
+): readonly string[] {
+	const extraExternals = extras ?? [];
+	for (const pkg of extraExternals) {
+		if (!pkg.trim())
+			throw new Error("bundleExternalPackages entries must be non-empty.");
+	}
+	return [
+		"@tuckshop/core",
+		...extraExternals.filter((pkg) => pkg !== "@tuckshop/core"),
+	];
+}
+
+/**
+ * Apply defaults and validate {@link BuildRegistryOptions} into concrete build inputs.
+ * @param options - Caller-supplied build options.
+ * @returns Absolute paths and layout names with defaults applied.
+ * @throws Error when a file-name option is invalid.
+ */
+function createBuildConfig(options: BuildRegistryOptions): BuildConfig {
+	const sourceDir = path.resolve(options.sourceDir);
+	const outDir = path.resolve(options.outDir);
+	const registryFileName = (options.registryFileName ?? "registry.json").trim();
+	const itemManifestFileName = (
+		options.itemManifestFileName ?? "registry-item.json"
+	).trim();
+	const typesFileName = (options.typesFileName ?? "types.json").trim();
+	const conditionsFileName = (
+		options.conditionsFileName ?? "conditions/conditions.json"
+	).trim();
+	const compiledDirName = (options.compiledDirName ?? "r").trim();
+	const bundleExternalPackages = normalizeBundleExternalPackages(
+		options.bundleExternalPackages,
+	);
+
+	assertJsonFileName("registryFileName", registryFileName);
+	assertJsonFileName("itemManifestFileName", itemManifestFileName);
+	assertSinglePathSegment("compiledDirName", compiledDirName);
+
+	// types/conditions may be nested under sourceDir; reject escapes and absolute paths.
+	joinRelativePathUnderRoot(
+		sourceDir,
+		typesFileName,
+		"typesFileName",
+		"registry source",
+	);
+	joinRelativePathUnderRoot(
+		sourceDir,
+		conditionsFileName,
+		"conditionsFileName",
+		"registry source",
+	);
+
+	return {
+		sourceDir,
+		outDir,
+		registryFileName,
+		itemManifestFileName,
+		typesFileName,
+		conditionsFileName,
+		compiledDirName,
+		bundleExternalPackages,
+	};
+}
+
+/**
+ * Index-relative compiled item URI for an item or pack.
+ * @param compiledDirName - Index-relative compiled output directory.
  * @param itemId - Registry item id.
  * @param packId - Pack id when the payload is per-pack.
- * @returns URI under `r/`.
+ * @returns URI under the compiled output directory.
  */
-function payloadUri(itemId: string, packId?: string): string {
+function compiledItemUri(
+	compiledDirName: string,
+	itemId: string,
+	packId?: string,
+): string {
 	return packId === undefined
-		? `r/${itemId}.json`
-		: `r/${itemId}/${packId}.json`;
+		? `${compiledDirName}/${itemId}.json`
+		: `${compiledDirName}/${itemId}/${packId}.json`;
 }
 
 /**
- * Compile one install-phase list into catalog-relative bundled script URIs.
+ * Compile one install-phase list into index-relative bundled script URIs.
  * @param itemDir - Absolute item folder.
  * @param itemId - Registry item id.
  * @param phase - Install phase being compiled.
  * @param entries - Authoring phase entries.
- * @param outDir - Absolute compiled output root.
+ * @param config - Build config.
  * @param packId - Pack id when compiling a pack slice.
  * @returns Compiled script URI list, or undefined when absent.
  */
@@ -85,7 +223,7 @@ async function compileInstallPhaseList(
 	itemId: string,
 	phase: InstallPhase,
 	entries: string[] | undefined,
-	outDir: string,
+	config: BuildConfig,
 	packId?: string,
 ): Promise<string[] | undefined> {
 	if (!entries?.length) return undefined;
@@ -101,12 +239,13 @@ async function compileInstallPhaseList(
 		);
 		const uri =
 			packId === undefined
-				? `r/${itemId}.${phase}.${scriptIndex}.js`
-				: `r/${itemId}/${packId}.${phase}.${scriptIndex}.js`;
+				? `${config.compiledDirName}/${itemId}.${phase}.${scriptIndex}.js`
+				: `${config.compiledDirName}/${itemId}/${packId}.${phase}.${scriptIndex}.js`;
 		await bundleScript(
 			entryPath,
-			path.join(outDir, uri),
+			path.join(config.outDir, uri),
 			`Registry item "${itemId}" ${phase}`,
+			config.bundleExternalPackages,
 		);
 		compiled.push(uri);
 		scriptIndex++;
@@ -116,30 +255,39 @@ async function compileInstallPhaseList(
 }
 
 /**
- * Recursively collect the folder of every registry-item.json under a source tree.
+ * Recursively collect every item folder that contains the configured manifest basename.
  * @param dir - Directory to walk.
- * @returns Absolute paths to item folders (each containing a registry-item.json).
+ * @param itemManifestFileName - Basename that identifies an item folder.
+ * @returns Absolute paths to item folders.
  * @throws Error on filesystem failures other than a missing directory.
  */
-async function collectItemDirs(dir: string): Promise<string[]> {
+async function collectItemDirs(
+	dir: string,
+	itemManifestFileName: string,
+): Promise<string[]> {
 	const results: string[] = [];
 	let entries: Dirent[];
 
 	try {
 		entries = await readDirectoryAsync(dir);
 	} catch (error) {
-		// Missing authoring root is treated as an empty item tree; other errors fail fast.
+		// Missing registry source is treated as an empty item tree; other errors fail fast.
 		if (isMissingPathError(error)) return results;
 		throw error;
 	}
 
 	for (const entry of entries) {
-		// Item folders are identified by a colocated registry-item.json
-		if (entry.isFile() && entry.name === "registry-item.json")
+		// Item folders are identified by a colocated manifest file
+		if (entry.isFile() && entry.name === itemManifestFileName)
 			results.push(dir);
 		// Otherwise, look for item folders in subdirectories
 		else if (entry.isDirectory())
-			results.push(...(await collectItemDirs(path.join(dir, entry.name))));
+			results.push(
+				...(await collectItemDirs(
+					path.join(dir, entry.name),
+					itemManifestFileName,
+				)),
+			);
 	}
 
 	return results;
@@ -149,17 +297,17 @@ async function collectItemDirs(dir: string): Promise<string[]> {
  * Read local file contents for payload inlining.
  * @param itemDir - Absolute item folder.
  * @param itemId - Item id for errors.
- * @param sourceDir - Absolute authoring root (for relative error paths).
- * @param files - Authoring file entries.
- * @returns Payload file entries with inlined content.
+ * @param sourceDir - Absolute registry source (for relative error paths).
+ * @param files - Source file entries.
+ * @returns Compiled item file entries with inlined content.
  * @throws Error when a source escapes the item folder or is missing on disk.
  */
-async function materializePayloadFiles(
+async function materializeCompiledItemFiles(
 	itemDir: string,
 	itemId: string,
 	sourceDir: string,
 	files: RegistryFile[],
-): Promise<RegistryPayloadFile[]> {
+): Promise<CompiledItemFile[]> {
 	return Promise.all(
 		files.map(async (file) => {
 			const absolutePath = joinRelativePathUnderRoot(
@@ -181,18 +329,20 @@ async function materializePayloadFiles(
 }
 
 /**
- * Fetch and validate every authored registry item under the source tree.
- * @param sourceDir - Absolute authoring root.
- * @returns Authored items with their folders.
+ * Fetch and validate every raw registry item under the source tree.
+ * @param config - Build config.
+ * @returns Raw items with their folders.
  * @throws Error when an item is invalid or an id is duplicated.
  */
-async function fetchAuthoredItems(
-	sourceDir: string,
-): Promise<AuthoredItemEntry[]> {
-	const authoredItems: AuthoredItemEntry[] = [];
+async function fetchRawItems(config: BuildConfig): Promise<RawItemEntry[]> {
+	const { sourceDir, itemManifestFileName } = config;
+	const rawItems: RawItemEntry[] = [];
 	const seenItemIds = new Set<string>();
-	for (const itemDir of await collectItemDirs(sourceDir)) {
-		const manifestPath = path.join(itemDir, "registry-item.json");
+	for (const itemDir of await collectItemDirs(
+		sourceDir,
+		itemManifestFileName,
+	)) {
+		const manifestPath = path.join(itemDir, itemManifestFileName);
 		const raw = await readJsonFileAsync(
 			manifestPath,
 			`Registry item at ${path.relative(sourceDir, manifestPath)}`,
@@ -204,10 +354,10 @@ async function fetchAuthoredItems(
 			throw new Error(`Duplicate registry item id: "${item.id}".`);
 
 		seenItemIds.add(item.id);
-		authoredItems.push({ itemDir, item });
+		rawItems.push({ itemDir, item });
 	}
 
-	return authoredItems;
+	return rawItems;
 }
 
 /**
@@ -215,7 +365,7 @@ async function fetchAuthoredItems(
  * @param item - Authored registry item.
  * @returns True when a payload document should be written.
  */
-function itemNeedsBasePayload(item: AuthoredRegistryItem): boolean {
+function itemNeedsBaseCompiledItem(item: RawRegistryItem): boolean {
 	return (
 		(item.files?.length ?? 0) > 0 ||
 		item.dependencies !== undefined ||
@@ -225,14 +375,14 @@ function itemNeedsBasePayload(item: AuthoredRegistryItem): boolean {
 }
 
 /**
- * Fail when two payload files share the same install target path.
+ * Fail when two compiled item files share the same install target path.
  * @param subject - Error label naming the item/pack.
- * @param files - Materialized payload files.
+ * @param files - Materialized compiled item files.
  * @throws Error when a target path appears more than once.
  */
-function assertUniquePayloadTargets(
+function assertUniqueCompiledItemTargets(
 	subject: string,
-	files: RegistryPayloadFile[],
+	files: CompiledItemFile[],
 ): void {
 	const seenTargets = new Set<string>();
 	for (const file of files) {
@@ -245,31 +395,31 @@ function assertUniquePayloadTargets(
 }
 
 /**
- * Write one install payload under `r/`.
- * @param entry - Authored item with its source folder.
+ * Write one compiled item under the compiled output directory.
+ * @param entry - Raw item with its source folder.
  * @param pack - Pack being compiled; omit for an item-level payload.
- * @param sourceDir - Absolute authoring root.
- * @param outDir - Absolute compiled output root.
+ * @param config - Build config.
  * @throws Error when a file source is missing, escapes the item folder, or two files share a target.
  */
-async function writePayload(
-	entry: AuthoredItemEntry,
-	pack: AuthoredRegistryPack | undefined,
-	sourceDir: string,
-	outDir: string,
+async function writeCompiledItem(
+	entry: RawItemEntry,
+	pack: RawRegistryPack | undefined,
+	config: BuildConfig,
 ): Promise<void> {
 	const { itemDir, item } = entry;
 	const subject =
 		pack === undefined
 			? `Registry item "${item.id}"`
 			: `Registry item "${item.id}" pack "${pack.id}"`;
-	const files = await materializePayloadFiles(itemDir, item.id, sourceDir, [
-		...(item.files ?? []),
-		...(pack?.files ?? []),
-	]);
+	const files = await materializeCompiledItemFiles(
+		itemDir,
+		item.id,
+		config.sourceDir,
+		[...(item.files ?? []), ...(pack?.files ?? [])],
+	);
 
 	// Item-level and pack files share one destination namespace
-	assertUniquePayloadTargets(subject, files);
+	assertUniqueCompiledItemTargets(subject, files);
 
 	const dependencies = mergeEcosystemMaps(
 		mergeDependencySet,
@@ -284,59 +434,65 @@ async function writePayload(
 	const secrets = mergeSecretNames(item.secrets, pack?.secrets);
 
 	const payload = parseWithSchema(
-		registryPayloadSchema,
+		compiledItemSchema,
 		{
 			files,
 			dependencies,
 			commands,
 			secrets,
 		},
-		`Registry payload for "${item.id}"`,
+		`Compiled item for "${item.id}"`,
 	);
 
 	await writeFileAsync(
-		path.join(outDir, payloadUri(item.id, pack?.id)),
+		path.join(
+			config.outDir,
+			compiledItemUri(config.compiledDirName, item.id, pack?.id),
+		),
 		`${JSON.stringify(payload)}\n`,
 	);
 }
 
 /**
- * Wipe `r/` and write every item/base and item/pack payload from the authored tree.
- * @param authoredItems - Loaded authored items.
- * @param sourceDir - Absolute authoring root.
- * @param outDir - Absolute compiled output root.
+ * Wipe the compiled output directory and write every item/base and item/pack compiled item.
+ * @param rawItems - Loaded raw items.
+ * @param config - Build config.
  */
-async function writeItemPayloads(
-	authoredItems: AuthoredItemEntry[],
-	sourceDir: string,
-	outDir: string,
+async function writeCompiledItems(
+	rawItems: RawItemEntry[],
+	config: BuildConfig,
 ): Promise<void> {
-	await removeAsync(path.join(outDir, "r"));
+	await removeAsync(path.join(config.outDir, config.compiledDirName));
 
 	const writes: Promise<void>[] = [];
-	for (const entry of authoredItems) {
+	for (const entry of rawItems) {
 		const { item } = entry;
-		if (itemNeedsBasePayload(item))
-			writes.push(writePayload(entry, undefined, sourceDir, outDir));
+		if (itemNeedsBaseCompiledItem(item))
+			writes.push(writeCompiledItem(entry, undefined, config));
 		for (const pack of item.packs ?? [])
-			writes.push(writePayload(entry, pack, sourceDir, outDir));
+			writes.push(writeCompiledItem(entry, pack, config));
 	}
 
-	await Promise.all(writes);
+	// Wait for every write to finish so a rejection does not leave siblings racing cleanup.
+	const results = await Promise.allSettled(writes);
+	const failure = results.find((result) => result.status === "rejected");
+	if (failure?.status === "rejected") throw failure.reason;
 }
 
 /**
  * Bundle a TypeScript/JavaScript install script into a self-contained CommonJS module.
- * Marks `@tuckshop/core` as external and fails if the bundle still requires it.
- * @param entryPath - Absolute path to the authored script module.
+ * Marks configured packages as external and fails if the bundle still requires them.
+ * @param entryPath - Absolute path to the source script module.
  * @param outfile - Absolute path for the compiled script.
  * @param label - Error context label.
- * @throws Error when bundling fails or the script runtime-imports `@tuckshop/core`.
+ * @param bundleExternalPackages - Packages treated as external and banned at runtime.
+ * @throws Error when bundling fails or the script runtime-imports a banned package.
  */
 async function bundleScript(
 	entryPath: string,
 	outfile: string,
 	label: string,
+	bundleExternalPackages: readonly string[],
 ): Promise<void> {
 	if (!(await isFileAsync(entryPath)))
 		throw new Error(`${label} references missing script: ${entryPath}`);
@@ -350,31 +506,36 @@ async function bundleScript(
 			target: "node18",
 			outfile,
 			write: true,
-			external: ["@tuckshop/core"],
+			external: [...bundleExternalPackages],
 			logLevel: "silent",
 		});
 	} catch (error) {
 		throw new Error(`Failed to bundle ${label}: ${String(error)}`);
 	}
 
-	// Reject scripts that runtime-require @tuckshop/core (type-only imports are erased).
+	// Reject scripts that runtime-require an external package (type-only imports are erased).
 	const output = await readFileAsync(outfile);
-	if (/require\(["']@tuckshop\/core["']\)/.test(output))
-		throw new Error(`${label} must not runtime-import @tuckshop/core.`);
+	for (const pkg of bundleExternalPackages) {
+		const pattern = new RegExp(
+			String.raw`require\(["']` + escapeRegExp(pkg) + String.raw`["']\)`,
+		);
+		if (pattern.test(output))
+			throw new Error(`${label} must not runtime-import ${pkg}.`);
+	}
 }
 
 /**
- * Bundle condition handlers and rewrite authored paths to catalog URIs.
+ * Bundle condition handlers and rewrite source paths to index URIs.
  * @param rootDir - Absolute folder containing handler source files.
  * @param conditions - Condition map (handlers still root-relative).
- * @param outDir - Absolute compiled output root.
+ * @param config - Build config.
  * @param options - URI and label builders for bundled handlers.
  * @returns Conditions with compiled handler URIs, or undefined when absent.
  */
 async function compileConditionHandlers(
 	rootDir: string,
 	conditions: Record<string, RegistryCondition> | undefined,
-	outDir: string,
+	config: BuildConfig,
 	options: {
 		handlerUri: (key: string) => string;
 		entryLabel: (key: string) => string;
@@ -401,7 +562,12 @@ async function compileConditionHandlers(
 			options.rootLabel,
 		);
 		writes.push(
-			bundleScript(entryPath, path.join(outDir, uri), options.bundleLabel(key)),
+			bundleScript(
+				entryPath,
+				path.join(config.outDir, uri),
+				options.bundleLabel(key),
+				config.bundleExternalPackages,
+			),
 		);
 		compiled[key] = { ...condition, handler: uri };
 	}
@@ -411,25 +577,25 @@ async function compileConditionHandlers(
 }
 
 /**
- * Build one compiled catalog pack entry for an authored item pack.
+ * Build one compiled index pack entry for an raw item pack.
  * @param itemDir - Absolute item folder.
  * @param itemId - Registry item id.
- * @param pack - Authored pack definition.
- * @param outDir - Absolute compiled output root.
- * @returns Catalog pack shape with compiled install scripts.
+ * @param pack - Raw pack definition.
+ * @param config - Build config.
+ * @returns Index pack shape with compiled install scripts.
  */
-async function catalogPackEntry(
+async function indexPackEntry(
 	itemDir: string,
 	itemId: string,
-	pack: AuthoredRegistryPack,
-	outDir: string,
-): Promise<CatalogPack> {
+	pack: RawRegistryPack,
+	config: BuildConfig,
+): Promise<IndexPack> {
 	const packBeforeInstall = await compileInstallPhaseList(
 		itemDir,
 		itemId,
 		InstallPhase.BeforeInstall,
 		pack.beforeInstall,
-		outDir,
+		config,
 		pack.id,
 	);
 	const packAfterInstall = await compileInstallPhaseList(
@@ -437,14 +603,14 @@ async function catalogPackEntry(
 		itemId,
 		InstallPhase.AfterInstall,
 		pack.afterInstall,
-		outDir,
+		config,
 		pack.id,
 	);
 
 	return {
 		id: pack.id,
 		title: pack.title,
-		source: payloadUri(itemId, pack.id),
+		source: compiledItemUri(config.compiledDirName, itemId, pack.id),
 		...(pack.when ? { when: pack.when } : {}),
 		...(pack.dependsOn ? { dependsOn: pack.dependsOn } : {}),
 		...(packBeforeInstall ? { beforeInstall: packBeforeInstall } : {}),
@@ -453,16 +619,16 @@ async function catalogPackEntry(
 }
 
 /**
- * Compile item-level install scripts and condition handlers for the catalog.
+ * Compile item-level install scripts and condition handlers for the index.
  * @param itemDir - Absolute item folder.
  * @param item - Authored registry item.
- * @param outDir - Absolute compiled output root.
+ * @param config - Build config.
  * @returns Compiled install scripts and rewritten condition handlers.
  */
-async function compileItemCatalogArtifacts(
+async function compileItemIndexArtifacts(
 	itemDir: string,
-	item: AuthoredRegistryItem,
-	outDir: string,
+	item: RawRegistryItem,
+	config: BuildConfig,
 ): Promise<{
 	beforeInstall: string[] | undefined;
 	afterInstall: string[] | undefined;
@@ -474,17 +640,18 @@ async function compileItemCatalogArtifacts(
 			item.id,
 			InstallPhase.BeforeInstall,
 			item.beforeInstall,
-			outDir,
+			config,
 		),
 		compileInstallPhaseList(
 			itemDir,
 			item.id,
 			InstallPhase.AfterInstall,
 			item.afterInstall,
-			outDir,
+			config,
 		),
-		compileConditionHandlers(itemDir, item.conditions, outDir, {
-			handlerUri: (key) => `r/_handlers/items/${item.id}/${key}.handler.js`,
+		compileConditionHandlers(itemDir, item.conditions, config, {
+			handlerUri: (key) =>
+				`${config.compiledDirName}/_handlers/items/${item.id}/${key}.handler.js`,
 			entryLabel: (key) =>
 				`Registry item "${item.id}" condition "${key}" handler`,
 			bundleLabel: (key) => `Registry item "${item.id}" condition "${key}"`,
@@ -496,16 +663,16 @@ async function compileItemCatalogArtifacts(
 }
 
 /**
- * Shared catalog fields copied from an authored item and its compiled artifacts.
+ * Shared index fields copied from a raw item and its compiled artifacts.
  * @param item - Authored registry item.
  * @param artifacts - Compiled install scripts and condition handlers.
- * @returns Catalog fields shared by item-level and pack-based entries.
+ * @returns Index fields shared by item-level and pack-based entries.
  */
-function sharedCatalogItemFields(
-	item: AuthoredRegistryItem,
-	artifacts: Awaited<ReturnType<typeof compileItemCatalogArtifacts>>,
+function sharedIndexItemFields(
+	item: RawRegistryItem,
+	artifacts: Awaited<ReturnType<typeof compileItemIndexArtifacts>>,
 ): Pick<
-	CatalogItem,
+	IndexItem,
 	| "title"
 	| "description"
 	| "type"
@@ -529,21 +696,23 @@ function sharedCatalogItemFields(
 }
 
 /**
- * Build the catalog index entry for one authored item.
+ * Build the index entry for one raw item.
  * @param itemDir - Absolute item folder.
  * @param item - Authored registry item.
- * @param outDir - Absolute compiled output root.
- * @returns Catalog item shape (pack list, item-level source, and/or lifecycle scripts).
+ * @param config - Build config.
+ * @returns Index item shape (pack list, item-level source, and/or lifecycle scripts).
  */
-async function catalogEntryForItem(
+async function indexEntryForItem(
 	itemDir: string,
-	item: AuthoredRegistryItem,
-	outDir: string,
-): Promise<CatalogItem> {
-	const artifacts = await compileItemCatalogArtifacts(itemDir, item, outDir);
-	const entry: CatalogItem = {
-		...sharedCatalogItemFields(item, artifacts),
-		...(itemNeedsBasePayload(item) ? { source: payloadUri(item.id) } : {}),
+	item: RawRegistryItem,
+	config: BuildConfig,
+): Promise<IndexItem> {
+	const artifacts = await compileItemIndexArtifacts(itemDir, item, config);
+	const entry: IndexItem = {
+		...sharedIndexItemFields(item, artifacts),
+		...(itemNeedsBaseCompiledItem(item)
+			? { source: compiledItemUri(config.compiledDirName, item.id) }
+			: {}),
 	};
 
 	if (!item.packs?.length) return entry;
@@ -551,50 +720,49 @@ async function catalogEntryForItem(
 	return {
 		...entry,
 		packs: await Promise.all(
-			item.packs.map((pack) =>
-				catalogPackEntry(itemDir, item.id, pack, outDir),
-			),
+			item.packs.map((pack) => indexPackEntry(itemDir, item.id, pack, config)),
 		),
 	};
 }
 
 /**
- * Index authored items by id with payload URIs on the item or each variant.
- * @param authoredItems - Loaded authored items.
- * @param outDir - Absolute compiled output root.
- * @returns Catalog items sorted by id.
+ * Index raw items by id with compiled item URIs on the item or each variant.
+ * @param rawItems - Loaded raw items.
+ * @param config - Build config.
+ * @returns Index items sorted by id.
  */
-async function buildCatalogItems(
-	authoredItems: AuthoredItemEntry[],
-	outDir: string,
-): Promise<Record<string, CatalogItem>> {
-	const catalogItems: Record<string, CatalogItem> = {};
-	for (const { itemDir, item } of authoredItems)
-		catalogItems[item.id] = await catalogEntryForItem(itemDir, item, outDir);
+async function buildIndexItems(
+	rawItems: RawItemEntry[],
+	config: BuildConfig,
+): Promise<Record<string, IndexItem>> {
+	const indexItems: Record<string, IndexItem> = {};
+	for (const { itemDir, item } of rawItems)
+		indexItems[item.id] = await indexEntryForItem(itemDir, item, config);
 
 	return Object.fromEntries(
-		Object.entries(catalogItems).sort(([a], [b]) => a.localeCompare(b)),
+		Object.entries(indexItems).sort(([a], [b]) => a.localeCompare(b)),
 	);
 }
 
 /**
- * Fetch optional conditions and required types from the authoring root.
- * @param sourceDir - Absolute authoring root.
+ * Fetch optional conditions and required types from the registry source.
+ * @param config - Build config.
  * @returns Parsed conditions (optional) and types (required).
- * @throws Error when `types.json` is missing or either file is invalid.
+ * @throws Error when the types file is missing or either file is invalid.
  */
-async function fetchTypesAndConditions(sourceDir: string): Promise<{
+async function fetchTypesAndConditions(config: BuildConfig): Promise<{
 	conditions: Record<string, RegistryCondition> | undefined;
 	types: Record<string, RegistryItemTypeDefinition>;
 }> {
-	const conditionsPath = path.join(sourceDir, "conditions/conditions.json");
+	const { sourceDir, typesFileName, conditionsFileName } = config;
+	const conditionsPath = path.join(sourceDir, conditionsFileName);
 	const rawConditions = (await isFileAsync(conditionsPath))
 		? await readJsonFileAsync(conditionsPath, "Registry conditions")
 		: undefined;
 
-	const typesPath = path.join(sourceDir, "types.json");
+	const typesPath = path.join(sourceDir, typesFileName);
 	if (!(await isFileAsync(typesPath)))
-		throw new Error("Registry types not found at types.json.");
+		throw new Error(`Registry types not found at ${typesFileName}.`);
 
 	const types = parseKeyedRecord(
 		registryItemTypeSchema,
@@ -614,10 +782,6 @@ async function fetchTypesAndConditions(sourceDir: string): Promise<{
 		(key) => `Registry condition "${key}"`,
 	);
 	assertConditionMapBindingKeys(conditions);
-	if (conditions?.[PACKAGE_MANAGER_KEY] !== undefined)
-		throw new Error(
-			`Registry condition "${PACKAGE_MANAGER_KEY}" collides with the core-owned package manager.`,
-		);
 
 	return {
 		conditions,
@@ -626,53 +790,38 @@ async function fetchTypesAndConditions(sourceDir: string): Promise<{
 }
 
 /**
- * Compile a registry authoring tree into a catalog JSON file and install payloads under `r/`.
- * @param options - Absolute `sourceDir` (authoring), `outDir` (compiled artefacts), and optional `registryFileName`.
+ * Compile a registry registry source tree into a index JSON file and compiled items under the compiled output directory.
+ * @param options - Absolute `sourceDir` / `outDir`, plus optional layout and bundling overrides (see {@link BuildRegistryOptions}).
  * @returns The compiled registry document that was written to disk.
- * @throws Error when `registryFileName` is invalid, an item is invalid, a source is missing, or types are absent.
+ * @throws Error when a file-name option is invalid, an item is invalid, a source is missing, or types are absent.
  */
 export async function buildRegistry(
 	options: BuildRegistryOptions,
 ): Promise<Registry> {
-	const sourceDir = path.resolve(options.sourceDir);
-	const outDir = path.resolve(options.outDir);
-	const registryFileName = (options.registryFileName ?? "registry.json").trim();
+	const config = createBuildConfig(options);
+	const registryPath = path.join(config.outDir, config.registryFileName);
 
-	// Validate the registry file name.
-	if (
-		!registryFileName ||
-		registryFileName === "." ||
-		registryFileName === ".." ||
-		registryFileName.includes("/") ||
-		registryFileName.includes("\\")
-	)
-		throw new Error(
-			String.raw`registryFileName must be a single path segment (no "/", "\", or "..").`,
-		);
-	if (!registryFileName.endsWith(".json"))
-		throw new Error('registryFileName must end with ".json".');
-	const registryPath = path.join(outDir, registryFileName);
+	const rawItems = await fetchRawItems(config);
+	const { conditions, types } = await fetchTypesAndConditions(config);
 
-	const authoredItems = await fetchAuthoredItems(sourceDir);
-	const { conditions, types } = await fetchTypesAndConditions(sourceDir);
-
-	await writeItemPayloads(authoredItems, sourceDir, outDir);
+	await writeCompiledItems(rawItems, config);
 
 	const compiledConditions = await compileConditionHandlers(
-		sourceDir,
+		config.sourceDir,
 		conditions,
-		outDir,
+		config,
 		{
-			handlerUri: (key) => `r/_handlers/${key}.handler.js`,
+			handlerUri: (key) =>
+				`${config.compiledDirName}/_handlers/${key}.handler.js`,
 			entryLabel: (key) => `Registry condition "${key}" handler`,
 			bundleLabel: (key) => `Registry condition "${key}"`,
-			rootLabel: "authoring root",
+			rootLabel: "registry source",
 		},
 	);
 	const document = parseRegistryDocument({
 		...(compiledConditions ? { conditions: compiledConditions } : {}),
 		types,
-		items: await buildCatalogItems(authoredItems, outDir),
+		items: await buildIndexItems(rawItems, config),
 	});
 
 	await writeFileAsync(registryPath, `${JSON.stringify(document)}\n`);

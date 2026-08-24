@@ -1,5 +1,5 @@
 ---
-title: Registry Authoring
+title: Registry source
 description: Compiling and validating tuckshop registries with @tuckshop/core.
 ---
 
@@ -16,7 +16,7 @@ Authors learn four things, in this order:
 1. **Items** copy files (and optional packages, commands, and secrets) into a project.
 2. **Conditions** are the only questions. Shared ones live in `conditions/conditions.json` and are opted into with `requires`. Local ones live on the item under `conditions`.
 3. **Packs** are optional named bundles. **Every pack whose `when` matches is installed (union).** Item-level files are the unconditional base.
-4. **Hooks generate** content from already-captured conditions. They do not prompt. They run on **local catalogs only**.
+4. **Hooks generate** content from already-captured conditions. They do not prompt. They run on **local registries only**.
 
 ## Decision tree
 
@@ -26,7 +26,7 @@ Authors learn four things, in this order:
 | Answers that fill `{{keys}}` | Shared `requires` and/or item `conditions` |
 | Optional or language-specific file sets | `packs` with `when` (union match) |
 | Packages, scripts, secrets, or other items first | `dependencies`, `commands`, `secrets`, `dependsOn` |
-| Generated content from answers | `beforeInstall` / `afterInstall` (local catalog) |
+| Generated content from answers | `beforeInstall` / `afterInstall` (local registry) |
 
 ## Compiling a registry
 
@@ -42,9 +42,9 @@ await buildRegistry({
 
 That writes:
 
-- `registry.json` — catalog index (`source`, `packs`, `requires`, `dependsOn`, scripts)
-- `r/{itemId}.json` — base payload when the item has item-level files/deps/commands/secrets
-- `r/{itemId}/{packId}.json` — per-pack payloads
+- `registry.json` — index (`source`, `packs`, `requires`, `dependsOn`, scripts)
+- `r/{itemId}.json` — base compiled item when the item has item-level files/deps/commands/secrets
+- `r/{itemId}/{packId}.json` — per-pack compiled items
 - Bundled install scripts and condition handlers under `r/`
 
 Build fails if an item or pack declares npm `dependencies` or `commands` without `requires: ["packageManager"]`.
@@ -138,7 +138,7 @@ After `beforeInstall`, Mustache runs on file contents and command values. The vi
 
 GitHub Actions expressions (`${{ ... }}`) are left untouched. HTML escaping is disabled.
 
-## Install hooks (local catalogs only)
+## Install hooks (local registries only)
 
 | Phase | When it runs | Typical use |
 | --- | --- | --- |
@@ -164,14 +164,14 @@ export default beforeInstall;
 `beforeInstall` may return:
 
 - `files` — **upsert by target** (replace matching targets, append new ones)
-- `removeFiles` — drop targets from the working payload
+- `removeFiles` — drop targets from the working compiled item
 - `bindings`, `commands`, `dependencies`, `secrets` — merged into the install state
 
-Working state is `ctx.payload` (and `ctx.bindings` / `ctx.conditions`). There is no parallel `ctx.files` or `ctx.prompts` on install hooks.
+Working state is `ctx.compiledItem` (and `ctx.bindings` / `ctx.conditions`). There is no parallel `ctx.files` or `ctx.prompts` on install hooks.
 
 Remote HTTPS registries cannot execute custom scripts or condition `infer` handlers.
 
-## Local vs remote catalogs
+## Local vs remote registries
 
 | Capability | Local path | Remote HTTPS |
 | --- | --- | --- |
@@ -180,7 +180,7 @@ Remote HTTPS registries cannot execute custom scripts or condition `infer` handl
 | Condition `infer` handlers | Yes | No |
 | `beforeInstall` / `afterInstall` | Yes | No |
 
-## Validating artefacts
+## Validating compiled items
 
 ```ts
 import { parseRegistryDocument } from "@tuckshop/core";

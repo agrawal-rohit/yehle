@@ -1,4 +1,4 @@
 {
 	"title": "Docs",
-	"pages": ["index", "cli", "registry-authoring"]
+	"pages": ["index", "cli", "registry-source"]
 }

@@ -21,7 +21,7 @@ vi.mock("./commands", () => ({
 vi.mock("./utils/registry", () => ({
 	loadRuntimeRegistry: vi.fn(async () => ({
 		registry: { items: {} },
-		catalogLocation: "/bundle/registry.json",
+		indexLocation: "/bundle/registry.json",
 	})),
 }));
 

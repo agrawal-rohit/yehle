@@ -215,14 +215,14 @@ async function promptConditionValue(
 
 /**
  * Capture defaults and prompt for each pending condition, merging answers into context.
- * @param catalogLocation - Absolute path or HTTPS URL of the catalog document.
+ * @param indexLocation - Absolute path or HTTPS URL of the index document.
  * @param conditions - Conditions still missing from context.
  * @param runtime - Shared handler runtime for condition inference.
  * @param context - Condition values already captured.
  * @returns Context including newly captured answers.
  */
 async function captureConditionValues(
-	catalogLocation: string,
+	indexLocation: string,
 	conditions: RequiredCondition[],
 	runtime: HandlerRuntime,
 	context: RegistryContext,
@@ -231,7 +231,7 @@ async function captureConditionValues(
 
 	for (const condition of conditions) {
 		const inferred = await inferConditionDefault(
-			catalogLocation,
+			indexLocation,
 			condition,
 			runtime,
 			next,
@@ -245,7 +245,7 @@ async function captureConditionValues(
 
 /**
  * Capture remaining conditions until none are left to ask.
- * @param catalogLocation - Absolute path or HTTPS URL of the catalog document.
+ * @param indexLocation - Absolute path or HTTPS URL of the index document.
  * @param runtime - Shared handler runtime for condition inference.
  * @param context - Condition values already captured.
  * @param collectPending - Returns conditions that are promptable for the current context.
@@ -253,7 +253,7 @@ async function captureConditionValues(
  * @returns Context after no further conditions remain.
  */
 async function capturePendingConditions(
-	catalogLocation: string,
+	indexLocation: string,
 	runtime: HandlerRuntime,
 	context: RegistryContext,
 	collectPending: (context: RegistryContext) => RequiredCondition[],
@@ -269,12 +269,7 @@ async function capturePendingConditions(
 
 	while (pending.length > 0) {
 		for (const condition of pending) askedKeys.add(condition.key);
-		next = await captureConditionValues(
-			catalogLocation,
-			pending,
-			runtime,
-			next,
-		);
+		next = await captureConditionValues(indexLocation, pending, runtime, next);
 		afterBatch?.(next);
 		pending = unread(next);
 	}
@@ -284,8 +279,8 @@ async function capturePendingConditions(
 
 /**
  * Capture shared conditions until none remain promptable.
- * @param registry - Loaded registry catalog.
- * @param catalogLocation - Absolute path or HTTPS URL of the catalog document.
+ * @param registry - Loaded registry.
+ * @param indexLocation - Absolute path or HTTPS URL of the index document.
  * @param projectDir - Absolute project root.
  * @param items - Selected items (`id` or `id@pack`).
  * @param runtime - Shared handler runtime for condition inference.
@@ -293,7 +288,7 @@ async function capturePendingConditions(
  */
 export async function captureRequiredConditions(
 	registry: Registry,
-	catalogLocation: string,
+	indexLocation: string,
 	projectDir: string,
 	items: string[],
 	runtime = createProjectHandlerRuntime(projectDir),
@@ -306,24 +301,20 @@ export async function captureRequiredConditions(
 	);
 	const dependencies = collectRegistryDependencies(items, registry.items);
 
-	return capturePendingConditions(
-		catalogLocation,
-		runtime,
-		context,
-		(current) =>
-			collectRequiredConditions(
-				dependencies,
-				registry.conditions,
-				current,
-				packageManager,
-			),
+	return capturePendingConditions(indexLocation, runtime, context, (current) =>
+		collectRequiredConditions(
+			dependencies,
+			registry.conditions,
+			current,
+			packageManager,
+		),
 	);
 }
 
 /**
  * Capture item-local conditions for planned items, rebuilding the plan when answers change pack selection.
- * @param registry - Loaded registry catalog.
- * @param catalogLocation - Absolute path or HTTPS URL of the catalog document.
+ * @param registry - Loaded registry.
+ * @param indexLocation - Absolute path or HTTPS URL of the index document.
  * @param items - Selected items (`id` or `id@pack`).
  * @param plan - Ordered install nodes from the latest plan.
  * @param context - Shared conditions already captured.
@@ -333,7 +324,7 @@ export async function captureRequiredConditions(
  */
 export async function captureItemLocalConditionsForPlan(
 	registry: Registry,
-	catalogLocation: string,
+	indexLocation: string,
 	items: string[],
 	plan: InstallNode[],
 	context: RegistryContext,
@@ -343,7 +334,7 @@ export async function captureItemLocalConditionsForPlan(
 	let nextPlan = plan;
 
 	const nextContext = await capturePendingConditions(
-		catalogLocation,
+		indexLocation,
 		runtime,
 		context,
 		(current) => {

@@ -7,7 +7,7 @@ import {
 } from "./condition-kind";
 import { PACKAGE_MANAGER_KEY, type RegistryPackageManager } from "./packages";
 import {
-	type CatalogItem,
+	type IndexItem,
 	InstallPhase,
 	type RegistryCondition,
 	type RegistryConditionValue,
@@ -44,13 +44,13 @@ export interface ParsedItemId {
 	packId?: string;
 }
 
-/** A catalog item with its selected payload source URIs. */
+/** An index item with its selected compiled item source URIs. */
 export interface InstallNode {
-	/** Registry item id (catalog map key). */
+	/** Registry item id (index map key). */
 	itemId: string;
-	/** Selected pack ids whose payloads should be layered on top of the base item. */
+	/** Selected pack ids whose compiled items should be layered on top of the base item. */
 	packIds?: string[];
-	/** Payload URIs from the catalog entry, joined against the catalog location when fetched. */
+	/** Compiled item URIs from the index entry, joined against the index location when fetched. */
 	sources?: string[];
 	/** Compiled `beforeInstall` script URIs for this item. */
 	beforeInstallScripts?: string[];
@@ -58,15 +58,15 @@ export interface InstallNode {
 	afterInstallScripts?: string[];
 }
 
-/** Result of selecting installable sources (base and optional packs) for one catalog item. */
+/** Result of selecting installable sources (base and optional packs) for one index item. */
 export type RegistryItemSelection = Omit<InstallNode, "itemId">;
 
-/** Catalog item id paired with its document for graph walks. */
-export interface CatalogEntry {
+/** Index item id paired with its document for graph walks. */
+export interface IndexEntry {
 	/** Registry item id. */
 	itemId: string;
-	/** Catalog item document. */
-	item: CatalogItem;
+	/** Index item document. */
+	item: IndexItem;
 }
 
 /**
@@ -85,9 +85,9 @@ export interface RequiredCondition {
 	kind: RegistryConditionKind;
 	/** Prompt options limited to values present on the install plan (select only). */
 	values: RegistryConditionValue[];
-	/** Compiled condition handler URI when the catalog declares one. */
+	/** Compiled condition handler URI when the index declares one. */
 	handler?: string;
-	/** Default prompt value when the catalog declares one and no handler runs. */
+	/** Default prompt value when the index declares one and no handler runs. */
 	default?: string;
 	/** When true, allow skipping the condition value. */
 	optional?: boolean;
@@ -95,7 +95,7 @@ export interface RequiredCondition {
 
 /**
  * Check whether a `when` map matches the runtime context.
- * @param when - Condition matcher from a catalog item, pack, or condition.
+ * @param when - Condition matcher from a index item, pack, or condition.
  * @param context - Condition values already captured for this install.
  * @param packageManager - Selected npm package manager for `when.packageManager`.
  * @returns True when every `when` key equals the context value.
@@ -119,13 +119,13 @@ type ItemListField = InstallPhase | "dependsOn";
 
 /**
  * Collect item-level and selected-pack values for one list field.
- * @param item - Catalog item with optional packs.
+ * @param item - Index item with optional packs.
  * @param packIds - Selected pack ids when packs exist.
  * @param field - List field to read (`beforeInstall`, `afterInstall`, or `dependsOn`).
  * @returns Combined entry list.
  */
 function collectItemField<K extends ItemListField>(
-	item: Pick<CatalogItem, K | "packs">,
+	item: Pick<IndexItem, K | "packs">,
 	packIds: string[],
 	field: K,
 ): string[] {
@@ -139,12 +139,12 @@ function collectItemField<K extends ItemListField>(
 
 /**
  * Attach compiled install script URIs to a selection result when present.
- * @param item - Catalog item that may declare lifecycle scripts.
- * @param selection - Selected pack ids and/or payload sources.
+ * @param item - Index item that may declare lifecycle scripts.
+ * @param selection - Selected pack ids and/or compiled item sources.
  * @returns Selection including script URIs when declared.
  */
 function withItemScripts(
-	item: CatalogItem,
+	item: IndexItem,
 	selection: { packIds?: string[]; sources?: string[] },
 ): RegistryItemSelection {
 	const beforeInstall = collectItemField(
@@ -167,16 +167,16 @@ function withItemScripts(
 }
 
 /**
- * Select install sources for a pack-less catalog item.
+ * Select install sources for a pack-less index item.
  * @param itemId - Registry item id for error messages.
- * @param item - Catalog item without packs.
+ * @param item - Index item without packs.
  * @param pinnedPackId - Must be undefined for pack-less items.
  * @returns Payload source and/or install script URIs.
  * @throws Error when a pack is pinned or the item has no installable source or phase entries.
  */
 function selectPackLessItem(
 	itemId: string,
-	item: CatalogItem,
+	item: IndexItem,
 	pinnedPackId?: string,
 ): RegistryItemSelection {
 	if (pinnedPackId !== undefined)
@@ -184,10 +184,10 @@ function selectPackLessItem(
 	const hasInstallPhases =
 		collectItemField(item, [], InstallPhase.BeforeInstall).length > 0 ||
 		collectItemField(item, [], InstallPhase.AfterInstall).length > 0;
-	// Scripts-only items (no payload source) are still installable.
+	// Scripts-only items (no compiled item source) are still installable.
 	if (!item.source && !hasInstallPhases)
 		throw new Error(
-			`Registry item "${itemId}" is missing a payload source or install phase.`,
+			`Registry item "${itemId}" is missing a compiled item source or install phase.`,
 		);
 	const selection = {
 		...(item.source ? { sources: [item.source] } : {}),
@@ -196,10 +196,10 @@ function selectPackLessItem(
 }
 
 /**
- * Select matching and/or pinned packs for one catalog item.
+ * Select matching and/or pinned packs for one index item.
  * @param itemId - Registry item id for error messages.
- * @param item - Catalog item whose packs are being considered.
- * @param packs - Non-empty pack list from the catalog item.
+ * @param item - Index item whose packs are being considered.
+ * @param packs - Non-empty pack list from the index item.
  * @param context - Condition values already captured for this install.
  * @param pinnedPackId - Optional pack id from `id@pack`.
  * @param packageManager - Selected npm package manager for pack `when`.
@@ -208,8 +208,8 @@ function selectPackLessItem(
  */
 function selectMatchingPacks(
 	itemId: string,
-	item: CatalogItem,
-	packs: NonNullable<CatalogItem["packs"]>,
+	item: IndexItem,
+	packs: NonNullable<IndexItem["packs"]>,
 	context: RegistryContext,
 	pinnedPackId: string | undefined,
 	packageManager: RegistryPackageManager | undefined,
@@ -236,17 +236,17 @@ function selectMatchingPacks(
 }
 
 /**
- * Select the matching packs for a catalog item under a runtime context.
+ * Select the matching packs for a index item under a runtime context.
  * @param itemId - Registry item id for error messages.
- * @param item - Catalog item whose packs are considered.
+ * @param item - Index item whose packs are considered.
  * @param context - Condition values already captured for this install.
  * @param pinnedPackId - Optional explicit pack id (from `id@pack`).
  * @param packageManager - Selected npm package manager for pack `when`.
- * @returns Selected pack ids, payload source URIs, and optional install script URIs.
+ * @returns Selected pack ids, compiled item source URIs, and optional install script URIs.
  */
 export function selectRegistryPacks(
 	itemId: string,
-	item: CatalogItem,
+	item: IndexItem,
 	context: RegistryContext,
 	pinnedPackId?: string,
 	packageManager?: RegistryPackageManager,
@@ -264,13 +264,13 @@ export function selectRegistryPacks(
 }
 
 /**
- * Collect distinct string `when` values present on catalog entries, keyed by condition name.
+ * Collect distinct string `when` values present on index entries, keyed by condition name.
  * Used to narrow prompt options to choices that appear on the install set.
  * @param entries - Catalog entries in the install set.
  * @returns Map of condition key → distinct `when` values present on those entries.
  */
 function collectPresentWhenValues(
-	entries: CatalogEntry[],
+	entries: IndexEntry[],
 ): Map<string, Set<string>> {
 	const present = new Map<string, Set<string>>();
 
@@ -322,10 +322,10 @@ export function parseItemId(value: string): ParsedItemId {
 
 /**
  * Collect every dependency id referenced by an item or any of its packs.
- * @param item - Catalog item to scan.
+ * @param item - Index item to scan.
  * @returns Unique referenced item ids.
  */
-function collectAllReferencedItemIds(item: CatalogItem): string[] {
+function collectAllReferencedItemIds(item: IndexItem): string[] {
 	const referencedIds = new Set<string>();
 	const addDeps = (entries: string[] | undefined): void => {
 		for (const entry of entries ?? []) referencedIds.add(parseItemId(entry).id);
@@ -340,20 +340,20 @@ function collectAllReferencedItemIds(item: CatalogItem): string[] {
  * Collect selected items and every transitive `dependsOn` entry.
  * Pack `when` is ignored so condition prompts cover the full dependency graph.
  * @param items - Selected items (`id` or `id@pack`).
- * @param catalogItems - Catalog items keyed by id.
- * @returns Unique catalog entries in discovery order (selected items first).
- * @throws Error when a listed item is missing from the catalog.
+ * @param indexItems - Index items keyed by id.
+ * @returns Unique index entries in discovery order (selected items first).
+ * @throws Error when a listed item is missing from the index.
  */
 export function collectRegistryDependencies(
 	items: string[],
-	catalogItems: Record<string, CatalogItem>,
-): CatalogEntry[] {
+	indexItems: Record<string, IndexItem>,
+): IndexEntry[] {
 	const visited = new Set<string>();
-	const ordered: CatalogEntry[] = [];
+	const ordered: IndexEntry[] = [];
 
 	const visit = (itemId: string): void => {
 		if (visited.has(itemId)) return;
-		const item = catalogItems[itemId];
+		const item = indexItems[itemId];
 		if (!item) throw new Error(`Registry item not found: "${itemId}".`);
 
 		visited.add(itemId);
@@ -395,7 +395,7 @@ interface InstallPlanState {
 /**
  * Build one install node from a pack/source selection.
  * @param id - Registry item id.
- * @param selection - Selected payload sources and install scripts.
+ * @param selection - Selected compiled item sources and install scripts.
  * @returns Install node with optional fields omitted when unset.
  */
 function installNodeFromSelection(
@@ -418,7 +418,7 @@ function installNodeFromSelection(
 /**
  * Visit one item in the install dependency graph and append it to the plan.
  * @param parsed - Parsed item id, optionally pinned to one pack.
- * @param catalogItems - Catalog items keyed by id.
+ * @param indexItems - Index items keyed by id.
  * @param context - Install context for pack selection.
  * @param packageManager - Selected npm package manager for pack `when`.
  * @param state - Shared visit state for cycle detection and ordering.
@@ -426,7 +426,7 @@ function installNodeFromSelection(
  */
 function visitInstallNode(
 	parsed: ParsedItemId,
-	catalogItems: Record<string, CatalogItem>,
+	indexItems: Record<string, IndexItem>,
 	context: RegistryContext,
 	packageManager: RegistryPackageManager | undefined,
 	state: InstallPlanState,
@@ -441,7 +441,7 @@ function visitInstallNode(
 	if (state.visiting.has(id))
 		throw new Error(`Registry dependency cycle detected at "${id}".`);
 
-	const catalogItem = catalogItems[id];
+	const catalogItem = indexItems[id];
 	if (!catalogItem) throw new Error(`Registry item not found: "${id}".`);
 
 	state.visiting.add(id);
@@ -460,7 +460,7 @@ function visitInstallNode(
 	))
 		visitInstallNode(
 			parseItemId(dependency),
-			catalogItems,
+			indexItems,
 			context,
 			packageManager,
 			state,
@@ -536,7 +536,7 @@ function selectableValuesForCondition(
  * @returns Required conditions the CLI should prompt for, sorted by key.
  */
 export function collectRequiredConditions(
-	entries: CatalogEntry[],
+	entries: IndexEntry[],
 	conditions: Record<string, RegistryCondition> | undefined,
 	context: RegistryContext,
 	packageManager?: RegistryPackageManager,
@@ -573,14 +573,14 @@ export function collectRequiredConditions(
 
 /**
  * Collect item-level conditions still missing from context.
- * @param entries - Planned catalog entries (install set).
+ * @param entries - Planned index entries (install set).
  * @param context - Condition values already captured (shared + prior items).
  * @param packageManager - Selected npm package manager for condition `when` clauses.
  * @returns Conditions to prompt for, sorted by key.
  * @throws Error when a local condition key collides with a shared condition.
  */
 export function collectItemLocalConditions(
-	entries: CatalogEntry[],
+	entries: IndexEntry[],
 	context: RegistryContext,
 	packageManager?: RegistryPackageManager,
 ): RequiredCondition[] {
@@ -617,13 +617,13 @@ export function collectItemLocalConditions(
  * Seed context from pinned pack `when` maps on selected items.
  * Does not seed `packageManager` — that value is selected by core at install time.
  * @param items - Selected items (`id` or `id@pack`).
- * @param catalogItems - Catalog items keyed by id.
+ * @param indexItems - Index items keyed by id.
  * @param conditions - Shared condition definitions used to coerce seeded values.
  * @returns Partial context derived from pinned pack conditions.
  */
 export function assumeContextFromSelectedItems(
 	items: string[],
-	catalogItems: Record<string, CatalogItem>,
+	indexItems: Record<string, IndexItem>,
 	conditions?: Record<string, RegistryCondition>,
 ): RegistryContext {
 	const context: RegistryContext = {};
@@ -631,7 +631,7 @@ export function assumeContextFromSelectedItems(
 		const { id, packId } = parseItemId(item);
 		if (packId === undefined) continue;
 
-		const catalogItem = catalogItems[id];
+		const catalogItem = indexItems[id];
 		if (!catalogItem) throw new Error(`Registry item not found: "${id}".`);
 
 		const when = catalogItem.packs?.find((entry) => entry.id === packId)?.when;
@@ -656,7 +656,7 @@ export function assumeContextFromSelectedItems(
 /**
  * Build an ordered install plan from selected items and transitive dependsOn.
  * @param items - Selected registry items (`id` or `id@pack`).
- * @param catalogItems - Catalog items keyed by id.
+ * @param indexItems - Index items keyed by id.
  * @param context - Install context for pack selection.
  * @param packageManager - Selected npm package manager for pack `when`.
  * @returns Ordered install nodes with base and matching pack sources per item id.
@@ -664,7 +664,7 @@ export function assumeContextFromSelectedItems(
  */
 export function buildInstallPlan(
 	items: string[],
-	catalogItems: Record<string, CatalogItem>,
+	indexItems: Record<string, IndexItem>,
 	context: RegistryContext,
 	packageManager?: RegistryPackageManager,
 ): InstallNode[] {
@@ -678,7 +678,7 @@ export function buildInstallPlan(
 	for (const item of items)
 		visitInstallNode(
 			parseItemId(item),
-			catalogItems,
+			indexItems,
 			context,
 			packageManager,
 			state,

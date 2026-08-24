@@ -1,15 +1,15 @@
 import {
+	type CompiledItem,
 	joinRelativePathUnderRoot,
 	PathKind,
 	pathKindAsync,
-	type RegistryPayload,
 	writeFileAsync,
 } from "@tuckshop/core";
 import { primaryText } from "../cli/labels";
 import { confirmInput } from "../cli/prompts";
 
-/** One payload file target with its absolute destination. */
-interface ResolvedPayloadTarget {
+/** One compiled item file target with its absolute destination. */
+interface ResolvedCompiledItemTarget {
 	/** Relative target path from the payload. */
 	target: string;
 	/** Absolute destination under the project root. */
@@ -17,7 +17,7 @@ interface ResolvedPayloadTarget {
 }
 
 /**
- * Build an absolute path for a payload target under the project root.
+ * Build an absolute path for a compiled item target under the project root.
  * @param projectDir - Absolute project root.
  * @param target - Destination path from the payload.
  * @returns Absolute destination path.
@@ -30,7 +30,7 @@ export function absoluteProjectTarget(
 	return joinRelativePathUnderRoot(
 		projectDir,
 		target,
-		"Payload file target",
+		"Compiled item file target",
 		"project directory",
 	);
 }
@@ -49,27 +49,27 @@ function claimDestination(
 ): void {
 	if (seenTargets.has(destination))
 		throw new Error(
-			`Multiple registry payloads write to the same target "${primaryText(target)}".`,
+			`Multiple compiled items write to the same target "${primaryText(target)}".`,
 		);
 	seenTargets.add(destination);
 }
 
 /**
- * Collect payload file targets, rejecting duplicate destinations.
+ * Collect compiled item file targets, rejecting duplicate destinations.
  * @param projectDir - Absolute project root.
- * @param payloads - Parsed install payloads.
+ * @param payloads - Parsed compiled items.
  * @returns Ordered list of unique targets.
  * @throws Error when two payloads share a destination.
  */
-function collectPayloadTargets(
+function collectCompiledItemTargets(
 	projectDir: string,
-	payloads: RegistryPayload[],
-): ResolvedPayloadTarget[] {
+	compiledItems: CompiledItem[],
+): ResolvedCompiledItemTarget[] {
 	const seenTargets = new Set<string>();
-	const targets: ResolvedPayloadTarget[] = [];
+	const targets: ResolvedCompiledItemTarget[] = [];
 
-	for (const payload of payloads) {
-		for (const file of payload.files ?? []) {
+	for (const compiledItem of compiledItems) {
+		for (const file of compiledItem.files ?? []) {
 			const destination = absoluteProjectTarget(projectDir, file.target);
 			claimDestination(destination, file.target, seenTargets);
 			targets.push({ target: file.target, destination });
@@ -81,7 +81,7 @@ function collectPayloadTargets(
 
 /**
  * Return the relative target when the destination is an existing file.
- * @param target - Relative payload target (for error messages).
+ * @param target - Relative compiled item target (for error messages).
  * @param destination - Absolute path under the project root.
  * @returns The relative target when a file exists; undefined when missing.
  * @throws Error when the destination exists as a directory, or on unexpected fs errors.
@@ -94,7 +94,7 @@ async function existingFileTarget(
 	switch (kind) {
 		case PathKind.DIRECTORY:
 			throw new Error(
-				`Payload file target "${primaryText(target)}" exists and is a directory.`,
+				`Compiled item file target "${primaryText(target)}" exists and is a directory.`,
 			);
 		case PathKind.FILE:
 			return target;
@@ -135,18 +135,18 @@ async function promptOverwriteConfirmations(
 }
 
 /**
- * Prompt before overwriting payload targets that already exist on disk.
+ * Prompt before overwriting compiled item targets that already exist on disk.
  * @param projectDir - Absolute project root.
- * @param payloads - Parsed install payloads whose files may collide with existing paths.
+ * @param payloads - Parsed compiled items whose files may collide with existing paths.
  * @param overwrite - Skip overwrite prompts when true.
  * @throws Error when a target is a directory, the user declines an overwrite, or two payloads share a target.
  */
 export async function confirmFileOverwrites(
 	projectDir: string,
-	payloads: RegistryPayload[],
+	compiledItems: CompiledItem[],
 	overwrite: boolean,
 ): Promise<void> {
-	const targets = collectPayloadTargets(projectDir, payloads);
+	const targets = collectCompiledItemTargets(projectDir, compiledItems);
 	const existingTargets: string[] = [];
 
 	for (const { target, destination } of targets) {
@@ -160,18 +160,18 @@ export async function confirmFileOverwrites(
 }
 
 /**
- * Write payload files to disk. Callers must confirm overwrite conflicts first.
+ * Write compiled item files to disk. Callers must confirm overwrite conflicts first.
  * @param projectDir - Absolute project root.
- * @param payload - Parsed install payload.
+ * @param payload - Parsed compiled item.
  * @param writtenTargets - Absolute destinations already written during this install.
  * @throws Error when two payloads in this run share a destination.
  */
-export async function writePayloadFiles(
+export async function writeCompiledItemFiles(
 	projectDir: string,
-	payload: RegistryPayload,
+	compiledItem: CompiledItem,
 	writtenTargets: Set<string>,
 ): Promise<void> {
-	for (const file of payload.files ?? []) {
+	for (const file of compiledItem.files ?? []) {
 		const destination = absoluteProjectTarget(projectDir, file.target);
 		claimDestination(destination, file.target, writtenTargets);
 		await writeFileAsync(destination, file.content);

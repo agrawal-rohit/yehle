@@ -37,7 +37,7 @@ export {
 export {
 	buildInterpolationContext,
 	type InterpolationView,
-	interpolatePayload,
+	interpolateCompiledItem,
 } from "./interpolate";
 export {
 	buildPackageInstallCommands,
@@ -60,21 +60,25 @@ export { parseRegistryDocument, parseWithSchema } from "./parse";
 export {
 	assumeContextFromSelectedItems,
 	buildInstallPlan,
-	type CatalogEntry,
 	collectItemLocalConditions,
 	collectRegistryDependencies,
 	collectRequiredConditions,
+	type IndexEntry,
 	type InstallNode,
 	type RequiredCondition,
 } from "./plan";
 export {
-	type AuthoredRegistryItem,
-	type AuthoredRegistryPack,
 	assertConditionMapBindingKeys,
-	type CatalogItem,
-	type CatalogPack,
-	catalogItemSchema,
-	catalogPackSchema,
+	type CompiledItem,
+	type CompiledItemFile,
+	compiledItemFileSchema,
+	compiledItemSchema,
+	type IndexItem,
+	type IndexPack,
+	indexItemSchema,
+	indexPackSchema,
+	type RawRegistryItem,
+	type RawRegistryPack,
 	type Registry,
 	type RegistryCommandSet,
 	type RegistryCondition,
@@ -86,8 +90,6 @@ export {
 	type RegistryEcosystemDependencies,
 	type RegistryFile,
 	type RegistryItemTypeDefinition,
-	type RegistryPayload,
-	type RegistryPayloadFile,
 	type RegistryWhen,
 	registryConditionSchema,
 	registryConditionValueSchema,
@@ -98,8 +100,6 @@ export {
 	registryItemSchema,
 	registryItemTypeSchema,
 	registryPackSchema,
-	registryPayloadFileSchema,
-	registryPayloadSchema,
 	registryWhenSchema,
 	registryWhenValueSchema,
 } from "./schema";
@@ -107,7 +107,7 @@ export { type RunOptions, runAsync } from "./shell";
 export {
 	assertSafeRemoteUrl,
 	isAbsoluteHttpUrl,
-	joinCatalogSource,
+	joinIndexSource,
 	joinRelativePathUnderRoot,
 	publishedRegistryUrl,
 } from "./urls";

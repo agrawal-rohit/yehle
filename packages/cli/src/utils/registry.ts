@@ -4,7 +4,7 @@ import {
 	InvalidJsonError,
 	isAbsoluteHttpUrl,
 	isFileAsync,
-	joinCatalogSource,
+	joinIndexSource,
 	parseRegistryDocument,
 	type Registry,
 	readJsonFileAsync,
@@ -21,18 +21,18 @@ export interface LocateRegistryOptions {
 	fallbackRegistryPaths?: string[];
 }
 
-/** Parsed registry catalog paired with the location it was loaded from. */
+/** Parsed registry paired with the location it was loaded from. */
 export interface LoadedRegistry {
 	/** Normalized registry document. */
 	registry: Registry;
-	/** Absolute path or HTTPS URL of the catalog document. */
-	catalogLocation: string;
+	/** Absolute path or HTTPS URL of the index document. */
+	indexLocation: string;
 }
 
 /**
- * Locate which registry catalog the CLI should use.
+ * Locate which registry the CLI should use.
  * @param options - Inputs from CLI flags, env, and package defaults.
- * @returns Absolute local path or HTTPS URL to the catalog.
+ * @returns Absolute local path or HTTPS URL to the index.
  * @throws Error when no local or bundled registry can be found, or an explicit URL is unsafe.
  */
 export async function locateRegistry(
@@ -137,7 +137,7 @@ async function fetchRemoteJson(url: string, label: string): Promise<unknown> {
 /**
  * Load and parse a JSON document from a local path or HTTPS URL.
  * @param location - Absolute filesystem path or HTTPS URL.
- * @param label - Error context label (e.g. `"registry"`, `"registry payload"`).
+ * @param label - Error context label (e.g. `"registry"`, `"compiled item"`).
  * @returns Parsed JSON value.
  * @throws Error when the document cannot be read or parsed.
  */
@@ -164,34 +164,34 @@ async function loadJsonDocument(
  * Load the registry selected by CLI flags, env, saved config, or bundled defaults.
  * @param registryOverride - Optional `--registry` flag value.
  * @param savedRegistry - Optional registry source persisted via `tuckshop config set`.
- * @returns Parsed registry and the catalog path or URL it was loaded from.
- * @throws Error when the located registry catalog cannot be loaded safely.
+ * @returns Parsed registry and the index path or URL it was loaded from.
+ * @throws Error when the located registry cannot be loaded safely.
  */
 export async function loadRuntimeRegistry(
 	registryOverride?: string,
 	savedRegistry?: string,
 ): Promise<LoadedRegistry> {
-	const catalogLocation = await locateRegistry({
+	const indexLocation = await locateRegistry({
 		registry: registryOverride,
 		savedRegistry,
 	});
 
 	return {
 		registry: parseRegistryDocument(
-			await loadJsonDocument(catalogLocation, "registry"),
+			await loadJsonDocument(indexLocation, "registry"),
 		),
-		catalogLocation,
+		indexLocation,
 	};
 }
 
 /**
- * Load unique install payloads relative to a catalog location.
- * @param catalogLocation - Absolute path or HTTPS URL of the catalog document.
+ * Load unique compiled items relative to a index location.
+ * @param indexLocation - Absolute path or HTTPS URL of the index document.
  * @param sources - Catalog `source` URIs from the install plan.
  * @returns Map of catalog source URI to parsed JSON value.
  */
-export async function loadRegistryPayloads(
-	catalogLocation: string,
+export async function loadCompiledItems(
+	indexLocation: string,
 	sources: readonly string[],
 ): Promise<Map<string, unknown>> {
 	const uniqueSources = [...new Set(sources)];
@@ -199,11 +199,8 @@ export async function loadRegistryPayloads(
 
 	await Promise.all(
 		uniqueSources.map(async (source) => {
-			const location = joinCatalogSource(catalogLocation, source);
-			documents.set(
-				source,
-				await loadJsonDocument(location, "registry payload"),
-			);
+			const location = joinIndexSource(indexLocation, source);
+			documents.set(source, await loadJsonDocument(location, "compiled item"));
 		}),
 	);
 

@@ -63,7 +63,7 @@ function optionalNonEmptyString() {
 		);
 }
 
-/** Relative path to a colocated script or compiled script URI under the catalog. */
+/** Relative path to a colocated script or compiled script URI under the index. */
 const registryScriptPathSchema = nonEmptyString.superRefine(
 	(value, context) => {
 		if (
@@ -94,13 +94,13 @@ function optionalInstallPhaseList() {
 		});
 }
 
-/** Install lifecycle phase field names on catalog and authored items. */
+/** Install lifecycle phase field names on catalog and raw items. */
 export enum InstallPhase {
 	BeforeInstall = "beforeInstall",
 	AfterInstall = "afterInstall",
 }
 
-/** File metadata in an authoring `registry-item.json`. */
+/** File metadata in an raw `registry-item.json`. */
 export const registryFileSchema = z.strictObject({
 	/** Path to the file in the item folder. */
 	source: nonEmptyString,
@@ -110,18 +110,18 @@ export const registryFileSchema = z.strictObject({
 export type RegistryFile = z.infer<typeof registryFileSchema>;
 
 /**
- * File entry inside an install payload.
- * Content is inlined at build time from the authoring source file.
+ * File entry inside an compiled item.
+ * Content is inlined at build time from the registry source source file.
  */
-export const registryPayloadFileSchema = z.strictObject({
+export const compiledItemFileSchema = z.strictObject({
 	/** Destination path in the consuming project. */
 	target: nonEmptyString,
 	/** Raw template text inlined at build time. */
 	content: nonEmptyString,
 });
-export type RegistryPayloadFile = z.infer<typeof registryPayloadFileSchema>;
+export type CompiledItemFile = z.infer<typeof compiledItemFileSchema>;
 
-/** Supported package ecosystems declared on registry payloads. Add ecosystems here when introducing new ones. */
+/** Supported package ecosystems declared on compiled items. Add ecosystems here when introducing new ones. */
 export enum RegistryEcosystem {
 	NPM = "npm",
 }
@@ -203,11 +203,11 @@ export type RegistryEcosystemCommands = NonNullable<
 	z.infer<typeof registryEcosystemCommandsSchema>
 >;
 
-/** Install payload for one item or pack (templates, not rendered output). */
-export const registryPayloadSchema = z
+/** Compiled item for one item or pack (templates, not rendered output). */
+export const compiledItemSchema = z
 	.strictObject({
 		/** Files to install (item-level files first when folded into a pack). May be empty when an install script generates every file at install time. */
-		files: z.array(registryPayloadFileSchema).default([]),
+		files: z.array(compiledItemFileSchema).default([]),
 		/** Ecosystem packages to install, keyed by ecosystem. */
 		dependencies: registryEcosystemDependenciesSchema.optional(),
 		/** Ecosystem commands to merge into the project manifest, keyed by ecosystem. */
@@ -216,7 +216,7 @@ export const registryPayloadSchema = z
 		secrets: optionalNonEmptyStringArray(),
 	})
 	.transform(omitUndefined);
-export type RegistryPayload = z.infer<typeof registryPayloadSchema>;
+export type CompiledItem = z.infer<typeof compiledItemSchema>;
 
 /** Typed matcher value shared by conditions and packs. */
 export const registryWhenValueSchema = z.union([
@@ -472,7 +472,7 @@ export const registryItemTypeSchema = z
 export type RegistryItemTypeDefinition = z.infer<typeof registryItemTypeSchema>;
 
 /**
- * Reject duplicate pack ids on an authored or catalog item.
+ * Reject duplicate pack ids on an authored or index item.
  * @param packs - Pack list that may contain duplicate ids.
  * @param context - Zod refinement context.
  */
@@ -536,7 +536,7 @@ function rejectInstallPhaseConflicts(
 	rejectDuplicateListEntries(item.dependsOn, "dependsOn", context);
 }
 
-/** Shared fields for authored and catalog packs. */
+/** Shared fields for authored and index packs. */
 const packSharedFields = {
 	/** Unique pack id within the item. */
 	id: safePathSegment,
@@ -552,7 +552,7 @@ const packSharedFields = {
 	afterInstall: optionalInstallPhaseList(),
 };
 
-/** Pack from an authoring `registry-item.json`. */
+/** Pack from an raw `registry-item.json`. */
 export const registryPackSchema = z
 	.strictObject({
 		...packSharedFields,
@@ -569,20 +569,20 @@ export const registryPackSchema = z
 		rejectInstallPhaseConflicts(pack, context);
 	})
 	.transform(omitUndefined);
-export type AuthoredRegistryPack = z.infer<typeof registryPackSchema>;
+export type RawRegistryPack = z.infer<typeof registryPackSchema>;
 
 /** Pack index entry in compiled `registry.json`. */
-export const catalogPackSchema = z
+export const indexPackSchema = z
 	.strictObject({
 		...packSharedFields,
-		/** Payload URI joined against the catalog location. */
+		/** Compiled item URI joined against the index location. */
 		source: nonEmptyString,
 	})
 	.superRefine((pack, context) => {
 		rejectInstallPhaseConflicts(pack, context);
 	})
 	.transform(omitUndefined);
-export type CatalogPack = z.infer<typeof catalogPackSchema>;
+export type IndexPack = z.infer<typeof indexPackSchema>;
 
 /** Optional packs list that collapses empty arrays to undefined. */
 const optionalPacks = <T extends z.ZodType>(packSchema: T) =>
@@ -591,7 +591,7 @@ const optionalPacks = <T extends z.ZodType>(packSchema: T) =>
 		.optional()
 		.transform((value) => (value && value.length > 0 ? value : undefined));
 
-/** Shared fields for authored and catalog items (excluding id / install source). */
+/** Shared fields for authored and index items (excluding id / install source). */
 const itemSharedFields = {
 	/** Display title. */
 	title: nonEmptyString,
@@ -633,11 +633,11 @@ function hasInstallPhaseScripts(item: {
 }
 
 /**
- * Authored-item refinements: require files, scripts, or packs, and unique pack ids.
- * @param item - Parsed authored item candidate.
+ * Raw-item refinements: require files, scripts, or packs, and unique pack ids.
+ * @param item - Parsed raw item candidate.
  * @param context - Zod refinement context.
  */
-function refineAuthoredRegistryItem(
+function refineRawRegistryItem(
 	item: {
 		packs?: Array<{ id: string }>;
 		beforeInstall?: string[];
@@ -665,11 +665,11 @@ function refineAuthoredRegistryItem(
 }
 
 /**
- * Catalog-item refinements: require source, scripts, or packs.
- * @param item - Parsed catalog item candidate.
+ * Index-item refinements: require source, scripts, or packs.
+ * @param item - Parsed index item candidate.
  * @param context - Zod refinement context.
  */
-function refineCatalogRegistryItem(
+function refineIndexItem(
 	item: {
 		packs?: Array<{ id: string }>;
 		beforeInstall?: string[];
@@ -715,7 +715,7 @@ function rejectRequiresAndLocalConditionOverlap(
 	}
 }
 
-/** Item from an authoring `registry-item.json`. */
+/** Item from an raw `registry-item.json`. */
 export const registryItemSchema = z
 	.strictObject({
 		...itemSharedFields,
@@ -733,27 +733,27 @@ export const registryItemSchema = z
 		packs: optionalPacks(registryPackSchema),
 	})
 	.superRefine((item, context) => {
-		refineAuthoredRegistryItem(item, context);
+		refineRawRegistryItem(item, context);
 		rejectInstallPhaseConflicts(item, context);
 	})
 	.transform(omitUndefined);
-export type AuthoredRegistryItem = z.infer<typeof registryItemSchema>;
+export type RawRegistryItem = z.infer<typeof registryItemSchema>;
 
 /** Item index entry in compiled `registry.json`. Identity is the `items` map key. */
-export const catalogItemSchema = z
+export const indexItemSchema = z
 	.strictObject({
 		...itemSharedFields,
-		/** Payload URI for item-level files, joined against the catalog location. */
+		/** Compiled item URI for item-level files, joined against the index location. */
 		source: nonEmptyString.optional(),
 		/** Optional included packs compiled as additional payloads. */
-		packs: optionalPacks(catalogPackSchema),
+		packs: optionalPacks(indexPackSchema),
 	})
 	.superRefine((item, context) => {
-		refineCatalogRegistryItem(item, context);
+		refineIndexItem(item, context);
 		rejectInstallPhaseConflicts(item, context);
 	})
 	.transform(omitUndefined);
-export type CatalogItem = z.infer<typeof catalogItemSchema>;
+export type IndexItem = z.infer<typeof indexItemSchema>;
 
 /**
  * Top-level registry document fields validated before nested parsing.
@@ -768,12 +768,12 @@ export const registryDocumentFieldsSchema = z.strictObject({
 	items: z.record(z.string(), z.unknown()),
 });
 
-/** Fully parsed catalog document written to registry.json. */
+/** Fully parsed index document written to registry.json. */
 export interface Registry {
 	/** Shared condition definitions keyed by condition key. */
 	conditions?: Record<string, RegistryCondition>;
 	/** Item type display metadata keyed by type value. */
 	types: Record<string, RegistryItemTypeDefinition>;
 	/** Registry items keyed by id. */
-	items: Record<string, CatalogItem>;
+	items: Record<string, IndexItem>;
 }

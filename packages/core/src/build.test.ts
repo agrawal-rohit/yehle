@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildRegistry } from "./build";
-import type { Registry, RegistryPayload } from "./schema";
+import type { CompiledItem, Registry } from "./schema";
 
 /**
  * Write a registry item fixture under a temp package root.
@@ -71,10 +71,10 @@ describe("buildRegistry", () => {
 	});
 
 	afterEach(() => {
-		fs.rmSync(tempDir, { recursive: true, force: true });
+		fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5 });
 	});
 
-	it("builds registry.json with install targets and per-pack payloads", async () => {
+	it("builds registry.json with install targets and per-pack compiled items", async () => {
 		writeItem(
 			tempDir,
 			"component/button",
@@ -158,7 +158,7 @@ describe("buildRegistry", () => {
 
 		const payloadPath = path.join(tempDir, "r/button/react.json");
 		const payloadRaw = fs.readFileSync(payloadPath, "utf8");
-		const payload = JSON.parse(payloadRaw) as RegistryPayload;
+		const payload = JSON.parse(payloadRaw) as CompiledItem;
 		expect(payload).toEqual({
 			files: [
 				{
@@ -177,7 +177,7 @@ describe("buildRegistry", () => {
 		expect(payloadRaw).toBe(`${JSON.stringify(payload)}\n`);
 	});
 
-	it("inlines item-level shared files into every pack payload", async () => {
+	it("inlines item-level shared files into every pack compiled item", async () => {
 		writeItem(
 			tempDir,
 			"configuration/git-hooks",
@@ -233,7 +233,7 @@ describe("buildRegistry", () => {
 				path.join(tempDir, "r/git-hooks/typescript.json"),
 				"utf8",
 			),
-		) as RegistryPayload;
+		) as CompiledItem;
 		expect(payload.files.map((file) => file.target)).toEqual([
 			"commitlint.config.js",
 			"lint-staged.config.js",
@@ -305,7 +305,7 @@ describe("buildRegistry", () => {
 
 		const payload = JSON.parse(
 			fs.readFileSync(path.join(tempDir, "r/assign-owner.json"), "utf8"),
-		) as RegistryPayload;
+		) as CompiledItem;
 		expect(payload).toEqual({
 			files: [
 				{
@@ -512,7 +512,7 @@ describe("buildRegistry", () => {
 			{ "empty.txt": "" },
 		);
 
-		await expect(runBuild()).rejects.toThrow('Registry payload for "button"');
+		await expect(runBuild()).rejects.toThrow('Compiled item for "button"');
 	});
 
 	it("throws when a when key is not declared in conditions", async () => {
@@ -541,7 +541,7 @@ describe("buildRegistry", () => {
 		);
 	});
 
-	it("writes artefacts to outDir independently of sourceDir", async () => {
+	it("writes compiled items to outDir independently of sourceDir", async () => {
 		const sourceDir = path.join(tempDir, "authoring");
 		const outDir = path.join(tempDir, "dist");
 		fs.mkdirSync(sourceDir, { recursive: true });
@@ -585,7 +585,7 @@ describe("buildRegistry", () => {
 		expect(fs.existsSync(path.join(sourceDir, "registry.json"))).toBe(false);
 	});
 
-	it("writes the catalog under a custom registryFileName", async () => {
+	it("writes the index under a custom registryFileName", async () => {
 		writeItem(
 			tempDir,
 			"component/button",
@@ -634,6 +634,184 @@ describe("buildRegistry", () => {
 				registryFileName,
 			}),
 		).rejects.toThrow(message);
+	});
+
+	it("honours custom authoring layout and compiledDirName", async () => {
+		const sourceDir = path.join(tempDir, "authoring");
+		const itemDir = path.join(sourceDir, "items", "button");
+		fs.mkdirSync(itemDir, { recursive: true });
+		fs.mkdirSync(path.join(sourceDir, "shared"), { recursive: true });
+		fs.writeFileSync(
+			path.join(sourceDir, "item-types.json"),
+			`${JSON.stringify({ component: { label: "Components" } }, null, 2)}\n`,
+			"utf8",
+		);
+		fs.writeFileSync(
+			path.join(sourceDir, "shared", "conditions.json"),
+			`${JSON.stringify(
+				{
+					language: {
+						kind: "select",
+						label: "Language",
+						values: [{ value: "typescript", label: "TypeScript" }],
+					},
+				},
+				null,
+				2,
+			)}\n`,
+			"utf8",
+		);
+		fs.writeFileSync(
+			path.join(itemDir, "item.json"),
+			`${JSON.stringify(
+				{
+					id: "button",
+					title: "Button",
+					description: "A button",
+					type: "component",
+					requires: ["language"],
+					files: [{ source: "a.txt", target: "a.txt" }],
+				},
+				null,
+				2,
+			)}\n`,
+			"utf8",
+		);
+		fs.writeFileSync(path.join(itemDir, "a.txt"), "ok\n", "utf8");
+
+		const document = await buildRegistry({
+			sourceDir,
+			outDir: tempDir,
+			itemManifestFileName: "item.json",
+			typesFileName: "item-types.json",
+			conditionsFileName: "shared/conditions.json",
+			compiledDirName: "payloads",
+			registryFileName: "catalog.json",
+		});
+
+		expect(document.items.button).toEqual({
+			title: "Button",
+			description: "A button",
+			type: "component",
+			requires: ["language"],
+			source: "payloads/button.json",
+		});
+		expect(document.conditions?.language).toBeDefined();
+		expect(fs.existsSync(path.join(tempDir, "catalog.json"))).toBe(true);
+		expect(fs.existsSync(path.join(tempDir, "payloads/button.json"))).toBe(
+			true,
+		);
+		expect(fs.existsSync(path.join(tempDir, "r"))).toBe(false);
+	});
+
+	it.each([
+		["nested/path.json", String.raw`single path segment`],
+		["..", String.raw`single path segment`],
+		["item.txt", 'must end with ".json"'],
+	])("rejects invalid itemManifestFileName %j", async (itemManifestFileName, message) => {
+		await expect(
+			buildRegistry({
+				sourceDir: path.join(tempDir, "registry"),
+				outDir: tempDir,
+				itemManifestFileName,
+			}),
+		).rejects.toThrow(message);
+	});
+
+	it.each([
+		["nested/out", String.raw`single path segment`],
+		["..", String.raw`single path segment`],
+		["", String.raw`single path segment`],
+	])("rejects invalid compiledDirName %j", async (compiledDirName, message) => {
+		await expect(
+			buildRegistry({
+				sourceDir: path.join(tempDir, "registry"),
+				outDir: tempDir,
+				compiledDirName,
+			}),
+		).rejects.toThrow(message);
+	});
+
+	it("rejects typesFileName that escapes the registry source", async () => {
+		await expect(
+			buildRegistry({
+				sourceDir: path.join(tempDir, "registry"),
+				outDir: tempDir,
+				typesFileName: "../outside.json",
+			}),
+		).rejects.toThrow("typesFileName");
+	});
+
+	it("rejects empty bundleExternalPackages entries", async () => {
+		await expect(
+			buildRegistry({
+				sourceDir: path.join(tempDir, "registry"),
+				outDir: tempDir,
+				bundleExternalPackages: ["  "],
+			}),
+		).rejects.toThrow("bundleExternalPackages entries must be non-empty.");
+	});
+
+	it("still rejects @tuckshop/core runtime imports when bundleExternalPackages is empty", async () => {
+		writeItem(
+			tempDir,
+			"configuration/bad-core",
+			{
+				id: "bad-core",
+				title: "Bad core",
+				description: "Imports core at runtime",
+				type: "configuration",
+				beforeInstall: "handler.ts",
+			},
+			{
+				"handler.ts": `
+import { parseWithSchema } from "@tuckshop/core";
+export default async function beforeInstall() {
+  void parseWithSchema;
+  return { files: [{ target: "X", content: "x" }] };
+}
+`,
+			},
+		);
+
+		await expect(
+			buildRegistry({
+				sourceDir: path.join(tempDir, "registry"),
+				outDir: tempDir,
+				bundleExternalPackages: [],
+			}),
+		).rejects.toThrow("@tuckshop/core");
+	});
+
+	it("rejects install scripts that runtime-import a configured external package", async () => {
+		writeItem(
+			tempDir,
+			"configuration/banned",
+			{
+				id: "banned",
+				title: "Banned",
+				description: "Imports a configured external",
+				type: "configuration",
+				beforeInstall: "handler.ts",
+			},
+			{
+				"handler.ts": `
+import value from "acme-registry-runtime";
+export default async function beforeInstall() {
+  void value;
+  return { files: [{ target: "X", content: "x" }] };
+}
+`,
+			},
+		);
+
+		await expect(
+			buildRegistry({
+				sourceDir: path.join(tempDir, "registry"),
+				outDir: tempDir,
+				bundleExternalPackages: ["acme-registry-runtime"],
+			}),
+		).rejects.toThrow("acme-registry-runtime");
 	});
 
 	it("moves dependencies into payloads and keeps dependsOn in the catalog", async () => {
@@ -699,7 +877,7 @@ describe("buildRegistry", () => {
 
 		const payload = JSON.parse(
 			fs.readFileSync(path.join(tempDir, "r/testing/typescript.json"), "utf8"),
-		) as RegistryPayload;
+		) as CompiledItem;
 		expect(payload.dependencies).toEqual({
 			npm: {
 				runtime: ["react", "shared-lib"],
@@ -809,7 +987,7 @@ export default async function beforeInstall() {
 
 		const payload = JSON.parse(
 			fs.readFileSync(path.join(tempDir, "r/with-pkgs.json"), "utf8"),
-		) as RegistryPayload;
+		) as CompiledItem;
 		expect(payload).toEqual({
 			files: [],
 			dependencies: {
@@ -941,7 +1119,7 @@ export default async function beforeInstall() {
 		await runBuild();
 		const payload = JSON.parse(
 			fs.readFileSync(path.join(tempDir, "r/scripts/typescript.json"), "utf8"),
-		) as RegistryPayload;
+		) as CompiledItem;
 
 		expect(payload.commands).toEqual({
 			npm: { test: "vitest run", cov: "vitest run --coverage" },
@@ -1092,7 +1270,7 @@ export default async function beforeInstall() {
 		).toBe(true);
 	});
 
-	it("copies dependsOn into the catalog without treating them as scripts", async () => {
+	it("copies dependsOn into the index without treating them as scripts", async () => {
 		writeItem(
 			tempDir,
 			"template/react-app",
@@ -1136,7 +1314,7 @@ export default async function beforeInstall() {
 		expect(document.items["scripts-only"].source).toBe("r/scripts-only.json");
 		const payload = JSON.parse(
 			fs.readFileSync(path.join(tempDir, "r/scripts-only.json"), "utf8"),
-		) as RegistryPayload;
+		) as CompiledItem;
 		expect(payload).toEqual({
 			files: [],
 			commands: { npm: { test: "vitest run" } },
@@ -1164,7 +1342,7 @@ export default async function beforeInstall() {
 		expect(document.items["secrets-only"].source).toBe("r/secrets-only.json");
 		const payload = JSON.parse(
 			fs.readFileSync(path.join(tempDir, "r/secrets-only.json"), "utf8"),
-		) as RegistryPayload;
+		) as CompiledItem;
 		expect(payload).toEqual({
 			files: [],
 			secrets: ["GH_ADMIN_TOKEN"],
@@ -1194,13 +1372,13 @@ export default async function beforeInstall() {
 		expect(document.items.button.source).toBe("r/button.json");
 		const payload = JSON.parse(
 			fs.readFileSync(path.join(tempDir, "r/button.json"), "utf8"),
-		) as RegistryPayload;
+		) as CompiledItem;
 		expect(payload.dependencies).toEqual({
 			npm: { runtime: ["react"] },
 		});
 	});
 
-	it("rejects declaring packageManager as a shared condition", async () => {
+	it("allows declaring packageManager as a shared condition", async () => {
 		writeItem(
 			tempDir,
 			"component/button",
@@ -1209,6 +1387,7 @@ export default async function beforeInstall() {
 				title: "Button",
 				description: "A button",
 				type: "component",
+				requires: ["packageManager"],
 				files: [{ source: "a.txt", target: "a.txt" }],
 			},
 			{ "a.txt": "ok\n" },
@@ -1221,12 +1400,16 @@ export default async function beforeInstall() {
 			},
 		});
 
-		await expect(runBuild()).rejects.toThrow(
-			'Registry condition "packageManager" collides with the core-owned package manager.',
-		);
+		const document = await runBuild();
+		expect(document.conditions?.packageManager).toEqual({
+			kind: "select",
+			label: "Package manager",
+			values: [{ value: "pnpm", label: "pnpm" }],
+		});
+		expect(document.items.button.requires).toEqual(["packageManager"]);
 	});
 
-	it("rethrows non-ENOENT errors while walking the authoring tree", async () => {
+	it("rethrows non-ENOENT errors while walking the registry source tree", async () => {
 		const blocked = path.join(tempDir, "registry", "blocked");
 		fs.mkdirSync(blocked, { recursive: true });
 		fs.chmodSync(blocked, 0);

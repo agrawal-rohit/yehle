@@ -1,6 +1,6 @@
 import Mustache from "mustache";
 import type { RegistryContext } from "./condition-kind";
-import type { RegistryConditionValue, RegistryPayload } from "./schema";
+import type { CompiledItem, RegistryConditionValue } from "./schema";
 
 /** Replaces `${{` so Mustache does not treat GitHub Actions expressions as tags. */
 const GITHUB_ACTIONS_SENTINEL = "\uE000GHA\uE000";
@@ -74,25 +74,25 @@ function interpolateString(input: string, values: InterpolationView): string {
 }
 
 /**
- * Replace `{{key}}` placeholders in payload file contents and command values.
+ * Replace `{{key}}` placeholders in compiled item file contents and command values.
  * Does not touch GitHub Actions expressions (`${{ ... }}`).
  * Skipped optionals (missing keys) become empty strings / falsy sections.
- * @param payload - Install payload to interpolate.
+ * @param payload - Compiled item to interpolate.
  * @param values - Interpolation view.
  * @returns Payload with placeholders resolved.
  */
-export function interpolatePayload(
-	payload: RegistryPayload,
+export function interpolateCompiledItem(
+	compiledItem: CompiledItem,
 	values: InterpolationView,
-): RegistryPayload {
-	const files = payload.files.map((file) => ({
+): CompiledItem {
+	const files = compiledItem.files.map((file) => ({
 		...file,
 		content: interpolateString(file.content, values),
 	}));
 
-	let commands = payload.commands;
+	let commands = compiledItem.commands;
 	if (commands) {
-		const nextCommands: NonNullable<RegistryPayload["commands"]> = {};
+		const nextCommands: NonNullable<CompiledItem["commands"]> = {};
 		for (const [ecosystem, set] of Object.entries(commands)) {
 			if (!set) continue;
 			const nextSet: Record<string, string> = {};
@@ -104,7 +104,7 @@ export function interpolatePayload(
 	}
 
 	return {
-		...payload,
+		...compiledItem,
 		files,
 		...(commands ? { commands } : {}),
 	};

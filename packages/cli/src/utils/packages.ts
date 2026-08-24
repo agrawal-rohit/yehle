@@ -2,13 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import {
 	buildPackageInstallCommands,
+	type CompiledItem,
 	mergeCommandSet,
 	mergeDependencySet,
 	mergeEcosystemMaps,
 	RegistryEcosystem,
 	type RegistryEcosystemDependencies,
 	type RegistryPackageManager,
-	type RegistryPayload,
 	readFileAsync,
 	runAsync,
 	writeFileAsync,
@@ -90,16 +90,16 @@ export async function installDeclaredPackages(
 /**
  * Merge payload `commands` into the project's package.json scripts.
  * @param projectDir - Absolute project root.
- * @param payloads - Install payloads whose commands may be merged.
+ * @param payloads - Compiled items whose commands may be merged.
  * @throws Error when commands are declared but package.json is missing.
  */
 export async function mergeProjectCommands(
 	projectDir: string,
-	payloads: RegistryPayload[],
+	compiledItems: CompiledItem[],
 ): Promise<void> {
 	const commands = mergeEcosystemMaps(
 		mergeCommandSet,
-		...payloads.map((p) => p.commands),
+		...compiledItems.map((p) => p.commands),
 	);
 	const npmCommands = commands?.[RegistryEcosystem.NPM];
 	if (!npmCommands || Object.keys(npmCommands).length === 0) return;

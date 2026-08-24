@@ -13,7 +13,7 @@ const COPYRIGHT_PLACEHOLDER =
 /**
  * Fill SPDX license text from already-captured conditions and update LICENSE.
  * @param ctx - Install hook context with license conditions captured.
- * @returns LICENSE file to update in the working payload.
+ * @returns LICENSE file to update in the working compiled item.
  */
 const beforeInstall: BeforeInstallHook = async (ctx) => {
 	const licenseId = ctx.conditions.licenseId;

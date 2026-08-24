@@ -10,6 +10,7 @@ import {
 	runAfterInstallHook,
 	runBeforeInstallHook,
 } from "./handlers";
+import { NpmPackageManager } from "./packages";
 
 describe("core/handlers", () => {
 	let tempDir: string;
@@ -23,7 +24,7 @@ describe("core/handlers", () => {
 	});
 
 	describe("localScriptPath", () => {
-		it("joins a relative script under a local catalog", () => {
+		it("joins a relative script under a local registry", () => {
 			const catalog = path.join(tempDir, "registry.json");
 			expect(localScriptPath(catalog, "r/item.beforeInstall.0.js")).toBe(
 				path.join(tempDir, "r/item.beforeInstall.0.js"),
@@ -40,20 +41,20 @@ describe("core/handlers", () => {
 		it("rejects empty and whitespace-only script URIs", () => {
 			const catalog = path.join(tempDir, "registry.json");
 			expect(() => localScriptPath(catalog, "")).toThrow(
-				'Script URI "" must be a relative path under the catalog directory.',
+				'Script URI "" must be a relative path under the registry directory.',
 			);
 			expect(() => localScriptPath(catalog, "   ")).toThrow(
-				'Script URI "   " must be a relative path under the catalog directory.',
+				'Script URI "   " must be a relative path under the registry directory.',
 			);
 		});
 
-		it("rejects remote HTTPS catalogs", () => {
+		it("rejects remote HTTPS registries", () => {
 			expect(() =>
 				localScriptPath(
 					"https://example.com/registry.json",
 					"r/item.beforeInstall.0.js",
 				),
-			).toThrow("local catalog");
+			).toThrow("local registry");
 		});
 
 		it("rejects parent-directory escapes with Script URI wording", () => {
@@ -61,7 +62,7 @@ describe("core/handlers", () => {
 			expect(() =>
 				localScriptPath(catalog, "r/../outside.beforeInstall.0.js"),
 			).toThrow(
-				'Script URI "r/../outside.beforeInstall.0.js" must be a relative path under the catalog directory.',
+				'Script URI "r/../outside.beforeInstall.0.js" must be a relative path under the registry directory.',
 			);
 		});
 
@@ -69,7 +70,7 @@ describe("core/handlers", () => {
 			const catalog = path.join(tempDir, "registry.json");
 			expect(() =>
 				localScriptPath(catalog, "https://evil.example/h.js"),
-			).toThrow("relative path under the catalog directory");
+			).toThrow("relative path under the registry directory");
 		});
 	});
 
@@ -94,8 +95,8 @@ describe("core/handlers", () => {
 				runBeforeInstallHook(catalog, "r/item.beforeInstall.0.js", runtime(), {
 					itemId: "item",
 					conditions: {},
-					packageManager: "npm",
-					payload: { files: [] },
+					packageManager: NpmPackageManager.NPM,
+					compiledItem: { files: [] },
 				}),
 			).resolves.toEqual({ files: [], bindings: {} });
 		});
@@ -113,8 +114,8 @@ describe("core/handlers", () => {
 				runBeforeInstallHook(catalog, "r/item.beforeInstall.0.js", runtime(), {
 					itemId: "item",
 					conditions: {},
-					packageManager: "npm",
-					payload: { files: [] },
+					packageManager: NpmPackageManager.NPM,
+					compiledItem: { files: [] },
 				}),
 			).resolves.toEqual({ files: [], bindings: {} });
 		});
@@ -129,8 +130,8 @@ describe("core/handlers", () => {
 				runBeforeInstallHook(catalog, "r/bad.beforeInstall.0.js", runtime(), {
 					itemId: "item",
 					conditions: {},
-					packageManager: "npm",
-					payload: { files: [] },
+					packageManager: NpmPackageManager.NPM,
+					compiledItem: { files: [] },
 				}),
 			).rejects.toThrow("must export a `beforeInstall` hook function");
 		});
@@ -155,8 +156,8 @@ describe("core/handlers", () => {
 						{
 							itemId: "item",
 							conditions: {},
-							packageManager: "npm",
-							payload: { files: [] },
+							packageManager: NpmPackageManager.NPM,
+							compiledItem: { files: [] },
 						},
 					),
 				).rejects.toThrow("must export a `beforeInstall` hook function");
@@ -686,9 +687,9 @@ module.exports = async function beforeInstall(ctx) {
 				itemId: "item",
 				packIds: ["default"],
 				conditions: {},
-				packageManager: "npm",
+				packageManager: NpmPackageManager.NPM,
 				bindings: { prior: "Ada" },
-				payload: { files: [{ target: "EXISTING", content: "x" }] },
+				compiledItem: { files: [{ target: "EXISTING", content: "x" }] },
 			},
 		);
 
@@ -726,8 +727,8 @@ module.exports = async function beforeInstall() {
 			{
 				itemId: "item",
 				conditions: {},
-				packageManager: "npm",
-				payload: {
+				packageManager: NpmPackageManager.NPM,
+				compiledItem: {
 					files: [
 						{ target: "KEEP", content: "old" },
 						{ target: "DROP", content: "gone" },
@@ -767,8 +768,8 @@ module.exports = async function beforeInstall() {
 			{
 				itemId: "item",
 				conditions: {},
-				packageManager: "npm",
-				payload: {
+				packageManager: NpmPackageManager.NPM,
+				compiledItem: {
 					files: [],
 					commands: { npm: { test: "vitest run" } },
 					secrets: ["GH_ADMIN_TOKEN"],
@@ -817,8 +818,8 @@ module.exports = async function beforeInstall(ctx) {
 			{
 				itemId: "item",
 				conditions: {},
-				packageManager: "npm",
-				payload: { files: [{ target: "KEEP", content: "yes" }] },
+				packageManager: NpmPackageManager.NPM,
+				compiledItem: { files: [{ target: "KEEP", content: "yes" }] },
 			},
 		);
 
@@ -858,8 +859,8 @@ module.exports = async function beforeInstall(ctx) {
 			itemId: "item",
 			packIds: ["v1"],
 			conditions: {},
-			packageManager: "npm",
-			payload: { files: [] },
+			packageManager: NpmPackageManager.NPM,
+			compiledItem: { files: [] },
 		});
 
 		expect(JSON.parse(fs.readFileSync(capturePath, "utf8"))).toEqual({
@@ -896,9 +897,9 @@ module.exports = async function afterInstall(ctx) {
 			itemId: "item",
 			packIds: ["v1"],
 			conditions: {},
-			packageManager: "npm",
+			packageManager: NpmPackageManager.NPM,
 			bindings: {},
-			payload: { files: [] },
+			compiledItem: { files: [] },
 		});
 
 		expect(JSON.parse(fs.readFileSync(capturePath, "utf8"))).toEqual({
@@ -935,16 +936,16 @@ module.exports = async function afterInstall() {
 		await runAfterInstallHook(catalog, "r/item.afterInstall.0.js", runtime, {
 			itemId: "item",
 			conditions: {},
-			packageManager: "npm",
+			packageManager: NpmPackageManager.NPM,
 			bindings,
-			payload: { files },
+			compiledItem: { files },
 		});
 
 		expect(bindings).toEqual({ keep: "1" });
 		expect(files).toEqual([{ target: "KEEP", content: "yes" }]);
 	});
 
-	it("runBeforeInstallHook starts from empty bindings and payload files", async () => {
+	it("runBeforeInstallHook starts from empty bindings and compiled item files", async () => {
 		const catalog = path.join(tempDir, "registry.json");
 		const scriptPath = path.join(tempDir, "r/item.beforeInstall.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
@@ -966,8 +967,8 @@ module.exports = async function afterInstall() {
 			{
 				itemId: "item",
 				conditions: {},
-				packageManager: "npm",
-				payload: { files: [] },
+				packageManager: NpmPackageManager.NPM,
+				compiledItem: { files: [] },
 			},
 		);
 
@@ -1008,8 +1009,8 @@ module.exports = async function afterInstall(ctx) {
 		const options = {
 			itemId: "item",
 			conditions: {},
-			packageManager: "npm",
-			payload: { files: [{ target: "KEEP", content: "yes" }] },
+			packageManager: NpmPackageManager.NPM,
+			compiledItem: { files: [{ target: "KEEP", content: "yes" }] },
 		};
 
 		await runBeforeInstallHook(

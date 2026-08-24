@@ -33,9 +33,9 @@ export function registerCommandsCli(
 			commandOptions: Record<string, unknown>,
 		) => {
 			await runCliCommand(async () => {
-				const { registry, catalogLocation } = await loadRegistry();
+				const { registry, indexLocation } = await loadRegistry();
 				await animatedIntro("adding registry items");
-				await addCommand(registry, catalogLocation, {
+				await addCommand(registry, indexLocation, {
 					items: (items ?? []).map((item) => item.trim()).filter(Boolean),
 					overwrite: getBooleanOption(commandOptions, "overwrite"),
 				});

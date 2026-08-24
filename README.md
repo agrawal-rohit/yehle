@@ -15,7 +15,7 @@
 </div>
 
 <div align="center">
-  <p>An opinionated scaffolding CLI with a default registry and an authoring core.</p>
+  <p>An opinionated scaffolding CLI with a default registry and a raw registry core.</p>
 </div>
 
 `tuckshop` eliminates repetitive project setup by providing opinionated templates with pre-configured tooling, best practices, and reusable registry items. Now as a monorepo, it ships with three complementary packages:
@@ -82,7 +82,7 @@ docs/           # documentation site
 
 ## Building a custom registry
 
-`@tuckshop/core` compiles, validates, and parses registry documents. Call `buildRegistry` with an authoring `sourceDir` (items, `types.json`, optional `conditions/conditions.json`) and an `outDir` for compiled artefacts:
+`@tuckshop/core` compiles, validates, and parses registry documents. Call `buildRegistry` with a raw registry `sourceDir` (items, `types.json`, optional `conditions/conditions.json`) and an `outDir` for compiled output:
 
 ```ts
 import { buildRegistry, parseRegistryDocument } from "@tuckshop/core";
@@ -91,14 +91,14 @@ await buildRegistry({ sourceDir, outDir });
 const registry = parseRegistryDocument(JSON.parse(registryJson));
 ```
 
-That emits a compact `registry.json` catalog plus compact install payloads at `r/{itemId}.json` (variant-less items) or `r/{itemId}/{variantId}.json` under `outDir`. Item identity is the `items` map key; each item or variant has a `source` payload URI. Consumers join it against the catalog location (`joinCatalogSource`). File contents and ecosystem-tagged dependencies live in the payload, not the catalog.
+That emits `registry.json` (the index) plus compiled items at `r/{itemId}.json` (pack-less items) or `r/{itemId}/{packId}.json` under `outDir`. Item identity is the `items` map key; each item or pack has a `source` URI. Consumers join it against the index location (`joinIndexSource`). File contents and ecosystem-tagged dependencies live in the compiled item, not the index.
 
 `@tuckshop/core` exposes:
 
-- `buildRegistry()` for compiling an authoring tree into consumable artefacts
-- Schema types and validation for catalog and payload documents
-- `parseRegistryDocument()` and `parseWithSchema()` for runtime validation (unknown keys are rejected; use `registryPayloadSchema` for payload documents)
-- `joinCatalogSource()` for storage-agnostic catalog `source` joining
+- `buildRegistry()` for compiling a registry source tree into an index plus compiled items
+- Schema types and validation for the index (`IndexItem`) and compiled items (`CompiledItem`)
+- `parseRegistryDocument()` and `parseWithSchema()` for runtime validation (unknown keys are rejected; use `compiledItemSchema` for compiled items)
+- `joinIndexSource()` for storage-agnostic index `source` joining
 
 The private `@tuckshop/registry` package holds the default opinionated content and a short build script around `buildRegistry` (`pnpm build:registry`).
 

@@ -11,28 +11,27 @@ import {
 	selectRegistryPacks,
 	whenMatchesContext,
 } from "./plan";
-import type { CatalogItem, CatalogPack } from "./schema";
+import type { IndexItem, IndexPack } from "./schema";
 
 /**
- * Build a catalog pack fixture.
+ * Build a index pack fixture.
  * @param overrides - Pack fields including required id, title, and source.
  * @returns Catalog pack.
  */
 function makePack(
-	overrides: Partial<CatalogPack> &
-		Pick<CatalogPack, "id" | "title" | "source">,
-): CatalogPack {
+	overrides: Partial<IndexPack> & Pick<IndexPack, "id" | "title" | "source">,
+): IndexPack {
 	return {
 		...overrides,
 	};
 }
 
 /**
- * Build a catalog item fixture.
+ * Build a index item fixture.
  * @param overrides - Item fields to merge over defaults.
  * @returns Catalog item.
  */
-function makeItem(overrides: Partial<CatalogItem> = {}): CatalogItem {
+function makeItem(overrides: Partial<IndexItem> = {}): IndexItem {
 	return {
 		title: "Item",
 		description: "An item",
@@ -104,7 +103,7 @@ describe("core/plan", () => {
 			});
 		});
 
-		it("returns install scripts only when a pack-less item has no payload source", () => {
+		it("returns install scripts only when a pack-less item has no compiled item source", () => {
 			expect(
 				selectRegistryPacks(
 					"item",
@@ -218,7 +217,7 @@ describe("core/plan", () => {
 
 		it("rejects a pack-less item with neither source nor install phases", () => {
 			expect(() => selectRegistryPacks("item", makeItem(), {})).toThrow(
-				"missing a payload source or install phase",
+				"missing a compiled item source or install phase",
 			);
 		});
 
@@ -317,7 +316,7 @@ describe("core/plan", () => {
 			);
 		});
 
-		it("includes script-only items without a payload source", () => {
+		it("includes script-only items without a compiled item source", () => {
 			const license = makeItem({
 				beforeInstall: ["r/license.beforeInstall.0.js"],
 			});
