@@ -147,7 +147,7 @@ describe("commands/index", () => {
 		);
 		expect(option).toHaveBeenCalledWith(
 			"--type <types>",
-			"Filter by type: all, or comma-separated types. Lists all types when omitted",
+			"Filter by type: all, or comma-separated types. Prompts for type selection when omitted",
 		);
 		expect(usage).toHaveBeenCalledWith("config <get|set|unset> [source]");
 	});

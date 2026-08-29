@@ -18,25 +18,6 @@ enum ConfigAction {
 }
 
 /**
- * Parse the CAC `<action>` argument into a known config subcommand.
- * @param action - Raw positional action from CAC.
- * @returns A known `ConfigAction`.
- * @throws Error when the action is not get, set, or unset.
- */
-function parseConfigAction(action: string): ConfigAction {
-	switch (action) {
-		case ConfigAction.GET:
-		case ConfigAction.SET:
-		case ConfigAction.UNSET:
-			return action;
-		default:
-			throw new Error(
-				`Unknown config action "${action}". Usage: tuckshop config <get|set|unset> [source]`,
-			);
-	}
-}
-
-/**
  * Register CLI commands and their options.
  * @param app - CAC application instance.
  * @param loadRegistry - Loader used by commands that need registry data.
@@ -64,13 +45,13 @@ export function registerCommandsCli(
 	const listCmd = app.command("list", "List available registry items");
 	listCmd.option(
 		"--type <types>",
-		"Filter by type: all, or comma-separated types. Lists all types when omitted",
+		"Filter by type: all, or comma-separated types. Prompts for type selection when omitted",
 	);
 	listCmd.action(async (options: { type?: string | string[] }) => {
 		await runCliCommand(async () => {
 			const { registry } = await loadRegistry();
 			await animatedIntro("here's the menu");
-			listCommand(registry, options.type);
+			await listCommand(registry, options.type);
 		});
 	});
 
@@ -81,8 +62,7 @@ export function registerCommandsCli(
 	configCmd.usage("config <get|set|unset> [source]");
 	configCmd.action(async (action: string, source?: string) => {
 		await runCliCommand(async () => {
-			const parsedAction = parseConfigAction(action);
-			switch (parsedAction) {
+			switch (action) {
 				case ConfigAction.GET:
 					await animatedIntro("fetching the configuration");
 					await configGetCommand();
@@ -95,14 +75,10 @@ export function registerCommandsCli(
 					await animatedIntro("clearing the configuration");
 					await configUnsetCommand();
 					return;
-				/* v8 ignore start */
-				// Stryker disable all: unreachable exhaustive default
-				default: {
-					const _never: never = parsedAction;
-					throw new Error(`Unhandled config action: ${_never}`);
-				}
-				// Stryker restore all
-				/* v8 ignore stop */
+				default:
+					throw new Error(
+						`Unknown config action "${action}". Usage: tuckshop config <get|set|unset> [source]`,
+					);
 			}
 		});
 	});

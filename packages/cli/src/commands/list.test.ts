@@ -11,6 +11,12 @@ vi.mock("chalk", () => ({
 	},
 }));
 
+const mockMultiselectInput = vi.fn();
+
+vi.mock("../cli/prompts", () => ({
+	multiselectInput: (...args: unknown[]) => mockMultiselectInput(...args),
+}));
+
 import { listCommand } from "./list";
 
 const DEFAULT_TYPES: NonNullable<Registry["types"]> = {
@@ -81,6 +87,9 @@ describe("commands/list", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		mockMultiselectInput.mockImplementation(
+			async (_message, _opts, defaultValues?: string[]) => defaultValues ?? [],
+		);
 	});
 
 	afterEach(() => {
@@ -280,6 +289,15 @@ describe("commands/list", () => {
 
 		await listCommand(registry);
 
+		expect(mockMultiselectInput).toHaveBeenCalledWith(
+			"Which item types should be listed?",
+			expect.objectContaining({
+				options: expect.arrayContaining([
+					{ label: "Themes", value: "theme", hint: expect.any(String) },
+				]),
+			}),
+			Object.keys(DEFAULT_TYPES),
+		);
 		expect(
 			consoleLogSpy.mock.calls.map((call) => call[0]).join("\n"),
 		).toContain("Alpha Theme");
@@ -301,6 +319,16 @@ describe("commands/list", () => {
 
 		await listCommand(registry);
 
+		expect(mockMultiselectInput).toHaveBeenCalledWith(
+			"Which item types should be listed?",
+			expect.objectContaining({
+				options: expect.arrayContaining([
+					{ label: "Components", value: "component", hint: expect.any(String) },
+					{ label: "Themes", value: "theme", hint: expect.any(String) },
+				]),
+			}),
+			Object.keys(DEFAULT_TYPES),
+		);
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
 		expect(output).toContain("Components");
 		expect(output).toContain("Alpha Component");
@@ -309,23 +337,75 @@ describe("commands/list", () => {
 		expect(output).toContain("2 item(s)");
 	});
 
-	it("throws when no registry item types are available", () => {
-		expect(() => listCommand(makeRegistry({}, {}))).toThrow(
+	it("uses the prompt selection when --type is omitted", async () => {
+		const registry = makeRegistry({
+			"theme-a": makeItem({
+				id: "theme-a",
+				title: "Alpha Theme",
+				type: "theme",
+			}),
+			"component-a": makeItem({
+				id: "component-a",
+				title: "Alpha Component",
+				type: "component",
+			}),
+		});
+		mockMultiselectInput.mockResolvedValueOnce(["theme"]);
+
+		await listCommand(registry);
+
+		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
+		expect(output).toContain("Alpha Theme");
+		expect(output).not.toContain("Alpha Component");
+		expect(output).toContain("1 item(s)");
+	});
+
+	it("throws when the type prompt returns no selection", async () => {
+		mockMultiselectInput.mockResolvedValueOnce([]);
+
+		await expect(listCommand(makeRegistry({}))).rejects.toThrow(
+			"Select at least one item type to list.",
+		);
+	});
+
+	it("does not prompt when --type is provided", async () => {
+		const registry = makeRegistry({
+			"theme-a": makeItem({
+				id: "theme-a",
+				title: "Alpha Theme",
+				type: "theme",
+			}),
+		});
+
+		await listCommand(registry, "theme");
+
+		expect(mockMultiselectInput).not.toHaveBeenCalled();
+	});
+
+	it("throws when --type is provided with no type values", async () => {
+		await expect(listCommand(makeRegistry({}), "")).rejects.toThrow(
+			"--type requires at least one type value.",
+		);
+		expect(mockMultiselectInput).not.toHaveBeenCalled();
+	});
+
+	it("throws when no registry item types are available", async () => {
+		await expect(listCommand(makeRegistry({}, {}))).rejects.toThrow(
 			"No registry item types found.",
 		);
 	});
 
-	it('throws when combining "all" with specific types', () => {
-		expect(() =>
+	it('throws when combining "all" with specific types', async () => {
+		await expect(
 			listCommand(
 				makeRegistry({}, { theme: { label: "Themes" } }),
 				"all,theme",
 			),
-		).toThrow('Cannot combine type "all" with specific --type values.');
+		).rejects.toThrow('Cannot combine type "all" with specific --type values.');
 	});
 
-	it("throws for unsupported --type values", () => {
-		expect(() =>
+	it("throws for unsupported --type values", async () => {
+		await expect(
 			listCommand(
 				makeRegistry(
 					{},
@@ -336,7 +416,7 @@ describe("commands/list", () => {
 				),
 				"workflow",
 			),
-		).toThrow(
+		).rejects.toThrow(
 			'Unsupported registry type "workflow" (available: theme, component).',
 		);
 	});
@@ -393,7 +473,7 @@ describe("commands/list", () => {
 		expect(output).toContain("7 item(s)");
 	});
 
-	it("falls back to the raw type string when type metadata has no label", () => {
+	it("falls back to the raw type string when type metadata has no label", async () => {
 		const registry = makeRegistry(
 			{
 				"theme-a": makeItem({
@@ -409,14 +489,14 @@ describe("commands/list", () => {
 			},
 		);
 
-		listCommand(registry, "theme");
+		await listCommand(registry, "theme");
 
 		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
 		expect(output).toContain("theme");
 		expect(output).toContain("Alpha Theme");
 	});
 
-	it("omits a type description when metadata has none", () => {
+	it("omits a type description when metadata has none", async () => {
 		const registry = makeRegistry(
 			{
 				"theme-a": makeItem({
@@ -430,7 +510,7 @@ describe("commands/list", () => {
 			},
 		);
 
-		listCommand(registry, "theme");
+		await listCommand(registry, "theme");
 
 		expect(
 			consoleLogSpy.mock.calls.some(
