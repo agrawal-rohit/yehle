@@ -1,8 +1,9 @@
-import fs from "node:fs";
 import path from "node:path";
 import {
 	assertSafeRemoteUrl,
 	isAbsoluteHttpUrl,
+	PathKind,
+	pathKindAsync,
 	publishedRegistryUrl,
 	readJsonFileAsync,
 } from "@tuckshop/core";
@@ -55,21 +56,27 @@ async function toPersistedRegistrySource(source: string): Promise<string> {
 	}
 
 	const absolutePath = path.resolve(process.cwd(), source);
-	try {
-		const stat = await fs.promises.stat(absolutePath);
-		if (!stat.isFile())
+	const kind = await pathKindAsync(absolutePath);
+	switch (kind) {
+		case PathKind.FILE:
+			return absolutePath;
+		case PathKind.DIRECTORY:
 			throw new Error(
 				`Registry path "${source}" points to ${absolutePath}, which is not a file.`,
 			);
-	} catch (error) {
-		if (error instanceof Error && error.message.includes("is not a file"))
-			throw error;
-		throw new Error(
-			`Registry path "${source}" does not exist (looked up as ${absolutePath}). Pass an HTTPS URL or a path to an existing registry.json.`,
-		);
+		case PathKind.ABSENT:
+			throw new Error(
+				`Registry path "${source}" does not exist (looked up as ${absolutePath}). Pass an HTTPS URL or a path to an existing registry.json.`,
+			);
+		/* v8 ignore start */
+		// Stryker disable all: unreachable exhaustive default
+		default: {
+			const _never: never = kind;
+			throw new Error(`Unhandled path kind: ${String(_never)}`);
+		}
+		// Stryker restore all
+		/* v8 ignore stop */
 	}
-
-	return absolutePath;
 }
 
 /**
@@ -84,12 +91,11 @@ export async function configSetCommand(
 	env?: NodeJS.ProcessEnv,
 ): Promise<string> {
 	let input = source?.trim() ?? "";
-	if (!input) {
+	if (!input)
 		input = await textInput("Registry URL or local path", {
 			placeholder: "https://example.com/registry.json",
 			required: true,
 		});
-	}
 
 	const toStore = await toPersistedRegistrySource(input);
 	const existing = await readConfig(env);
