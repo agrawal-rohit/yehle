@@ -1,7 +1,6 @@
 import type { CAC } from "cac";
 import { animatedIntro } from "../cli/animated-intro";
 import { runCliCommand } from "../cli/errors";
-import { getBooleanOption, pickStringOptions } from "../cli/options";
 import type { LoadedRegistry } from "../utils/registry";
 import { addCommand } from "./add";
 import {
@@ -10,6 +9,32 @@ import {
 	configUnsetCommand,
 } from "./config";
 import { listCommand } from "./list";
+
+/** Subcommands of `tuckshop config`, dispatched from one CAC command. */
+enum ConfigAction {
+	GET = "get",
+	SET = "set",
+	UNSET = "unset",
+}
+
+/**
+ * Parse the CAC `<action>` argument into a known config subcommand.
+ * @param action - Raw positional action from CAC.
+ * @returns A known `ConfigAction`.
+ * @throws Error when the action is not get, set, or unset.
+ */
+function parseConfigAction(action: string): ConfigAction {
+	switch (action) {
+		case ConfigAction.GET:
+		case ConfigAction.SET:
+		case ConfigAction.UNSET:
+			return action;
+		default:
+			throw new Error(
+				`Unknown config action "${action}". Usage: tuckshop config <get|set|unset> [source]`,
+			);
+	}
+}
 
 /**
  * Register CLI commands and their options.
@@ -20,85 +45,65 @@ export function registerCommandsCli(
 	app: CAC,
 	loadRegistry: () => Promise<LoadedRegistry>,
 ): void {
-	app.usage("<command> [options]");
-
 	const addCmd = app.command(
-		"add [items...]",
+		"add [...items]",
 		"Add registry items to the current working directory",
 	);
 	addCmd.option("--overwrite", "Overwrite existing files");
-	addCmd.action(
-		async (
-			items: string[] | undefined,
-			commandOptions: Record<string, unknown>,
-		) => {
-			await runCliCommand(async () => {
-				const { registry, indexLocation } = await loadRegistry();
-				await animatedIntro("adding registry items");
-				await addCommand(registry, indexLocation, {
-					items: (items ?? []).map((item) => item.trim()).filter(Boolean),
-					overwrite: getBooleanOption(commandOptions, "overwrite"),
-				});
+	addCmd.action(async (items: string[], options: { overwrite?: boolean }) => {
+		await runCliCommand(async () => {
+			const { registry, indexLocation } = await loadRegistry();
+			await animatedIntro("adding registry items");
+			await addCommand(registry, indexLocation, {
+				items,
+				overwrite: options.overwrite,
 			});
-		},
-	);
+		});
+	});
 
-	// Create the list command
 	const listCmd = app.command("list", "List available registry items");
 	listCmd.option(
 		"--type <types>",
 		"Filter by type: all, or comma-separated types. Lists all types when omitted",
 	);
-	listCmd.action(async (commandOptions: Record<string, unknown>) => {
+	listCmd.action(async (options: { type?: string | string[] }) => {
 		await runCliCommand(async () => {
 			const { registry } = await loadRegistry();
 			await animatedIntro("here's the menu");
-			listCommand(registry, pickStringOptions(commandOptions, ["type"]).type);
+			listCommand(registry, options.type);
 		});
 	});
 
-	// Register the config commands
 	const configCmd = app.command(
-		"config",
+		"config <action> [source]",
 		"Get, set, or unset the default registry source",
 	);
-	configCmd.action(async () => {
-		/* v8 ignore next 5 — runCliCommand success path is unreachable because the action always throws */
+	configCmd.usage("config <get|set|unset> [source]");
+	configCmd.action(async (action: string, source?: string) => {
 		await runCliCommand(async () => {
-			throw new Error(
-				"Missing config action. Usage: tuckshop config <get|set|unset> [source]",
-			);
+			const parsedAction = parseConfigAction(action);
+			switch (parsedAction) {
+				case ConfigAction.GET:
+					await animatedIntro("fetching the configuration");
+					await configGetCommand();
+					return;
+				case ConfigAction.SET:
+					await animatedIntro("updating the configuration");
+					await configSetCommand(source);
+					return;
+				case ConfigAction.UNSET:
+					await animatedIntro("clearing the configuration");
+					await configUnsetCommand();
+					return;
+				/* v8 ignore start */
+				// Stryker disable all: unreachable exhaustive default
+				default: {
+					const _never: never = parsedAction;
+					throw new Error(`Unhandled config action: ${_never}`);
+				}
+				// Stryker restore all
+				/* v8 ignore stop */
+			}
 		});
 	});
-
-	app
-		.command("config get", "Print the active registry source")
-		.action(async () => {
-			await runCliCommand(async () => {
-				await animatedIntro("fetching the configuration");
-				await configGetCommand();
-			});
-		});
-
-	app
-		.command(
-			"config set [source]",
-			"Set the default registry HTTPS URL or local path (prompts if omitted)",
-		)
-		.example((bin) => `$ ${bin} config set <url-or-path>`)
-		.action(async (source?: string) => {
-			await runCliCommand(async () => {
-				await animatedIntro("updating the configuration");
-				await configSetCommand(source);
-			});
-		});
-
-	app
-		.command("config unset", "Clear the saved registry and use the default")
-		.action(async () => {
-			await runCliCommand(async () => {
-				await animatedIntro("clearing the configuration");
-				await configUnsetCommand();
-			});
-		});
 }

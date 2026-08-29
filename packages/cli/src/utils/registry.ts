@@ -8,7 +8,6 @@ import {
 	parseRegistryDocument,
 	type Registry,
 	readFileAsync,
-	readJsonFileAsync,
 	verifyItemIntegrity,
 } from "@tuckshop/core";
 
@@ -32,13 +31,6 @@ export interface LoadedRegistry {
 }
 
 /**
- * Locate which registry the CLI should use.
- * @param options - Inputs from CLI flags, env, and package defaults.
- * @returns Absolute local path or HTTPS URL to the index.
- * @throws Error when no local or bundled registry can be found, or an explicit URL is unsafe.
- */
-
-/**
  * Absolute path to the registry.json packaged with the CLI.
  * @returns Absolute filesystem path.
  */
@@ -46,6 +38,12 @@ export function bundledRegistryPath(): string {
 	return path.resolve(__dirname, "../../", "registry.json");
 }
 
+/**
+ * Locate which registry the CLI should use.
+ * @param options - Inputs from CLI flags, env, and package defaults.
+ * @returns Absolute local path or HTTPS URL to the index.
+ * @throws Error when no local or bundled registry can be found, or an explicit URL is unsafe.
+ */
 export async function locateRegistry(
 	options: LocateRegistryOptions = {},
 ): Promise<string> {
@@ -83,11 +81,11 @@ export async function locateRegistry(
 }
 
 /**
- * Fetch and parse a remote JSON document over HTTPS with SSRF protections.
+ * Fetch a remote JSON document over HTTPS with SSRF protections.
  * @param url - Absolute HTTPS URL.
  * @param label - Error context label for fetch failures.
- * @returns Parsed JSON value.
- * @throws Error when the request fails or the response is invalid.
+ * @returns Response body bytes.
+ * @throws Error when the request fails or the response is too large.
  */
 async function fetchRemoteJsonBytes(
 	url: string,
@@ -142,35 +140,33 @@ async function fetchRemoteJsonBytes(
 	return body;
 }
 
-async function fetchRemoteJson(url: string, label: string): Promise<unknown> {
-	const body = await fetchRemoteJsonBytes(url, label);
-	try {
-		return JSON.parse(body.toString("utf8")) as unknown;
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		throw new Error(`Remote ${label} returned invalid JSON: ${message}`);
-	}
-}
-
 /**
- * Load and parse a JSON document from a local path or HTTPS URL.
- * @param location - Absolute filesystem path or HTTPS URL.
- * @param label - Error context label (e.g. `"registry"`, `"compiled item"`).
- * @returns Parsed JSON value.
- * @throws Error when the document cannot be read or parsed.
+ * Load a JSON document and retain the raw bytes for integrity checks.
+ * @param location - Absolute path or HTTPS URL.
+ * @param label - Error context label.
+ * @returns Raw UTF-8 bytes and parsed JSON value.
  */
-async function loadJsonDocument(
+async function loadJsonDocumentWithBytes(
 	location: string,
 	label: string,
-): Promise<unknown> {
-	if (isAbsoluteHttpUrl(location)) return fetchRemoteJson(location, label);
+): Promise<{ bytes: Buffer; value: unknown }> {
+	if (isAbsoluteHttpUrl(location)) {
+		const bytes = await fetchRemoteJsonBytes(location, label);
+		try {
+			return { bytes, value: JSON.parse(bytes.toString("utf8")) as unknown };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(`Remote ${label} returned invalid JSON: ${message}`);
+		}
+	}
 
 	try {
-		return await readJsonFileAsync(location, `${label} at ${location}`);
+		const text = await readFileAsync(location);
+		const bytes = Buffer.from(text);
+		return { bytes, value: JSON.parse(text) as unknown };
 	} catch (error) {
-		// Parse failures are already labeled; wrap read failures with location context.
-		if (error instanceof InvalidJsonError) throw error;
-
+		if (error instanceof SyntaxError)
+			throw new InvalidJsonError(`${label} at ${location}`, error);
 		const message = error instanceof Error ? error.message : String(error);
 		throw new Error(`Failed to read ${label} at ${location}: ${message}`, {
 			cause: error,
@@ -193,11 +189,10 @@ export async function loadRuntimeRegistry(
 		registry: registryOverride,
 		savedRegistry,
 	});
+	const { value } = await loadJsonDocumentWithBytes(indexLocation, "registry");
 
 	return {
-		registry: parseRegistryDocument(
-			await loadJsonDocument(indexLocation, "registry"),
-		),
+		registry: parseRegistryDocument(value),
 		indexLocation,
 	};
 }
@@ -229,36 +224,4 @@ export async function loadCompiledItems(
 	);
 
 	return documents;
-}
-
-/**
- * Load a JSON document and retain the raw bytes for integrity checks.
- * @param location - Absolute path or HTTPS URL.
- * @param label - Error context label.
- * @returns Raw UTF-8 bytes and parsed JSON value.
- */
-async function loadJsonDocumentWithBytes(
-	location: string,
-	label: string,
-): Promise<{ bytes: Buffer; value: unknown }> {
-	if (isAbsoluteHttpUrl(location)) {
-		const bytes = await fetchRemoteJsonBytes(location, label);
-		try {
-			return { bytes, value: JSON.parse(bytes.toString("utf8")) as unknown };
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			throw new Error(`Remote ${label} returned invalid JSON: ${message}`);
-		}
-	}
-
-	try {
-		const text = await readFileAsync(location);
-		const bytes = Buffer.from(text);
-		return { bytes, value: JSON.parse(text) as unknown };
-	} catch (error) {
-		if (error instanceof SyntaxError)
-			throw new InvalidJsonError(`${label} at ${location}`, error);
-		const message = error instanceof Error ? error.message : String(error);
-		throw new Error(`Failed to read ${label} at ${location}: ${message}`);
-	}
 }

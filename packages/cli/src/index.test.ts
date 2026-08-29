@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock CLI dependencies used by the top-level entrypoint
 const mockApp = {
-	help: vi.fn(),
+	help: vi.fn().mockReturnThis(),
 	option: vi.fn().mockReturnThis(),
 	outputHelp: vi.fn(),
 	parse: vi.fn(),
+	runMatchedCommand: vi.fn(),
+	matchedCommand: undefined as { name?: string } | undefined,
 	matchedCommandName: undefined as string | undefined,
 	options: {} as Record<string, unknown>,
 };
@@ -43,11 +45,13 @@ function emptyParseResult() {
 describe("index", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockApp.matchedCommand = undefined;
 		mockApp.matchedCommandName = undefined;
 		mockApp.options = {};
 		vi.mocked(registerCommandsCli).mockReturnValue(undefined);
 		vi.mocked(readConfig).mockResolvedValue({});
 		vi.mocked(mockApp.parse).mockReturnValue(emptyParseResult());
+		vi.mocked(mockApp.runMatchedCommand).mockResolvedValue(undefined);
 	});
 
 	afterEach(() => {
@@ -65,13 +69,15 @@ describe("index", () => {
 				"--registry <source>",
 				"Use a custom registry URL",
 			);
-			expect(mockApp.parse).toHaveBeenCalledWith(["node", "tuckshop"], {
-				run: false,
-			});
 			expect(registerCommandsCli).toHaveBeenCalledWith(
 				mockApp,
 				expect.any(Function),
 			);
+			expect(mockApp.help).toHaveBeenCalled();
+			expect(mockApp.parse).toHaveBeenCalledWith(["node", "tuckshop"], {
+				run: false,
+			});
+			expect(mockApp.runMatchedCommand).toHaveBeenCalledTimes(1);
 		});
 
 		it("should output help when no arguments are provided", async () => {
@@ -79,92 +85,64 @@ describe("index", () => {
 
 			await run();
 
-			expect(mockApp.outputHelp).toHaveBeenCalled();
-			expect(mockApp.parse).toHaveBeenCalledTimes(1);
 			expect(mockApp.parse).toHaveBeenCalledWith(["node", "tuckshop"], {
 				run: false,
 			});
-		});
-
-		it("should treat blank argv tokens as no command", async () => {
-			vi.stubGlobal("process", { argv: ["node", "tuckshop", ""] });
-
-			await run();
-
+			expect(mockApp.runMatchedCommand).toHaveBeenCalledTimes(1);
 			expect(mockApp.outputHelp).toHaveBeenCalled();
-			expect(mockApp.parse).toHaveBeenCalledTimes(1);
 		});
 
 		it("should parse arguments when provided", async () => {
 			const argv = ["node", "tuckshop", "list"];
 			vi.stubGlobal("process", { argv });
+			mockApp.matchedCommand = { name: "list" };
 			mockApp.matchedCommandName = "list";
 
 			await run();
 
+			expect(mockApp.parse).toHaveBeenCalledTimes(1);
 			expect(mockApp.parse).toHaveBeenCalledWith(argv, { run: false });
-			expect(mockApp.parse).toHaveBeenCalledWith(argv);
+			expect(mockApp.runMatchedCommand).toHaveBeenCalledTimes(1);
 			expect(mockApp.outputHelp).not.toHaveBeenCalled();
 		});
 
 		it("should output help when no command matches", async () => {
 			const argv = ["node", "tuckshop", "nope"];
 			vi.stubGlobal("process", { argv });
-			mockApp.matchedCommandName = undefined;
+			mockApp.matchedCommand = undefined;
 
 			await run();
 
-			expect(mockApp.parse).toHaveBeenCalledWith(argv);
+			expect(mockApp.parse).toHaveBeenCalledWith(argv, { run: false });
+			expect(mockApp.runMatchedCommand).toHaveBeenCalled();
 			expect(mockApp.outputHelp).toHaveBeenCalled();
 		});
 
 		it("should not re-print help after cac already handled --help", async () => {
 			const argv = ["node", "tuckshop", "config", "--help"];
 			vi.stubGlobal("process", { argv });
+			mockApp.matchedCommand = undefined;
 			mockApp.matchedCommandName = undefined;
 			mockApp.options = { help: true };
 
 			await run();
 
+			expect(mockApp.runMatchedCommand).toHaveBeenCalled();
 			expect(mockApp.outputHelp).not.toHaveBeenCalled();
 		});
 
-		it("should handle parse errors by showing help for the command", async () => {
+		it("should surface CAC validation errors from the matched command", async () => {
 			const argv = ["node", "tuckshop", "package"];
 			vi.stubGlobal("process", { argv });
-			vi.mocked(mockApp.parse)
-				.mockReturnValueOnce(emptyParseResult())
-				.mockImplementationOnce(() => {
-					throw new Error("Parse error");
-				})
-				.mockImplementationOnce(() => emptyParseResult());
+			vi.mocked(mockApp.runMatchedCommand).mockRejectedValue(
+				new Error("Unknown option `--wat`"),
+			);
 
-			await run();
-
+			await expect(run()).rejects.toThrow("Unknown option `--wat`");
+			expect(mockApp.parse).toHaveBeenCalledTimes(1);
 			expect(mockApp.parse).toHaveBeenCalledWith(argv, { run: false });
-			expect(mockApp.parse).toHaveBeenCalledWith(argv);
-			expect(mockApp.parse).toHaveBeenCalledWith([...argv, "--help"]);
+			expect(mockApp.runMatchedCommand).toHaveBeenCalledTimes(1);
 			expect(mockApp.outputHelp).not.toHaveBeenCalled();
-		});
-
-		it("should fallback to global help if command help also fails", async () => {
-			const argv = ["node", "tuckshop", "package"];
-			vi.stubGlobal("process", { argv });
-			vi.mocked(mockApp.parse)
-				.mockReturnValueOnce(emptyParseResult())
-				.mockImplementationOnce(() => {
-					throw new Error("Parse error");
-				})
-				.mockImplementationOnce(() => {
-					throw new Error("Help parse error");
-				});
-
-			await run();
-
-			expect(mockApp.parse).toHaveBeenCalledWith(argv, { run: false });
-			expect(mockApp.parse).toHaveBeenCalledWith(argv);
-			expect(mockApp.parse).toHaveBeenCalledWith([...argv, "--help"]);
-			expect(mockApp.outputHelp).toHaveBeenCalled();
 		});
 
 		it("should pass through a global --registry override before registration", async () => {
@@ -176,6 +154,8 @@ describe("index", () => {
 				"list",
 			];
 			vi.stubGlobal("process", { argv });
+			mockApp.matchedCommand = { name: "list" };
+			mockApp.options = { registry: "https://example.com/registry.json" };
 			vi.mocked(mockApp.parse).mockReturnValue({
 				args: ["list"],
 				options: { registry: "https://example.com/registry.json" },
@@ -202,6 +182,8 @@ describe("index", () => {
 				"list",
 			];
 			vi.stubGlobal("process", { argv });
+			mockApp.matchedCommand = { name: "list" };
+			mockApp.options = { registry: "https://example.com/registry.json" };
 			vi.mocked(mockApp.parse).mockReturnValue({
 				args: ["list"],
 				options: { registry: "https://example.com/registry.json" },
@@ -219,56 +201,48 @@ describe("index", () => {
 			);
 		});
 
-		it("should reject a missing --registry value before registration", async () => {
+		it("should ignore a boolean --registry flag when loading the registry", async () => {
 			vi.stubGlobal("process", {
 				argv: ["node", "tuckshop", "list", "--registry"],
 			});
+			mockApp.matchedCommand = { name: "list" };
+			mockApp.options = { registry: true };
 			vi.mocked(mockApp.parse).mockReturnValue({
 				args: ["list"],
 				options: { registry: true },
 			});
 
-			await expect(run()).rejects.toThrow(
-				"option `--registry <source>` value is missing",
-			);
-			expect(loadRuntimeRegistry).not.toHaveBeenCalled();
-			expect(registerCommandsCli).not.toHaveBeenCalled();
+			await run();
+
+			const loader = vi.mocked(registerCommandsCli).mock
+				.calls[0]?.[1] as () => Promise<unknown>;
+			await loader();
+			expect(loadRuntimeRegistry).toHaveBeenCalledWith(undefined, undefined);
+			expect(mockApp.runMatchedCommand).toHaveBeenCalled();
 		});
 
-		it("should reject an empty --registry value before registration", async () => {
+		it("should ignore an empty --registry value when loading the registry", async () => {
 			vi.stubGlobal("process", {
 				argv: ["node", "tuckshop", "--registry=", "list"],
 			});
+			mockApp.matchedCommand = { name: "list" };
+			mockApp.options = { registry: "" };
 			vi.mocked(mockApp.parse).mockReturnValue({
 				args: ["list"],
 				options: { registry: "" },
 			});
 
-			await expect(run()).rejects.toThrow(
-				"option `--registry <source>` value is missing",
-			);
-			expect(loadRuntimeRegistry).not.toHaveBeenCalled();
-			expect(registerCommandsCli).not.toHaveBeenCalled();
-		});
+			await run();
 
-		it("should reject a non-string --registry value before registration", async () => {
-			vi.stubGlobal("process", {
-				argv: ["node", "tuckshop", "list", "--registry"],
-			});
-			vi.mocked(mockApp.parse).mockReturnValue({
-				args: ["list"],
-				options: { registry: 42 },
-			});
-
-			await expect(run()).rejects.toThrow(
-				"option `--registry <source>` received an unexpected value (number)",
-			);
-			expect(loadRuntimeRegistry).not.toHaveBeenCalled();
-			expect(registerCommandsCli).not.toHaveBeenCalled();
+			const loader = vi.mocked(registerCommandsCli).mock
+				.calls[0]?.[1] as () => Promise<unknown>;
+			await loader();
+			expect(loadRuntimeRegistry).toHaveBeenCalledWith(undefined, undefined);
 		});
 
 		it("should forward a saved registry when no flag is present", async () => {
 			vi.stubGlobal("process", { argv: ["node", "tuckshop", "list"] });
+			mockApp.matchedCommand = { name: "list" };
 			vi.mocked(readConfig).mockResolvedValue({
 				registry: "https://example.com/saved-registry.json",
 			});
@@ -294,6 +268,8 @@ describe("index", () => {
 					"list",
 				],
 			});
+			mockApp.matchedCommand = { name: "list" };
+			mockApp.options = { registry: "https://example.com/flag-registry.json" };
 			vi.mocked(readConfig).mockResolvedValue({
 				registry: "https://example.com/saved-registry.json",
 			});
@@ -317,6 +293,7 @@ describe("index", () => {
 			vi.stubGlobal("process", {
 				argv: ["node", "tuckshop", "config", "get"],
 			});
+			mockApp.matchedCommand = { name: "config" };
 			mockApp.matchedCommandName = "config";
 
 			await run();

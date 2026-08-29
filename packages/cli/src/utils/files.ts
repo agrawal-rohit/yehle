@@ -69,7 +69,7 @@ function collectCompiledItemTargets(
 	const targets: ResolvedCompiledItemTarget[] = [];
 
 	for (const compiledItem of compiledItems) {
-		for (const file of compiledItem.files ?? []) {
+		for (const file of compiledItem.files) {
 			const destination = absoluteProjectTarget(projectDir, file.target);
 			claimDestination(destination, file.target, seenTargets);
 			targets.push({ target: file.target, destination });
@@ -171,7 +171,7 @@ export async function writeCompiledItemFiles(
 	compiledItem: CompiledItem,
 	writtenTargets: Set<string>,
 ): Promise<void> {
-	for (const file of compiledItem.files ?? []) {
+	for (const file of compiledItem.files) {
 		const destination = absoluteProjectTarget(projectDir, file.target);
 		claimDestination(destination, file.target, writtenTargets);
 		await writeFileAsync(destination, file.content);

@@ -43,3 +43,4 @@ docs/.env*.local
 .claude/
 AGENTS.md
 AGENT.md
+graphify-out/

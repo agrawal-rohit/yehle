@@ -18,15 +18,11 @@ vi.mock("@tuckshop/core", async () => {
 	};
 });
 
-import { type CompiledItem, writeFileAsync } from "@tuckshop/core";
 import {
 	absoluteProjectTarget,
 	confirmFileOverwrites,
 	writeCompiledItemFiles,
 } from "./files";
-
-/** Payload that omits `files` at runtime (parsed payloads always include it). */
-const compiledItemWithoutFiles = {} as CompiledItem;
 
 describe("utils/files", () => {
 	let tempDir: string;
@@ -41,18 +37,6 @@ describe("utils/files", () => {
 	afterEach(() => {
 		fs.rmSync(tempDir, { recursive: true, force: true });
 		vi.restoreAllMocks();
-	});
-
-	it("treats missing files arrays as empty during overwrite checks", async () => {
-		await expect(
-			confirmFileOverwrites(tempDir, [compiledItemWithoutFiles], false),
-		).resolves.toBeUndefined();
-		expect(mockConfirmInput).not.toHaveBeenCalled();
-	});
-
-	it("writes payloads that omit the files array", async () => {
-		await writeCompiledItemFiles(tempDir, compiledItemWithoutFiles, new Set());
-		expect(writeFileAsync).not.toHaveBeenCalled();
 	});
 
 	it("rejects a destination already claimed in writtenTargets", async () => {

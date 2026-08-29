@@ -342,8 +342,6 @@ function printInstallNextSteps(
 		);
 		for (const name of secrets) console.log(`     - ${primaryText(name)}`);
 	}
-
-	setScriptExecutor(undefined);
 }
 
 /**
@@ -370,138 +368,142 @@ export async function addCommand(
 		projectDir,
 	});
 
-	const runtime = createProjectHandlerRuntime(projectDir);
+	try {
+		const runtime = createProjectHandlerRuntime(projectDir);
 
-	const packageManager = await selectNpmPackageManager(projectDir, {
-		select: selectInput,
-	});
-	const pmBindings = {
-		[PACKAGE_MANAGER_KEY]: packageManager,
-		...packageManagerBindings(packageManager),
-	};
-
-	let conditions = await captureRequiredConditions(
-		registry,
-		indexLocation,
-		projectDir,
-		items,
-		runtime,
-		packageManager,
-	);
-
-	let plan = buildInstallPlan(
-		items,
-		registry.items,
-		conditions,
-		packageManager,
-	);
-	if (plan.length === 0)
-		throw new Error("No registry items were selected for installation.");
-
-	({ context: conditions, plan } = await captureItemLocalConditionsForPlan(
-		registry,
-		indexLocation,
-		items,
-		plan,
-		conditions,
-		runtime,
-		packageManager,
-	));
-
-	console.log();
-
-	let compiledItemDocuments = new Map<string, unknown>();
-	const compiledItemSources = [
-		...new Set(plan.flatMap((node) => node.sources ?? []).filter(Boolean)),
-	];
-
-	if (compiledItemSources.length > 0)
-		await runWithTasks("Fetching compiled items", async () => {
-			compiledItemDocuments = await loadCompiledItems(
-				indexLocation,
-				compiledItemSources,
-				registry.itemIntegrity,
-			);
+		const packageManager = await selectNpmPackageManager(projectDir, {
+			select: selectInput,
 		});
+		const pmBindings = {
+			[PACKAGE_MANAGER_KEY]: packageManager,
+			...packageManagerBindings(packageManager),
+		};
 
-	const preparedItems = prepareInstallItems(
-		plan,
-		registry,
-		compiledItemDocuments,
-	);
-
-	const { items: afterHooks, bindings } = await runPrepareInstallScripts(
-		indexLocation,
-		runtime,
-		conditions,
-		packageManager,
-		preparedItems,
-	);
-
-	if (!(await confirmHookMutations(afterHooks))) {
-		setScriptExecutor(undefined);
-		throw new Error(
-			"Install cancelled: script-proposed changes were declined.",
+		let conditions = await captureRequiredConditions(
+			registry,
+			indexLocation,
+			projectDir,
+			items,
+			runtime,
+			packageManager,
 		);
-	}
 
-	const interpolationValues = buildInterpolationContext(
-		conditions,
-		{ ...pmBindings, ...bindings },
-		interpolationOptionValues(registry, plan),
-	);
-	const installItems = afterHooks.map((item) => ({
-		...item,
-		compiledItem: interpolateCompiledItem(
-			item.compiledItem,
-			interpolationValues,
-		),
-	}));
+		let plan = buildInstallPlan(
+			items,
+			registry.items,
+			conditions,
+			packageManager,
+		);
+		if (plan.length === 0)
+			throw new Error("No registry items were selected for installation.");
 
-	await confirmFileOverwrites(
-		projectDir,
-		installItems.map((item) => item.compiledItem),
-		options.overwrite === true,
-	);
+		({ context: conditions, plan } = await captureItemLocalConditionsForPlan(
+			registry,
+			indexLocation,
+			items,
+			plan,
+			conditions,
+			runtime,
+			packageManager,
+		));
 
-	const packageDeclarations = await writePreparedItems(
-		projectDir,
-		installItems,
-	);
+		console.log();
 
-	await mergeProjectCommands(
-		projectDir,
-		installItems.map((item) => item.compiledItem),
-	);
+		let compiledItemDocuments = new Map<string, unknown>();
+		const compiledItemSources = plan.flatMap((node) => node.sources ?? []);
 
-	for (const item of installItems) {
-		for (const scriptUri of item.node.finalizeScripts ?? []) {
-			await runFinalizeInstallHook(indexLocation, scriptUri, runtime, {
-				itemId: item.node.itemId,
-				...(item.node.packIds ? { packIds: item.node.packIds } : {}),
-				conditions,
-				packageManager,
-				bindings,
-				compiledItem: item.compiledItem,
+		if (compiledItemSources.length > 0)
+			await runWithTasks("Fetching compiled items", async () => {
+				compiledItemDocuments = await loadCompiledItems(
+					indexLocation,
+					compiledItemSources,
+					registry.itemIntegrity,
+				);
 			});
+
+		const preparedItems = prepareInstallItems(
+			plan,
+			registry,
+			compiledItemDocuments,
+		);
+
+		const { items: afterHooks, bindings } = await runPrepareInstallScripts(
+			indexLocation,
+			runtime,
+			conditions,
+			packageManager,
+			preparedItems,
+		);
+
+		const ranPrepareHooks = afterHooks.some(
+			(item) => (item.node.prepareScripts ?? []).length > 0,
+		);
+		if (ranPrepareHooks && !(await confirmHookMutations(afterHooks))) {
+			throw new Error(
+				"Install cancelled: script-proposed changes were declined.",
+			);
 		}
+
+		const interpolationValues = buildInterpolationContext(
+			conditions,
+			{ ...pmBindings, ...bindings },
+			interpolationOptionValues(registry, plan),
+		);
+		const installItems = afterHooks.map((item) => ({
+			...item,
+			compiledItem: interpolateCompiledItem(
+				item.compiledItem,
+				interpolationValues,
+			),
+		}));
+
+		await confirmFileOverwrites(
+			projectDir,
+			installItems.map((item) => item.compiledItem),
+			options.overwrite === true,
+		);
+
+		const packageDeclarations = await writePreparedItems(
+			projectDir,
+			installItems,
+		);
+
+		await mergeProjectCommands(
+			projectDir,
+			installItems.map((item) => item.compiledItem),
+		);
+
+		for (const item of installItems) {
+			for (const scriptUri of item.node.finalizeScripts ?? []) {
+				await runFinalizeInstallHook(indexLocation, scriptUri, runtime, {
+					itemId: item.node.itemId,
+					...(item.node.packIds ? { packIds: item.node.packIds } : {}),
+					conditions,
+					packageManager,
+					bindings,
+					compiledItem: item.compiledItem,
+				});
+			}
+		}
+
+		const pendingInstallCommands = await installDeclaredPackages(
+			packageDeclarations,
+			projectDir,
+			packageManager,
+		);
+
+		const itemWord = installItems.length === 1 ? "item" : "items";
+		console.log();
+		console.log(defaultText(`Installed ${installItems.length} ${itemWord}.`));
+
+		const secrets =
+			mergeSecretNames(
+				...installItems.map((item) => item.compiledItem.secrets),
+			) ?? [];
+		printInstallNextSteps(pendingInstallCommands, secrets);
+
+		console.log();
+	} finally {
+		setScriptExecutor(undefined);
 	}
-
-	const pendingInstallCommands = await installDeclaredPackages(
-		packageDeclarations,
-		projectDir,
-		packageManager,
-	);
-
-	const itemWord = installItems.length === 1 ? "item" : "items";
-	console.log();
-	console.log(defaultText(`Installed ${installItems.length} ${itemWord}.`));
-
-	const secrets =
-		mergeSecretNames(
-			...installItems.map((item) => item.compiledItem.secrets),
-		) ?? [];
-	printInstallNextSteps(pendingInstallCommands, secrets);
-
-	console.log();
 }

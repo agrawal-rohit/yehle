@@ -5,65 +5,31 @@ import { loadRuntimeRegistry } from "./utils/registry";
 
 export { printError } from "./cli/errors";
 
-/**
- * Read a validated `--registry` override from parsed CAC options.
- * @param value - Raw option value from CAC.
- * @returns Registry source string, or undefined when the flag was omitted.
- * @throws Error when the flag is present without a usable string value.
- */
-function readRegistryOverride(value: unknown): string | undefined {
-	if (value === undefined) return undefined;
-
-	// Throw an error if the value is true or an empty string
-	if (value === true || value === "")
-		throw new Error(
-			"option `--registry <source>` value is missing. Provide a registry URL or local path.",
-		);
-
-	// Throw an error if the value is not a string
-	if (typeof value !== "string")
-		throw new TypeError(
-			`option \`--registry <source>\` received an unexpected value (${typeof value}).`,
-		);
-
-	return value;
-}
-
 /** Run the tuckshop CLI. */
 export default async function run(): Promise<void> {
 	const app = cac("tuckshop");
 	app.option("--registry <source>", "Use a custom registry URL");
 
-	// Parse the arguments without running the command
-	const { options } = app.parse(process.argv, { run: false });
-	const registryOverride = readRegistryOverride(options.registry);
-
-	// List loads the registry on demand so config commands can run even if it fails
+	/**
+	 * Load the runtime registry from the parsed `--registry` flag or saved config.
+	 * Config commands never call this; add/list load the registry on demand.
+	 * @returns Parsed registry and the index location it was loaded from.
+	 */
 	async function loadRegistry() {
 		const saved = await readConfig();
-		return loadRuntimeRegistry(registryOverride, saved.registry);
+		const flag = app.options.registry;
+		const override =
+			typeof flag === "string" && flag.length > 0 ? flag : undefined;
+		return loadRuntimeRegistry(override, saved.registry);
 	}
 
 	registerCommandsCli(app, loadRegistry);
+	app.help();
 
-	const args = process.argv.slice(2).filter(Boolean);
-	if (args.length === 0) {
-		app.outputHelp();
-		return;
-	}
+	// Parse first so async actions can be awaited.
+	app.parse(process.argv, { run: false });
+	await app.runMatchedCommand();
 
-	try {
-		app.parse(process.argv);
-	} catch {
-		try {
-			app.parse([...process.argv, "--help"]);
-		} catch {
-			app.outputHelp();
-		}
-		return;
-	}
-
-	// CAC exits quietly when argv matches no registered command. Skip when
-	// `--help` already printed (cac unsets matchedCommandName after help).
-	if (!app.matchedCommandName && !app.options.help) app.outputHelp();
+	// CAC already printed `--help` and then unset the matched command.
+	if (!app.matchedCommand && !app.options.help) app.outputHelp();
 }

@@ -4,7 +4,6 @@ import { InvalidJsonError } from "@tuckshop/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockIsFileAsync = vi.fn<(candidate: string) => Promise<boolean>>();
-const mockReadJsonFileAsync = vi.fn();
 const mockReadFileAsync = vi.fn();
 const mockParseRegistryDocument = vi.fn();
 const mockFetch = vi.fn();
@@ -15,8 +14,6 @@ vi.mock("@tuckshop/core", async () => {
 	return {
 		...actual,
 		isFileAsync: (candidate: string) => mockIsFileAsync(candidate),
-		readJsonFileAsync: (location: string, label: string) =>
-			mockReadJsonFileAsync(location, label),
 		readFileAsync: (location: string) => mockReadFileAsync(location),
 		parseRegistryDocument: (raw: unknown) => mockParseRegistryDocument(raw),
 	};
@@ -284,7 +281,7 @@ describe("loadRuntimeRegistry", () => {
 	});
 
 	it("loads local registry sources from disk", async () => {
-		mockReadJsonFileAsync.mockResolvedValue(sampleRegistry);
+		mockReadFileAsync.mockResolvedValue(JSON.stringify(sampleRegistry));
 
 		await expect(
 			loadRuntimeRegistry("/workspace/registry.json"),
@@ -292,10 +289,7 @@ describe("loadRuntimeRegistry", () => {
 			registry: sampleRegistry,
 			indexLocation: "/workspace/registry.json",
 		});
-		expect(mockReadJsonFileAsync).toHaveBeenCalledWith(
-			"/workspace/registry.json",
-			"registry at /workspace/registry.json",
-		);
+		expect(mockReadFileAsync).toHaveBeenCalledWith("/workspace/registry.json");
 		expect(mockParseRegistryDocument).toHaveBeenCalledWith(sampleRegistry);
 		expect(mockFetch).not.toHaveBeenCalled();
 	});
@@ -532,7 +526,7 @@ describe("loadRuntimeRegistry", () => {
 
 	it("wraps local registry read failures with a labeled error", async () => {
 		const failure = new Error("ENOENT");
-		mockReadJsonFileAsync.mockRejectedValue(failure);
+		mockReadFileAsync.mockRejectedValue(failure);
 
 		await expect(
 			loadRuntimeRegistry("/workspace/registry.json"),
@@ -543,7 +537,7 @@ describe("loadRuntimeRegistry", () => {
 	});
 
 	it("stringifies non-Error local registry read failures", async () => {
-		mockReadJsonFileAsync.mockRejectedValue("disk-full");
+		mockReadFileAsync.mockRejectedValue("disk-full");
 
 		await expect(
 			loadRuntimeRegistry("/workspace/registry.json"),
@@ -553,15 +547,11 @@ describe("loadRuntimeRegistry", () => {
 	});
 
 	it("propagates labeled local registry JSON parse failures", async () => {
-		const failure = new InvalidJsonError(
-			"registry at /workspace/registry.json",
-			new SyntaxError("Unexpected token"),
-		);
-		mockReadJsonFileAsync.mockRejectedValue(failure);
+		mockReadFileAsync.mockResolvedValue("{ not json");
 
-		await expect(loadRuntimeRegistry("/workspace/registry.json")).rejects.toBe(
-			failure,
-		);
+		await expect(
+			loadRuntimeRegistry("/workspace/registry.json"),
+		).rejects.toBeInstanceOf(InvalidJsonError);
 	});
 });
 

@@ -69,7 +69,7 @@ describe("utils/packages", () => {
 		expect(mockConfirmInput).not.toHaveBeenCalled();
 	});
 
-	it("returns early when merged packages are empty", async () => {
+	it("returns early when declarations list no package names", async () => {
 		mockMergeEcosystemMaps.mockReturnValue(undefined);
 
 		await expect(
@@ -79,7 +79,7 @@ describe("utils/packages", () => {
 				NpmPackageManager.NPM,
 			),
 		).resolves.toEqual([]);
-		expect(mockConfirmInput).toHaveBeenCalled();
+		expect(mockConfirmInput).not.toHaveBeenCalled();
 		expect(mockBuildPackageInstallCommands).not.toHaveBeenCalled();
 	});
 

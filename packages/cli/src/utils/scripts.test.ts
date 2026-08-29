@@ -79,9 +79,9 @@ describe("prepareScriptExecution", () => {
 
 describe("confirmHookMutations", () => {
 	it("skips the prompt when hooks proposed no mutations", async () => {
-		await expect(confirmHookMutations([{ compiledItem: {} }])).resolves.toBe(
-			true,
-		);
+		await expect(
+			confirmHookMutations([{ compiledItem: { files: [] } }]),
+		).resolves.toBe(true);
 		expect(mockConfirmInput).not.toHaveBeenCalled();
 	});
 
@@ -91,7 +91,7 @@ describe("confirmHookMutations", () => {
 			confirmHookMutations([
 				{
 					compiledItem: {
-						files: [{ target: "LICENSE" }],
+						files: [{ target: "LICENSE", content: "MIT" }],
 						dependencies: { npm: { runtime: ["zod"] } },
 					},
 				},

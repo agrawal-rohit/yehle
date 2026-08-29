@@ -1,5 +1,6 @@
 import {
 	assertScriptsAllowed,
+	type CompiledItem,
 	classifyRegistryTrust,
 	collectDeclaredScriptUris,
 	createScriptExecutor,
@@ -51,8 +52,6 @@ export async function prepareScriptExecution(options: {
 				runnerPath: resolveSandboxRunnerPath(),
 			}),
 		);
-	} else {
-		setScriptExecutor(undefined);
 	}
 
 	return { trust, scriptsAllowed };
@@ -64,22 +63,12 @@ export async function prepareScriptExecution(options: {
  * @returns False when the user cancels the install.
  */
 export async function confirmHookMutations(
-	items: Array<{
-		compiledItem: {
-			files?: Array<{ target: string }>;
-			dependencies?: {
-				npm?: { runtime?: string[]; dev?: string[] };
-			};
-			commands?: {
-				npm?: Record<string, string>;
-			};
-		};
-	}>,
+	items: Array<{ compiledItem: CompiledItem }>,
 ): Promise<boolean> {
 	const fileTargets = [
 		...new Set(
 			items.flatMap((item) =>
-				(item.compiledItem.files ?? []).map((file) => file.target),
+				item.compiledItem.files.map((file) => file.target),
 			),
 		),
 	].sort((a, b) => a.localeCompare(b));

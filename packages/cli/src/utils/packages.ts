@@ -17,38 +17,6 @@ import { confirmInput } from "../cli/prompts";
 import { runWithTasks } from "../cli/tasks";
 
 /**
- * Build install commands for merged package declarations.
- * @param packageDeclarations - Per-payload package maps from the install plan.
- * @param packageManager - Selected npm package manager.
- * @param shouldInstall - When true, return runnable commands; otherwise next-step suggestions.
- * @returns Commands to run now and commands to suggest as next steps.
- */
-async function collectPackageInstallCommands(
-	packageDeclarations: RegistryEcosystemDependencies[],
-	packageManager: RegistryPackageManager,
-	shouldInstall: boolean,
-): Promise<{ installCommands: string[]; pendingCommands: string[] }> {
-	const merged = mergeEcosystemMaps(mergeDependencySet, ...packageDeclarations);
-	const installCommands: string[] = [];
-	const pendingCommands: string[] = [];
-	if (!merged) return { installCommands, pendingCommands };
-
-	const commands = shouldInstall ? installCommands : pendingCommands;
-	const npmPackages = merged[RegistryEcosystem.NPM];
-	if (npmPackages) {
-		commands.push(
-			...buildPackageInstallCommands(
-				RegistryEcosystem.NPM,
-				packageManager,
-				npmPackages,
-			),
-		);
-	}
-
-	return { installCommands, pendingCommands };
-}
-
-/**
  * Optionally run package install commands from payload declarations.
  * @param packageDeclarations - Per-payload package maps collected during writes.
  * @param projectDir - Absolute project root.
@@ -62,38 +30,34 @@ export async function installDeclaredPackages(
 ): Promise<string[]> {
 	if (packageDeclarations.length === 0) return [];
 
+	const merged = mergeEcosystemMaps(mergeDependencySet, ...packageDeclarations);
+	const npmPackages = merged?.[RegistryEcosystem.NPM];
+	if (!npmPackages) return [];
+
 	const packageNames = [
-		...new Set(
-			packageDeclarations.flatMap((declaration) => {
-				const npm = declaration[RegistryEcosystem.NPM];
-				if (!npm) return [];
-				return [...(npm.runtime ?? []), ...(npm.dev ?? [])];
-			}),
-		),
+		...new Set([...(npmPackages.runtime ?? []), ...(npmPackages.dev ?? [])]),
 	].sort((a, b) => a.localeCompare(b));
+	if (packageNames.length === 0) return [];
 
 	console.log();
-	if (packageNames.length > 0) {
-		console.log("Packages to install:");
-		for (const name of packageNames) console.log(`  - ${name}`);
-	}
+	console.log("Packages to install:");
+	for (const name of packageNames) console.log(`  - ${name}`);
 
 	const shouldInstall = await confirmInput(
 		"Would you like to install the required dependencies?",
 		{},
 		true,
 	);
-	const { installCommands, pendingCommands } =
-		await collectPackageInstallCommands(
-			packageDeclarations,
-			packageManager,
-			shouldInstall,
-		);
+	const commands = buildPackageInstallCommands(
+		RegistryEcosystem.NPM,
+		packageManager,
+		npmPackages,
+	);
 
-	if (installCommands.length === 0) return pendingCommands;
+	if (!shouldInstall) return commands;
 
 	console.log();
-	for (const command of installCommands) {
+	for (const command of commands) {
 		await runWithTasks(command, async () => {
 			await runAsync(command, { cwd: projectDir, stdio: "inherit" });
 		});

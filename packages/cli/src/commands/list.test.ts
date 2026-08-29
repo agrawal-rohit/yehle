@@ -1,17 +1,6 @@
 import type { Registry } from "@tuckshop/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mockParseMultiValueOption = vi.fn((value: string) =>
-	value
-		.split(",")
-		.map((token) => token.trim())
-		.filter(Boolean),
-);
-
-vi.mock("../cli/options", () => ({
-	parseMultiValueOption: (value: string) => mockParseMultiValueOption(value),
-}));
-
 vi.mock("chalk", () => ({
 	default: {
 		bold: (text: string) => text,
@@ -132,6 +121,34 @@ describe("commands/list", () => {
 		);
 		expect(output).not.toContain("Alpha Component");
 		expect(output).toContain("2 item(s)");
+	});
+
+	it("lists items for repeated --type values and comma entries", async () => {
+		const registry = makeRegistry({
+			"theme-a": makeItem({
+				id: "theme-a",
+				title: "Alpha Theme",
+				type: "theme",
+			}),
+			"component-a": makeItem({
+				id: "component-a",
+				title: "Alpha Component",
+				type: "component",
+			}),
+			"template-a": makeItem({
+				id: "template-a",
+				title: "Alpha Template",
+				type: "template",
+			}),
+		});
+
+		await listCommand(registry, ["theme", "component,template"]);
+
+		const output = consoleLogSpy.mock.calls.map((call) => call[0]).join("\n");
+		expect(output).toContain("Alpha Theme");
+		expect(output).toContain("Alpha Component");
+		expect(output).toContain("Alpha Template");
+		expect(output).toContain("3 item(s)");
 	});
 
 	it("lists all types when --type is all", async () => {

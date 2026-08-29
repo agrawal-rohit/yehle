@@ -15,6 +15,12 @@ const mockWriteFileAsync = vi.fn();
 const mockIsFileAsync = vi.fn();
 const mockRunAsync = vi.fn();
 const mockRunWithTasks = vi.fn();
+const mockConfirmHookMutations = vi.fn(async () => true);
+const mockPrepareScriptExecution = vi.fn(async () => ({
+	trust: "bundled",
+	policy: "allow",
+	scriptsAllowed: true,
+}));
 
 vi.mock("../cli/tasks", () => ({
 	runWithTasks: (...args: unknown[]) => mockRunWithTasks(...args),
@@ -35,12 +41,10 @@ vi.mock("../utils/registry", () => ({
 }));
 
 vi.mock("../utils/scripts", () => ({
-	prepareScriptExecution: vi.fn(async () => ({
-		trust: "bundled",
-		policy: "allow",
-		scriptsAllowed: true,
-	})),
-	confirmHookMutations: vi.fn(async () => true),
+	prepareScriptExecution: (...args: unknown[]) =>
+		mockPrepareScriptExecution(...args),
+	confirmHookMutations: (...args: unknown[]) =>
+		mockConfirmHookMutations(...args),
 }));
 
 vi.mock("@tuckshop/core", async () => {
@@ -115,14 +119,15 @@ describe("commands/add", () => {
 		mockIsFileAsync.mockResolvedValue(false);
 		mockWriteFileAsync.mockResolvedValue(undefined);
 		mockConfirmInput.mockResolvedValue(false);
+		mockConfirmHookMutations.mockResolvedValue(true);
+		mockPrepareScriptExecution.mockResolvedValue({
+			trust: "bundled",
+			policy: "allow",
+			scriptsAllowed: true,
+		});
 		mockRunWithTasks.mockImplementation(
-			async (
-				_goal: string,
-				task?: () => Promise<void>,
-				subtasks: Array<{ task: () => Promise<void> }> = [],
-			) => {
+			async (_goal: string, task?: () => Promise<void>) => {
 				if (task) await task();
-				for (const subtask of subtasks) await subtask.task();
 			},
 		);
 	});
@@ -133,11 +138,14 @@ describe("commands/add", () => {
 	});
 
 	it("installs a positional item and writes compiled item files", async () => {
-		await addCommand(registry, indexLocation, {
-			items: ["pr-template-configuration"],
-		});
+		await expect(
+			addCommand(registry, indexLocation, {
+				items: ["pr-template-configuration"],
+			}),
+		).resolves.toBeUndefined();
 
 		expect(mockMultiselectInput).not.toHaveBeenCalled();
+		expect(mockConfirmHookMutations).not.toHaveBeenCalled();
 		expect(mockLoadCompiledItems).toHaveBeenCalledWith(
 			indexLocation,
 			["r/pr-template-configuration.json"],
@@ -948,6 +956,34 @@ module.exports = {
 		).rejects.toThrow("No registry items were selected for installation.");
 	});
 
+	it("cancels when script-proposed mutations are declined", async () => {
+		const core = await import("@tuckshop/core");
+		const clearExecutor = vi.spyOn(core, "setScriptExecutor");
+		vi.spyOn(core, "runPrepareInstallHook").mockResolvedValue({
+			files: [{ target: "HOOK.md", content: "hooked" }],
+			bindings: {},
+		});
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "pr-template-configuration",
+				sources: ["r/pr-template-configuration.json"],
+				prepareScripts: ["r/item.prepare.0.js"],
+			},
+		]);
+		mockConfirmHookMutations.mockResolvedValue(false);
+
+		await expect(
+			addCommand(registry, indexLocation, {
+				items: ["pr-template-configuration"],
+			}),
+		).rejects.toThrow(
+			"Install cancelled: script-proposed changes were declined.",
+		);
+
+		expect(clearExecutor).toHaveBeenCalledWith(undefined);
+		expect(mockWriteFileAsync).not.toHaveBeenCalled();
+	});
+
 	it("passes packIds into prepare scripts when present", async () => {
 		const handlerDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-variant-"));
 		const catalogPath = path.join(handlerDir, "registry.json");
@@ -1596,7 +1632,7 @@ module.exports = async function prepare() {
 						files: [
 							{
 								target: "HELLO.md",
-								content: "Hello {{authorName}} {{pmRun}}",
+								content: "Hello {{authorName}} {{language}} {{pmRun}}",
 							},
 						],
 					},
@@ -1617,6 +1653,11 @@ module.exports = async function prepare() {
 							kind: RegistryConditionKind.TEXT,
 							label: "Author",
 						},
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [{ value: "typescript", label: "TypeScript" }],
+						},
 					},
 				},
 			},
@@ -1629,7 +1670,7 @@ module.exports = async function prepare() {
 
 		expect(mockWriteFileAsync).toHaveBeenCalledWith(
 			path.join(tempDir, "HELLO.md"),
-			"Hello Ada pnpm",
+			"Hello Ada typescript pnpm",
 		);
 	});
 });

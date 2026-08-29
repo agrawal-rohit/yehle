@@ -1,10 +1,9 @@
 import type { Registry } from "@tuckshop/core";
-import type { CAC } from "cac";
+import cac, { type CAC } from "cac";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockListCommand = vi.fn();
 const mockAddCommand = vi.fn();
-const mockPickStringOptions = vi.fn();
 const mockIntro = vi.fn();
 const mockConfigGetCommand = vi.fn();
 const mockConfigSetCommand = vi.fn();
@@ -25,12 +24,6 @@ vi.mock("./config", () => ({
 	configUnsetCommand: (...args: unknown[]) => mockConfigUnsetCommand(...args),
 }));
 
-vi.mock("../cli/options", () => ({
-	pickStringOptions: (...args: unknown[]) => mockPickStringOptions(...args),
-	getBooleanOption: (options: Record<string, unknown>, key: string) =>
-		options[key] === true,
-}));
-
 vi.mock("../cli/animated-intro", () => ({
 	animatedIntro: (...args: unknown[]) => mockIntro(...args),
 }));
@@ -40,11 +33,11 @@ import { registerCommandsCli } from "./index";
 function createMockApp() {
 	const actions = new Map<string, (...args: unknown[]) => Promise<void>>();
 	const option = vi.fn().mockReturnThis();
-	const example = vi.fn().mockReturnThis();
+	const usage = vi.fn().mockReturnThis();
 	const command = vi.fn((name: string) => {
 		const commandApi = {
 			option,
-			example,
+			usage,
 			action: (handler: (...args: unknown[]) => Promise<void>) => {
 				actions.set(name, handler);
 				return commandApi;
@@ -54,7 +47,6 @@ function createMockApp() {
 	});
 
 	const app = {
-		usage: vi.fn(),
 		command,
 	};
 
@@ -62,7 +54,7 @@ function createMockApp() {
 		app: app as unknown as CAC,
 		command,
 		option,
-		example,
+		usage,
 		actions,
 	};
 }
@@ -100,7 +92,6 @@ describe("commands/index", () => {
 			}) as typeof process.exit,
 		});
 
-		mockPickStringOptions.mockReturnValue({ type: "theme" });
 		mockListCommand.mockReturnValue(undefined);
 		mockAddCommand.mockResolvedValue(undefined);
 		mockIntro.mockResolvedValue(undefined);
@@ -134,13 +125,12 @@ describe("commands/index", () => {
 	}
 
 	it("registers the add, list, and nested config commands", () => {
-		const { app, command, option, example } = createMockApp();
+		const { app, command, option, usage } = createMockApp();
 
 		registerCommandsCli(app, mockLoadRegistry);
 
-		expect(app.usage).toHaveBeenCalledWith("<command> [options]");
 		expect(command).toHaveBeenCalledWith(
-			"add [items...]",
+			"add [...items]",
 			"Add registry items to the current working directory",
 		);
 		expect(command).toHaveBeenCalledWith(
@@ -148,20 +138,8 @@ describe("commands/index", () => {
 			"List available registry items",
 		);
 		expect(command).toHaveBeenCalledWith(
-			"config",
+			"config <action> [source]",
 			"Get, set, or unset the default registry source",
-		);
-		expect(command).toHaveBeenCalledWith(
-			"config get",
-			"Print the active registry source",
-		);
-		expect(command).toHaveBeenCalledWith(
-			"config set [source]",
-			"Set the default registry HTTPS URL or local path (prompts if omitted)",
-		);
-		expect(command).toHaveBeenCalledWith(
-			"config unset",
-			"Clear the saved registry and use the default",
 		);
 		expect(option).toHaveBeenCalledWith(
 			"--overwrite",
@@ -171,37 +149,31 @@ describe("commands/index", () => {
 			"--type <types>",
 			"Filter by type: all, or comma-separated types. Lists all types when omitted",
 		);
-		expect(example).toHaveBeenCalledTimes(1);
-		const exampleFactory = example.mock.calls[0]?.[0] as (
-			bin: string,
-		) => string;
-		expect(exampleFactory("tuckshop")).toBe(
-			"$ tuckshop config set <url-or-path>",
-		);
+		expect(usage).toHaveBeenCalledWith("config <get|set|unset> [source]");
 	});
 
 	it("runs the add command action with no positional items", async () => {
 		const { app, actions } = createMockApp();
 		registerCommandsCli(app, mockLoadRegistry);
 
-		await actions.get("add [items...]")?.(undefined, {});
+		await actions.get("add [...items]")?.([], {});
 
 		expect(mockAddCommand).toHaveBeenCalledWith(
 			registry,
 			"/workspace/registry.json",
 			{
 				items: [],
-				overwrite: false,
+				overwrite: undefined,
 			},
 		);
 	});
 
-	it("runs the add command action with trimmed positional items", async () => {
+	it("runs the add command action with positional items and --overwrite", async () => {
 		const { app, actions } = createMockApp();
 		registerCommandsCli(app, mockLoadRegistry);
 
-		await actions.get("add [items...]")?.(
-			["pr-template-configuration", "  ", ""],
+		await actions.get("add [...items]")?.(
+			["pr-template-configuration", "license"],
 			{ overwrite: true },
 		);
 
@@ -211,13 +183,13 @@ describe("commands/index", () => {
 			registry,
 			"/workspace/registry.json",
 			{
-				items: ["pr-template-configuration"],
+				items: ["pr-template-configuration", "license"],
 				overwrite: true,
 			},
 		);
 	});
 
-	it("runs the list command action with picked options", async () => {
+	it("runs the list command action with the CAC --type option", async () => {
 		const { app, actions } = createMockApp();
 		registerCommandsCli(app, mockLoadRegistry);
 
@@ -225,11 +197,20 @@ describe("commands/index", () => {
 
 		expect(mockLoadRegistry).toHaveBeenCalled();
 		expect(mockIntro).toHaveBeenCalledWith("here's the menu");
-		expect(mockPickStringOptions).toHaveBeenCalledWith({ type: "theme" }, [
-			"type",
-		]);
 		expect(mockListCommand).toHaveBeenCalledWith(registry, "theme");
 		expect(processExitSpy).not.toHaveBeenCalled();
+	});
+
+	it("forwards repeated CAC --type values as an array", async () => {
+		const { app, actions } = createMockApp();
+		registerCommandsCli(app, mockLoadRegistry);
+
+		await actions.get("list")?.({ type: ["theme", "component"] });
+
+		expect(mockListCommand).toHaveBeenCalledWith(registry, [
+			"theme",
+			"component",
+		]);
 	});
 
 	it("exits when the registry loader fails for list", async () => {
@@ -244,20 +225,20 @@ describe("commands/index", () => {
 		const { app, actions } = createMockApp();
 		registerCommandsCli(app, mockLoadRegistry);
 
-		await actions.get("config get")?.();
+		await actions.get("config <action> [source]")?.("get");
 
 		expect(mockLoadRegistry).not.toHaveBeenCalled();
 		expect(mockIntro).toHaveBeenCalledWith("fetching the configuration");
 		expect(mockConfigGetCommand).toHaveBeenCalledWith();
 	});
 
-	it("rejects bare config without a subcommand", async () => {
+	it("rejects an empty config action", async () => {
 		const { app, actions } = createMockApp();
 		registerCommandsCli(app, mockLoadRegistry);
 
 		await expectCommandError(
-			actions.get("config")?.(),
-			"Missing config action. Usage: tuckshop config <get|set|unset> [source]",
+			actions.get("config <action> [source]")?.(""),
+			'Unknown config action ""',
 		);
 		expect(mockConfigGetCommand).not.toHaveBeenCalled();
 	});
@@ -266,7 +247,8 @@ describe("commands/index", () => {
 		const { app, actions } = createMockApp();
 		registerCommandsCli(app, mockLoadRegistry);
 
-		await actions.get("config set [source]")?.(
+		await actions.get("config <action> [source]")?.(
+			"set",
 			"https://example.com/registry.json",
 		);
 
@@ -280,7 +262,7 @@ describe("commands/index", () => {
 		const { app, actions } = createMockApp();
 		registerCommandsCli(app, mockLoadRegistry);
 
-		await actions.get("config set [source]")?.();
+		await actions.get("config <action> [source]")?.("set");
 
 		expect(mockConfigSetCommand).toHaveBeenCalledWith(undefined);
 	});
@@ -289,7 +271,7 @@ describe("commands/index", () => {
 		const { app, actions } = createMockApp();
 		registerCommandsCli(app, mockLoadRegistry);
 
-		await actions.get("config unset")?.();
+		await actions.get("config <action> [source]")?.("unset");
 
 		expect(mockIntro).toHaveBeenCalledWith("clearing the configuration");
 		expect(mockConfigUnsetCommand).toHaveBeenCalled();
@@ -301,8 +283,149 @@ describe("commands/index", () => {
 		registerCommandsCli(app, mockLoadRegistry);
 
 		await expectCommandError(
-			actions.get("config set [source]")?.("nope"),
+			actions.get("config <action> [source]")?.("set", "nope"),
 			"bad source",
 		);
+	});
+
+	it("rejects an unknown config action", async () => {
+		const { app, actions } = createMockApp();
+		registerCommandsCli(app, mockLoadRegistry);
+
+		await expectCommandError(
+			actions.get("config <action> [source]")?.("nope"),
+			'Unknown config action "nope"',
+		);
+		expect(mockConfigGetCommand).not.toHaveBeenCalled();
+	});
+
+	it("matches config get/set/unset against real CAC argv", async () => {
+		const app = cac("tuckshop");
+		registerCommandsCli(app, mockLoadRegistry);
+
+		app.parse(["node", "tuckshop", "config", "get"], { run: false });
+		await app.runMatchedCommand();
+		expect(mockConfigGetCommand).toHaveBeenCalledWith();
+		expect(mockLoadRegistry).not.toHaveBeenCalled();
+
+		mockConfigGetCommand.mockClear();
+		app.parse(
+			[
+				"node",
+				"tuckshop",
+				"config",
+				"set",
+				"https://example.com/registry.json",
+			],
+			{ run: false },
+		);
+		await app.runMatchedCommand();
+		expect(mockConfigSetCommand).toHaveBeenCalledWith(
+			"https://example.com/registry.json",
+		);
+
+		app.parse(["node", "tuckshop", "config", "unset"], { run: false });
+		await app.runMatchedCommand();
+		expect(mockConfigUnsetCommand).toHaveBeenCalled();
+	});
+
+	it("lets CAC reject bare config when the required action is missing", async () => {
+		const app = cac("tuckshop");
+		registerCommandsCli(app, mockLoadRegistry);
+
+		app.parse(["node", "tuckshop", "config"], { run: false });
+		expect(() => app.runMatchedCommand()).toThrow(
+			"missing required args for command `config <action> [source]`",
+		);
+		expect(mockConfigGetCommand).not.toHaveBeenCalled();
+	});
+
+	it("lets CAC reject a missing required --registry value", async () => {
+		const app = cac("tuckshop");
+		app.option("--registry <source>", "Use a custom registry URL");
+		registerCommandsCli(app, mockLoadRegistry);
+
+		app.parse(["node", "tuckshop", "list", "--registry"], { run: false });
+		expect(() => app.runMatchedCommand()).toThrow(
+			"option `--registry <source>` value is missing",
+		);
+		expect(mockLoadRegistry).not.toHaveBeenCalled();
+	});
+
+	it("matches add against real CAC argv, including variadic items and --overwrite", async () => {
+		const app = cac("tuckshop");
+		registerCommandsCli(app, mockLoadRegistry);
+
+		app.parse(["node", "tuckshop", "add"], { run: false });
+		await app.runMatchedCommand();
+		expect(mockAddCommand).toHaveBeenCalledWith(
+			registry,
+			"/workspace/registry.json",
+			{
+				items: [],
+				overwrite: undefined,
+			},
+		);
+
+		mockAddCommand.mockClear();
+		app.parse(
+			["node", "tuckshop", "add", "pr-template-configuration", "license"],
+			{ run: false },
+		);
+		await app.runMatchedCommand();
+		expect(mockAddCommand).toHaveBeenCalledWith(
+			registry,
+			"/workspace/registry.json",
+			{
+				items: ["pr-template-configuration", "license"],
+				overwrite: undefined,
+			},
+		);
+
+		mockAddCommand.mockClear();
+		app.parse(
+			["node", "tuckshop", "add", "pr-template-configuration", "--overwrite"],
+			{ run: false },
+		);
+		await app.runMatchedCommand();
+		expect(mockAddCommand).toHaveBeenCalledWith(
+			registry,
+			"/workspace/registry.json",
+			{
+				items: ["pr-template-configuration"],
+				overwrite: true,
+			},
+		);
+	});
+
+	it("matches list --type against real CAC argv, including repeats", async () => {
+		const app = cac("tuckshop");
+		registerCommandsCli(app, mockLoadRegistry);
+
+		app.parse(["node", "tuckshop", "list", "--type", "theme"], { run: false });
+		await app.runMatchedCommand();
+		expect(mockListCommand).toHaveBeenCalledWith(registry, "theme");
+
+		mockListCommand.mockClear();
+		app.parse(
+			["node", "tuckshop", "list", "--type", "theme", "--type", "component"],
+			{ run: false },
+		);
+		await app.runMatchedCommand();
+		expect(mockListCommand).toHaveBeenCalledWith(registry, [
+			"theme",
+			"component",
+		]);
+	});
+
+	it("lets CAC reject a missing required --type value", async () => {
+		const app = cac("tuckshop");
+		registerCommandsCli(app, mockLoadRegistry);
+
+		app.parse(["node", "tuckshop", "list", "--type"], { run: false });
+		expect(() => app.runMatchedCommand()).toThrow(
+			"option `--type <types>` value is missing",
+		);
+		expect(mockListCommand).not.toHaveBeenCalled();
 	});
 });
