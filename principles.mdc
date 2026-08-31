@@ -1,0 +1,25 @@
+---
+description: General coding principles and coding style to follow
+alwaysApply: true
+---
+
+# General coding principles
+
+- Fail fast with clear, actionable error messages.
+- Favour solutions that achieve the same behaviour with fewer lines of code and less unnecessary indirection.
+- Keep constants scoped as locally as practical; avoid module-level constants when they are only used inside one function.
+- Prefer well-maintained third-party libraries over hand-rolled implementations for complex one-off tasks.
+- Use descriptive names that reveal intent - `fetch_active_agents()` not `get_data()`
+
+## Third-party libraries
+
+When using a third-party library, read the docs for the **installed version** (README, API reference, and local package source or types when docs are thin) and follow its recommended usage.
+
+- Prefer the library’s documented API, call order, and lifecycle over wrappers or control flow it already provides.
+- Do not re-implement what the library already does. Trust and surface its errors unless there is a product reason to map them.
+- If a recommended pattern needs a feature the pinned version does not support, use the supported alternative and document why in a short comment.
+
+## Documentation expectations
+
+- Every function should have a docstring (or equivalent) that documents parameters, important constraints, return values, and errors that may be thrown.
+- Prefer single-line inline comments that intuitively explain the **what** (operation being performed in context of the overall code flow) and **why** (assumptions made, edge-cases ignored, etc.) of an obscure section of code intuitively so that a new developer can understand the code semantically without understanding each line in detail.
