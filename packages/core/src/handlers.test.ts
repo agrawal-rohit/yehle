@@ -7,8 +7,8 @@ import {
 	createHandlerRuntime,
 	inferConditionDefault,
 	localScriptPath,
-	runFinalizeInstallHook,
-	runPrepareInstallHook,
+	runAfterInstallHook,
+	runBeforeWriteHook,
 } from "./handlers";
 import { NpmPackageManager } from "./packages";
 
@@ -26,25 +26,25 @@ describe("core/handlers", () => {
 	describe("localScriptPath", () => {
 		it("joins a relative script under a local registry", () => {
 			const catalog = path.join(tempDir, "registry.json");
-			expect(localScriptPath(catalog, "r/item.prepare.0.js")).toBe(
-				path.join(tempDir, "r/item.prepare.0.js"),
+			expect(localScriptPath(catalog, "r/item.beforeWrite.0.js")).toBe(
+				path.join(tempDir, "r/item.beforeWrite.0.js"),
 			);
 		});
 
 		it("trims surrounding whitespace on the script URI", () => {
 			const catalog = path.join(tempDir, "registry.json");
-			expect(localScriptPath(catalog, "  r/item.prepare.0.js  ")).toBe(
-				path.join(tempDir, "r/item.prepare.0.js"),
+			expect(localScriptPath(catalog, "  r/item.beforeWrite.0.js  ")).toBe(
+				path.join(tempDir, "r/item.beforeWrite.0.js"),
 			);
 		});
 
 		it("rejects empty and whitespace-only script URIs", () => {
 			const catalog = path.join(tempDir, "registry.json");
 			expect(() => localScriptPath(catalog, "")).toThrow(
-				'Script URI "" must be a relative path under the registry directory.',
+				"Script URI must not be empty.",
 			);
 			expect(() => localScriptPath(catalog, "   ")).toThrow(
-				'Script URI "   " must be a relative path under the registry directory.',
+				"Script URI must not be empty.",
 			);
 		});
 
@@ -52,17 +52,25 @@ describe("core/handlers", () => {
 			expect(() =>
 				localScriptPath(
 					"https://example.com/registry.json",
-					"r/item.prepare.0.js",
+					"r/item.beforeWrite.0.js",
 				),
 			).toThrow("local registry");
+		});
+
+		it("rejects a relative registry index location", () => {
+			expect(() =>
+				localScriptPath("registry.json", "r/item.beforeWrite.0.js"),
+			).toThrow(
+				"Registry index location must be an absolute path or HTTPS URL.",
+			);
 		});
 
 		it("rejects parent-directory escapes with Script URI wording", () => {
 			const catalog = path.join(tempDir, "registry.json");
 			expect(() =>
-				localScriptPath(catalog, "r/../outside.prepare.0.js"),
+				localScriptPath(catalog, "r/../outside.beforeWrite.0.js"),
 			).toThrow(
-				'Script URI "r/../outside.prepare.0.js" must be a relative path under the registry directory.',
+				'Script URI "r/../outside.beforeWrite.0.js" must be a relative path under the registry directory.',
 			);
 		});
 
@@ -74,7 +82,7 @@ describe("core/handlers", () => {
 		});
 	});
 
-	describe("runPrepareInstallHook script loading", () => {
+	describe("runBeforeWriteHook script loading", () => {
 		const runtime = () =>
 			createHandlerRuntime(tempDir, {
 				isFile: vi.fn(async () => false),
@@ -84,15 +92,15 @@ describe("core/handlers", () => {
 
 		it("loads a default-exported install hook function", async () => {
 			const catalog = path.join(tempDir, "registry.json");
-			const scriptPath = path.join(tempDir, "r/item.prepare.0.js");
+			const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
 			fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 			fs.writeFileSync(
 				scriptPath,
-				"module.exports = { default: async function prepare() {} };\n",
+				"module.exports = { default: async function beforeWrite() {} };\n",
 			);
 
 			await expect(
-				runPrepareInstallHook(catalog, "r/item.prepare.0.js", runtime(), {
+				runBeforeWriteHook(catalog, "r/item.beforeWrite.0.js", runtime(), {
 					itemId: "item",
 					conditions: {},
 					packageManager: NpmPackageManager.NPM,
@@ -103,15 +111,15 @@ describe("core/handlers", () => {
 
 		it("loads a module that exports the hook function directly", async () => {
 			const catalog = path.join(tempDir, "registry.json");
-			const scriptPath = path.join(tempDir, "r/item.prepare.0.js");
+			const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
 			fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 			fs.writeFileSync(
 				scriptPath,
-				"module.exports = async function prepare() { return { files: [] }; };\n",
+				"module.exports = async function beforeWrite() { return { files: [] }; };\n",
 			);
 
 			await expect(
-				runPrepareInstallHook(catalog, "r/item.prepare.0.js", runtime(), {
+				runBeforeWriteHook(catalog, "r/item.beforeWrite.0.js", runtime(), {
 					itemId: "item",
 					conditions: {},
 					packageManager: NpmPackageManager.NPM,
@@ -122,18 +130,18 @@ describe("core/handlers", () => {
 
 		it("rejects modules without an install hook function", async () => {
 			const catalog = path.join(tempDir, "registry.json");
-			const scriptPath = path.join(tempDir, "r/bad.prepare.0.js");
+			const scriptPath = path.join(tempDir, "r/bad.beforeWrite.0.js");
 			fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 			fs.writeFileSync(scriptPath, "module.exports = {};\n");
 
 			await expect(
-				runPrepareInstallHook(catalog, "r/bad.prepare.0.js", runtime(), {
+				runBeforeWriteHook(catalog, "r/bad.beforeWrite.0.js", runtime(), {
 					itemId: "item",
 					conditions: {},
 					packageManager: NpmPackageManager.NPM,
 					compiledItem: { files: [] },
 				}),
-			).rejects.toThrow("must export a `prepare` hook function");
+			).rejects.toThrow("must export a `beforeWrite` hook function");
 		});
 
 		it("rejects null and non-function install hook exports", async () => {
@@ -142,20 +150,20 @@ describe("core/handlers", () => {
 			for (const [name, source] of [
 				["null", "module.exports = null;\n"],
 				["number", "module.exports = 42;\n"],
-				["object", "module.exports = { async prepare() {} };\n"],
+				["object", "module.exports = { async beforeWrite() {} };\n"],
 			] as const) {
-				const scriptPath = path.join(tempDir, `r/${name}.prepare.0.js`);
+				const scriptPath = path.join(tempDir, `r/${name}.beforeWrite.0.js`);
 				fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 				fs.writeFileSync(scriptPath, source);
 
 				await expect(
-					runPrepareInstallHook(catalog, `r/${name}.prepare.0.js`, runtime(), {
+					runBeforeWriteHook(catalog, `r/${name}.beforeWrite.0.js`, runtime(), {
 						itemId: "item",
 						conditions: {},
 						packageManager: NpmPackageManager.NPM,
 						compiledItem: { files: [] },
 					}),
-				).rejects.toThrow("must export a `prepare` hook function");
+				).rejects.toThrow("must export a `beforeWrite` hook function");
 			}
 		});
 	});
@@ -281,10 +289,10 @@ describe("core/handlers", () => {
 		await runtime.readFile("/project/src/file.ts");
 		expect(readFile).toHaveBeenCalledWith("/project/src/file.ts");
 
-		expect(() => runtime.isFile("/abs/file.ts")).toThrow(
+		await expect(runtime.isFile("/abs/file.ts")).rejects.toThrow(
 			'Handler path "/abs/file.ts" escapes the project directory.',
 		);
-		expect(() => runtime.readFile("../.ssh/id_rsa")).toThrow(
+		await expect(runtime.readFile("../.ssh/id_rsa")).rejects.toThrow(
 			"must be a relative path under the project directory",
 		);
 	});
@@ -310,6 +318,31 @@ describe("core/handlers", () => {
 				{},
 			),
 		).resolves.toBe("45");
+	});
+
+	it("inferConditionDefault skips handlers when allowHandler is false", async () => {
+		const runtime = createHandlerRuntime("/project", {
+			isFile: vi.fn(async () => false),
+			readFile: vi.fn(async () => ""),
+			run: vi.fn(async () => ""),
+		});
+
+		await expect(
+			inferConditionDefault(
+				"/catalog/registry.json",
+				{
+					key: "coverageThreshold",
+					label: "Coverage",
+					kind: RegistryConditionKind.TEXT,
+					values: [],
+					default: "80",
+					handler: "r/missing.handler.js",
+				},
+				runtime,
+				{},
+				{ allowHandler: false },
+			),
+		).resolves.toBe("80");
 	});
 
 	it("inferConditionDefault returns undefined without a handler or default", async () => {
@@ -536,7 +569,7 @@ module.exports = {
 		});
 	});
 
-	it("inferConditionDefault normalizes inferred values by kind", async () => {
+	it("inferConditionDefault converts inferred values by kind", async () => {
 		const catalog = path.join(tempDir, "registry.json");
 
 		async function writeInfer(name: string, body: string): Promise<string> {
@@ -656,14 +689,14 @@ module.exports = {
 		).resolves.toBeUndefined();
 	});
 
-	it("runPrepareInstallHook upserts returned files and merges bindings", async () => {
+	it("runBeforeWriteHook upserts returned files and merges bindings", async () => {
 		const catalog = path.join(tempDir, "registry.json");
-		const scriptPath = path.join(tempDir, "r/item.prepare.0.js");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(
 			scriptPath,
 			`
-module.exports = async function prepare(ctx) {
+module.exports = async function beforeWrite(ctx) {
   const name = ctx.bindings.prior;
   return {
     bindings: { greeting: "Hello " + name },
@@ -681,9 +714,9 @@ module.exports = async function prepare(ctx) {
 			run: vi.fn(async () => ""),
 		});
 
-		const result = await runPrepareInstallHook(
+		const result = await runBeforeWriteHook(
 			catalog,
-			"r/item.prepare.0.js",
+			"r/item.beforeWrite.0.js",
 			runtime,
 			{
 				itemId: "item",
@@ -702,14 +735,56 @@ module.exports = async function prepare(ctx) {
 		]);
 	});
 
-	it("runPrepareInstallHook upserts by target and honors removeFiles", async () => {
+	it("runBeforeWriteHook isolates mutable context data", async () => {
 		const catalog = path.join(tempDir, "registry.json");
-		const scriptPath = path.join(tempDir, "r/item.prepare.0.js");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(
 			scriptPath,
 			`
-module.exports = async function prepare() {
+module.exports = async function beforeWrite(ctx) {
+  ctx.bindings.mutated = "yes";
+  ctx.conditions.mode = "changed";
+  ctx.compiledItem.files.push({ target: "MUTATED", content: "no" });
+};
+`,
+		);
+
+		const options = {
+			itemId: "item",
+			conditions: { mode: "original" },
+			bindings: { prior: "Ada" },
+			compiledItem: { files: [{ target: "KEEP", content: "yes" }] },
+		};
+		const result = await runBeforeWriteHook(
+			catalog,
+			"r/item.beforeWrite.0.js",
+			createHandlerRuntime(tempDir, {
+				isFile: vi.fn(async () => false),
+				readFile: vi.fn(async () => ""),
+				run: vi.fn(async () => ""),
+			}),
+			options,
+		);
+
+		expect(result).toEqual({
+			files: [{ target: "KEEP", content: "yes" }],
+			bindings: { prior: "Ada" },
+		});
+		expect(options.conditions).toEqual({ mode: "original" });
+		expect(options.compiledItem.files).toEqual([
+			{ target: "KEEP", content: "yes" },
+		]);
+	});
+
+	it("runBeforeWriteHook upserts by target and honors removeFiles", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeWrite() {
   return {
     removeFiles: ["DROP"],
     files: [{ target: "KEEP", content: "updated" }],
@@ -718,9 +793,9 @@ module.exports = async function prepare() {
 `,
 		);
 
-		const result = await runPrepareInstallHook(
+		const result = await runBeforeWriteHook(
 			catalog,
-			"r/item.prepare.0.js",
+			"r/item.beforeWrite.0.js",
 			createHandlerRuntime(tempDir, {
 				isFile: vi.fn(async () => false),
 				readFile: vi.fn(async () => ""),
@@ -742,14 +817,274 @@ module.exports = async function prepare() {
 		expect(result.files).toEqual([{ target: "KEEP", content: "updated" }]);
 	});
 
-	it("runPrepareInstallHook merges commands, dependencies, and secrets when the hook returns them", async () => {
+	it("runBeforeWriteHook rejects unknown result keys", async () => {
 		const catalog = path.join(tempDir, "registry.json");
-		const scriptPath = path.join(tempDir, "r/item.prepare.0.js");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(
 			scriptPath,
 			`
-module.exports = async function prepare() {
+module.exports = async function beforeWrite() {
+  return { file: [{ target: "x", content: "y" }] };
+};
+`,
+		);
+		await expect(
+			runBeforeWriteHook(
+				catalog,
+				"r/item.beforeWrite.0.js",
+				createHandlerRuntime(tempDir, {
+					isFile: vi.fn(async () => false),
+					readFile: vi.fn(async () => ""),
+					run: vi.fn(async () => ""),
+				}),
+				{
+					itemId: "item",
+					conditions: {},
+					packageManager: NpmPackageManager.NPM,
+					compiledItem: { files: [] },
+				},
+			),
+		).rejects.toThrow(
+			'Before-write hook at "r/item.beforeWrite.0.js" returned unknown key "file".',
+		);
+	});
+
+	it("runBeforeWriteHook rejects a file target that escapes the project", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeWrite() {
+  return { files: [{ target: "../secret.txt", content: "x" }] };
+};
+`,
+		);
+		await expect(
+			runBeforeWriteHook(
+				catalog,
+				"r/item.beforeWrite.0.js",
+				createHandlerRuntime(tempDir, {
+					isFile: vi.fn(async () => false),
+					readFile: vi.fn(async () => ""),
+					run: vi.fn(async () => ""),
+				}),
+				{
+					itemId: "item",
+					conditions: {},
+					packageManager: NpmPackageManager.NPM,
+					compiledItem: { files: [] },
+				},
+			),
+		).rejects.toThrow(
+			'Before-write hook at "r/item.beforeWrite.0.js".files[0].target must be a relative path (no absolute paths, URLs, or "..").',
+		);
+	});
+
+	it("runBeforeWriteHook rejects a __proto__ binding key", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeWrite() {
+  const bindings = Object.create(null);
+  Object.defineProperty(bindings, "__proto__", {
+    value: "pwned",
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+  return { bindings };
+};
+`,
+		);
+		await expect(
+			runBeforeWriteHook(
+				catalog,
+				"r/item.beforeWrite.0.js",
+				createHandlerRuntime(tempDir, {
+					isFile: vi.fn(async () => false),
+					readFile: vi.fn(async () => ""),
+					run: vi.fn(async () => ""),
+				}),
+				{
+					itemId: "item",
+					conditions: {},
+					packageManager: NpmPackageManager.NPM,
+					compiledItem: { files: [] },
+				},
+			),
+		).rejects.toThrow(
+			'Before-write hook at "r/item.beforeWrite.0.js" binding "__proto__" is not allowed.',
+		);
+	});
+
+	it("runBeforeWriteHook rejects a reserved interpolation binding", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeWrite() {
+  return { bindings: { packageManager: "npm" } };
+};
+`,
+		);
+		await expect(
+			runBeforeWriteHook(
+				catalog,
+				"r/item.beforeWrite.0.js",
+				createHandlerRuntime(tempDir, {
+					isFile: vi.fn(async () => false),
+					readFile: vi.fn(async () => ""),
+					run: vi.fn(async () => ""),
+				}),
+				{
+					itemId: "item",
+					conditions: {},
+					packageManager: NpmPackageManager.NPM,
+					compiledItem: { files: [] },
+				},
+			),
+		).rejects.toThrow(
+			'Before-write hook at "r/item.beforeWrite.0.js" binding "packageManager" is reserved.',
+		);
+	});
+
+	it("runBeforeWriteHook rejects an unknown commands ecosystem", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeWrite() {
+  return { commands: { pip: { install: "pip install x" } } };
+};
+`,
+		);
+		await expect(
+			runBeforeWriteHook(
+				catalog,
+				"r/item.beforeWrite.0.js",
+				createHandlerRuntime(tempDir, {
+					isFile: vi.fn(async () => false),
+					readFile: vi.fn(async () => ""),
+					run: vi.fn(async () => ""),
+				}),
+				{
+					itemId: "item",
+					conditions: {},
+					packageManager: NpmPackageManager.NPM,
+					compiledItem: { files: [] },
+				},
+			),
+		).rejects.toThrow(
+			'Before-write hook at "r/item.beforeWrite.0.js" commands has unknown ecosystem "pip".',
+		);
+	});
+
+	it("runBeforeWriteHook rejects malformed secret entries", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeWrite() {
+  return { secrets: [42] };
+};
+`,
+		);
+
+		await expect(
+			runBeforeWriteHook(
+				catalog,
+				"r/item.beforeWrite.0.js",
+				createHandlerRuntime(tempDir, {
+					isFile: vi.fn(async () => false),
+					readFile: vi.fn(async () => ""),
+					run: vi.fn(async () => ""),
+				}),
+				{
+					itemId: "item",
+					conditions: {},
+					compiledItem: { files: [] },
+				},
+			),
+		).rejects.toThrow(
+			'Before-write hook at "r/item.beforeWrite.0.js".secrets[0] must be a non-empty string.',
+		);
+	});
+
+	it("createHandlerRuntime rejects a relative project directory", () => {
+		expect(() =>
+			createHandlerRuntime("relative", {
+				isFile: vi.fn(async () => false),
+				readFile: vi.fn(async () => ""),
+				run: vi.fn(async () => ""),
+			}),
+		).toThrow("Project directory must be an absolute path.");
+	});
+
+	it("createHandlerRuntime isFile rejects a symlink that points outside the project", async () => {
+		const project = fs.mkdtempSync(path.join(os.tmpdir(), "tuckshop-link-"));
+		const outside = fs.mkdtempSync(path.join(os.tmpdir(), "tuckshop-out-"));
+		try {
+			fs.writeFileSync(path.join(outside, "secret.txt"), "x");
+			fs.symlinkSync(
+				path.join(outside, "secret.txt"),
+				path.join(project, "link.txt"),
+			);
+			const isFile = vi.fn(async () => true);
+			await expect(
+				createHandlerRuntime(project, {
+					isFile,
+					readFile: vi.fn(async () => ""),
+					run: vi.fn(async () => ""),
+				}).isFile("link.txt"),
+			).rejects.toThrow("escapes the project directory");
+			expect(isFile).not.toHaveBeenCalled();
+		} finally {
+			fs.rmSync(project, { recursive: true, force: true });
+			fs.rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
+	it("createHandlerRuntime rejects a symlinked parent directory outside the project", async () => {
+		const project = fs.mkdtempSync(path.join(os.tmpdir(), "tuckshop-link-"));
+		const outside = fs.mkdtempSync(path.join(os.tmpdir(), "tuckshop-out-"));
+		try {
+			fs.writeFileSync(path.join(outside, "secret.txt"), "x");
+			fs.symlinkSync(outside, path.join(project, "linked"), "dir");
+			const isFile = vi.fn(async () => true);
+			await expect(
+				createHandlerRuntime(project, {
+					isFile,
+					readFile: vi.fn(async () => ""),
+					run: vi.fn(async () => ""),
+				}).isFile("linked/secret.txt"),
+			).rejects.toThrow("escapes the project directory");
+			expect(isFile).not.toHaveBeenCalled();
+		} finally {
+			fs.rmSync(project, { recursive: true, force: true });
+			fs.rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
+	it("runBeforeWriteHook merges commands, dependencies, and secrets when the hook returns them", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeWrite() {
   return {
     commands: { npm: { check: "biome check ." } },
     dependencies: { npm: { dev: ["@biomejs/biome@^2"] } },
@@ -759,9 +1094,9 @@ module.exports = async function prepare() {
 `,
 		);
 
-		const result = await runPrepareInstallHook(
+		const result = await runBeforeWriteHook(
 			catalog,
-			"r/item.prepare.0.js",
+			"r/item.beforeWrite.0.js",
 			createHandlerRuntime(tempDir, {
 				isFile: vi.fn(async () => false),
 				readFile: vi.fn(async () => ""),
@@ -788,16 +1123,16 @@ module.exports = async function prepare() {
 		expect(result.secrets).toEqual(["GH_ADMIN_TOKEN", "SONAR_TOKEN"]);
 	});
 
-	it("runPrepareInstallHook omits packIds from context when unset and preserves files when the hook yields nothing", async () => {
+	it("runBeforeWriteHook omits packIds from context when unset and preserves files when the hook yields nothing", async () => {
 		const catalog = path.join(tempDir, "registry.json");
 		const capturePath = path.join(tempDir, "item-capture.json");
-		const scriptPath = path.join(tempDir, "r/item.prepare.0.js");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(
 			scriptPath,
 			`
 const fs = require("node:fs");
-module.exports = async function prepare(ctx) {
+module.exports = async function beforeWrite(ctx) {
   fs.writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify({
     itemId: ctx.itemId,
     packIds: ctx.packIds,
@@ -813,9 +1148,9 @@ module.exports = async function prepare(ctx) {
 			run: vi.fn(async () => ""),
 		});
 
-		const result = await runPrepareInstallHook(
+		const result = await runBeforeWriteHook(
 			catalog,
-			"r/item.prepare.0.js",
+			"r/item.beforeWrite.0.js",
 			runtime,
 			{
 				itemId: "item",
@@ -833,16 +1168,16 @@ module.exports = async function prepare(ctx) {
 		expect(result.files).toEqual([{ target: "KEEP", content: "yes" }]);
 	});
 
-	it("runPrepareInstallHook includes packIds when provided", async () => {
+	it("runBeforeWriteHook includes packIds when provided", async () => {
 		const catalog = path.join(tempDir, "registry.json");
 		const capturePath = path.join(tempDir, "variant-capture.json");
-		const scriptPath = path.join(tempDir, "r/item.prepare.0.js");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(
 			scriptPath,
 			`
 const fs = require("node:fs");
-module.exports = async function prepare(ctx) {
+module.exports = async function beforeWrite(ctx) {
   fs.writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify({
     packIds: ctx.packIds,
     hasPackIds: Object.hasOwn(ctx, "packIds"),
@@ -857,7 +1192,7 @@ module.exports = async function prepare(ctx) {
 			run: vi.fn(async () => ""),
 		});
 
-		await runPrepareInstallHook(catalog, "r/item.prepare.0.js", runtime, {
+		await runBeforeWriteHook(catalog, "r/item.beforeWrite.0.js", runtime, {
 			itemId: "item",
 			packIds: ["v1"],
 			conditions: {},
@@ -871,16 +1206,16 @@ module.exports = async function prepare(ctx) {
 		});
 	});
 
-	it("runFinalizeInstallHook includes packIds when provided", async () => {
+	it("runAfterInstallHook includes packIds when provided", async () => {
 		const catalog = path.join(tempDir, "registry.json");
 		const capturePath = path.join(tempDir, "after-variant.json");
-		const scriptPath = path.join(tempDir, "r/item.finalize.0.js");
+		const scriptPath = path.join(tempDir, "r/item.afterInstall.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(
 			scriptPath,
 			`
 const fs = require("node:fs");
-module.exports = async function finalize(ctx) {
+module.exports = async function afterInstall(ctx) {
   fs.writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify({
     packIds: ctx.packIds,
     hasPackIds: Object.hasOwn(ctx, "packIds"),
@@ -895,7 +1230,7 @@ module.exports = async function finalize(ctx) {
 			run: vi.fn(async () => ""),
 		});
 
-		await runFinalizeInstallHook(catalog, "r/item.finalize.0.js", runtime, {
+		await runAfterInstallHook(catalog, "r/item.afterInstall.0.js", runtime, {
 			itemId: "item",
 			packIds: ["v1"],
 			conditions: {},
@@ -910,14 +1245,14 @@ module.exports = async function finalize(ctx) {
 		});
 	});
 
-	it("runFinalizeInstallHook ignores hook return values", async () => {
+	it("runAfterInstallHook throws when the hook returns a value", async () => {
 		const catalog = path.join(tempDir, "registry.json");
-		const scriptPath = path.join(tempDir, "r/item.finalize.0.js");
+		const scriptPath = path.join(tempDir, "r/item.afterInstall.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(
 			scriptPath,
 			`
-module.exports = async function finalize() {
+module.exports = async function afterInstall() {
   return {
     files: [{ target: "TOO_LATE", content: "nope" }],
     bindings: { ignored: "yes" },
@@ -932,28 +1267,26 @@ module.exports = async function finalize() {
 			run: vi.fn(async () => ""),
 		});
 
-		const bindings = { keep: "1" };
-		const files = [{ target: "KEEP", content: "yes" }];
-
-		await runFinalizeInstallHook(catalog, "r/item.finalize.0.js", runtime, {
-			itemId: "item",
-			conditions: {},
-			packageManager: NpmPackageManager.NPM,
-			bindings,
-			compiledItem: { files },
-		});
-
-		expect(bindings).toEqual({ keep: "1" });
-		expect(files).toEqual([{ target: "KEEP", content: "yes" }]);
+		await expect(
+			runAfterInstallHook(catalog, "r/item.afterInstall.0.js", runtime, {
+				itemId: "item",
+				conditions: {},
+				packageManager: NpmPackageManager.NPM,
+				bindings: { keep: "1" },
+				compiledItem: { files: [{ target: "KEEP", content: "yes" }] },
+			}),
+		).rejects.toThrow(
+			'After-install hook at "r/item.afterInstall.0.js" must not return a value.',
+		);
 	});
 
-	it("runPrepareInstallHook starts from empty bindings and compiled item files", async () => {
+	it("runBeforeWriteHook starts from empty bindings and compiled item files", async () => {
 		const catalog = path.join(tempDir, "registry.json");
-		const scriptPath = path.join(tempDir, "r/item.prepare.0.js");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(
 			scriptPath,
-			`module.exports = async function prepare() { return { files: [] }; };\n`,
+			`module.exports = async function beforeWrite() { return { files: [] }; };\n`,
 		);
 
 		const runtime = createHandlerRuntime(tempDir, {
@@ -962,9 +1295,9 @@ module.exports = async function finalize() {
 			run: vi.fn(async () => ""),
 		});
 
-		const result = await runPrepareInstallHook(
+		const result = await runBeforeWriteHook(
 			catalog,
-			"r/item.prepare.0.js",
+			"r/item.beforeWrite.0.js",
 			runtime,
 			{
 				itemId: "item",
@@ -978,17 +1311,17 @@ module.exports = async function finalize() {
 		expect(result.files).toEqual([]);
 	});
 
-	it("runPrepareInstallHook and runFinalizeInstallHook run independently", async () => {
+	it("runBeforeWriteHook and runAfterInstallHook run independently", async () => {
 		const catalog = path.join(tempDir, "registry.json");
 		const logPath = path.join(tempDir, "lifecycle.log");
-		const beforePath = path.join(tempDir, "r/item.prepare.0.js");
-		const afterPath = path.join(tempDir, "r/item.finalize.0.js");
+		const beforePath = path.join(tempDir, "r/item.beforeWrite.0.js");
+		const afterPath = path.join(tempDir, "r/item.afterInstall.0.js");
 		fs.mkdirSync(path.dirname(beforePath), { recursive: true });
 		fs.writeFileSync(
 			beforePath,
 			`
 const fs = require("node:fs");
-module.exports = async function prepare(ctx) {
+module.exports = async function beforeWrite(ctx) {
   fs.appendFileSync(${JSON.stringify(logPath)}, "before:" + ctx.itemId + "\\n");
 };
 `,
@@ -997,7 +1330,7 @@ module.exports = async function prepare(ctx) {
 			afterPath,
 			`
 const fs = require("node:fs");
-module.exports = async function finalize(ctx) {
+module.exports = async function afterInstall(ctx) {
   fs.appendFileSync(${JSON.stringify(logPath)}, "after:" + ctx.itemId + "\\n");
 };
 `,
@@ -1015,15 +1348,15 @@ module.exports = async function finalize(ctx) {
 			compiledItem: { files: [{ target: "KEEP", content: "yes" }] },
 		};
 
-		await runPrepareInstallHook(
+		await runBeforeWriteHook(
 			catalog,
-			"r/item.prepare.0.js",
+			"r/item.beforeWrite.0.js",
 			runtime,
 			options,
 		);
-		await runFinalizeInstallHook(
+		await runAfterInstallHook(
 			catalog,
-			"r/item.finalize.0.js",
+			"r/item.afterInstall.0.js",
 			runtime,
 			options,
 		);

@@ -159,7 +159,9 @@ describe("core/shell", () => {
 				},
 			);
 
-			await expect(runAsync("bad command")).rejects.toBe(error);
+			await expect(runAsync("bad command")).rejects.toThrowError(
+				"Failed to start command: bad command: spawn failed",
+			);
 		});
 
 		it("rejects when spawn exits with non-zero code for pipe stdio", async () => {
@@ -367,7 +369,7 @@ describe("core/shell", () => {
 			);
 		});
 
-		it("rejects when spawn emits an error", async () => {
+		it("rejects when spawn emits an error for inherit stdio", async () => {
 			const fakeChild = {
 				on: vi.fn(),
 			};
@@ -387,7 +389,9 @@ describe("core/shell", () => {
 				},
 			);
 
-			await expect(runAsync("bad", { stdio: "inherit" })).rejects.toBe(error);
+			await expect(runAsync("bad", { stdio: "inherit" })).rejects.toThrowError(
+				"Failed to start command: bad: spawn failed",
+			);
 		});
 
 		it("rejects when spawn exits with non-zero code", async () => {
@@ -413,6 +417,37 @@ describe("core/shell", () => {
 			).rejects.toThrowError("Command failed: bad-exit (exit 2)");
 		});
 
+		it("reports when a command times out", async () => {
+			const fakeChild = {
+				on: vi.fn(),
+			};
+
+			spawnMock.mockReturnValue(
+				fakeChild as unknown as ReturnType<typeof spawn>,
+			);
+
+			vi.mocked(fakeChild.on).mockImplementation(
+				(
+					event: string,
+					handler: (
+						code?: number | null,
+						signal?: NodeJS.Signals | null,
+					) => void,
+				) => {
+					if (event === "close") {
+						handler(null, "SIGTERM");
+					}
+					return fakeChild;
+				},
+			);
+
+			await expect(
+				runAsync("slow-command", { timeoutMs: 1000 }),
+			).rejects.toThrowError(
+				"Command failed: slow-command (timed out after 1000ms)",
+			);
+		});
+
 		describe("parseCommand (tested via spawn calls)", () => {
 			it("parses simple command without args", () => {
 				expectParsedCommand("ls", "ls", []);
@@ -434,6 +469,12 @@ describe("core/shell", () => {
 				expectParsedCommand('echo "hello world"', "echo", ["hello world"]);
 			});
 
+			it("parses single-quoted args and whitespace separators", () => {
+				expectParsedCommand("\tprintf\t'hello world'\n", "printf", [
+					"hello world",
+				]);
+			});
+
 			it("parses command with multiple quoted args", () => {
 				expectParsedCommand('npm run "build script" --verbose', "npm", [
 					"run",
@@ -447,6 +488,16 @@ describe("core/shell", () => {
 					"arg with spaces",
 					"normal",
 				]);
+			});
+
+			it("rejects an empty command", () => {
+				expect(() => runAsync(" \t\n")).toThrowError("Command cannot be empty");
+			});
+
+			it("rejects an unterminated quote", () => {
+				expect(() => runAsync('echo "unfinished')).toThrowError(
+					"Unterminated double quote in command",
+				);
 			});
 		});
 	});

@@ -1,7 +1,8 @@
-import type {
-	IndexItem,
-	Registry,
-	RegistryItemTypeDefinition,
+import {
+	type IndexItem,
+	RESERVED_CATALOG_TYPE_KEY,
+	type Registry,
+	type RegistryItemTypeDefinition,
 } from "@tuckshop/core";
 import chalk from "chalk";
 import { defaultText, primaryText } from "../cli/labels";
@@ -14,11 +15,11 @@ type ExplicitTypeFilterOption = string | string[];
 type TypeFilterOption = ExplicitTypeFilterOption | undefined;
 
 /**
- * Flatten CAC `--type` values into trimmed tokens.
+ * Split CAC `--type` values into trimmed tokens.
  * @param typeOption - A string, or `string[]` when the flag is repeated.
  * @returns Individual type tokens from comma-separated entries.
  */
-function normalizeTypeTokens(typeOption: TypeFilterOption): string[] {
+function splitTypeTokens(typeOption: TypeFilterOption): string[] {
 	const parts =
 		typeof typeOption === "string" ? [typeOption] : (typeOption ?? []);
 	return parts.flatMap((part) =>
@@ -39,10 +40,53 @@ function assertRequestedTypesSupported(
 	requestedTypes: string[],
 	availableTypes: string[],
 ): void {
+	const available = new Set(availableTypes);
 	for (const type of requestedTypes) {
-		if (!availableTypes.includes(type))
+		if (!available.has(type))
 			throw new Error(
 				`Unsupported registry type "${type}" (available: ${availableTypes.join(", ")}).`,
+			);
+	}
+}
+
+/**
+ * Look up display metadata for a catalog type.
+ * @param type - Type key from `registry.types`.
+ * @param typeMeta - Display metadata keyed by type value.
+ * @returns Type definition for `type`.
+ * @throws Error when the type is missing from `typeMeta`.
+ */
+function typeDefinition(
+	type: string,
+	typeMeta: Record<string, RegistryItemTypeDefinition>,
+): RegistryItemTypeDefinition {
+	const meta = typeMeta[type];
+	if (!meta) throw new Error(`Registry item type "${type}" is not declared.`);
+	return meta;
+}
+
+/**
+ * Fail when the catalog uses the reserved `--type all` sentinel as a type key.
+ * @param availableTypes - Types present in the registry.
+ * @throws Error when `"all"` is a catalog type.
+ */
+function assertAllIsNotACatalogType(availableTypes: string[]): void {
+	if (availableTypes.includes(RESERVED_CATALOG_TYPE_KEY))
+		throw new Error(
+			`Registry item type "${RESERVED_CATALOG_TYPE_KEY}" is reserved for the --type ${RESERVED_CATALOG_TYPE_KEY} filter.`,
+		);
+}
+
+/**
+ * Fail when an item's type is not in the catalog.
+ * @param registry - Registry whose items are about to be listed.
+ * @throws Error when an item type is undeclared.
+ */
+function assertItemTypesDeclared(registry: Registry): void {
+	for (const [itemId, item] of Object.entries(registry.items)) {
+		if (!(item.type in registry.types))
+			throw new Error(
+				`Registry item "${itemId}" has undeclared type "${item.type}".`,
 			);
 	}
 }
@@ -57,18 +101,19 @@ function parseTypeFilter(
 	typeOption: ExplicitTypeFilterOption,
 	availableTypes: string[],
 ): Set<string> {
-	if (availableTypes.length === 0)
-		throw new Error("No registry item types found.");
-
-	const tokens = normalizeTypeTokens(typeOption);
+	const tokens = splitTypeTokens(typeOption);
 	if (tokens.length === 0)
 		throw new Error("--type requires at least one type value.");
 
-	const wantsAll = tokens.includes("all");
-	const requestedTypes = tokens.filter((token) => token !== "all");
+	const wantsAll = tokens.includes(RESERVED_CATALOG_TYPE_KEY);
+	const requestedTypes = tokens.filter(
+		(token) => token !== RESERVED_CATALOG_TYPE_KEY,
+	);
 
 	if (wantsAll && requestedTypes.length > 0)
-		throw new Error('Cannot combine type "all" with specific --type values.');
+		throw new Error(
+			`Cannot combine type "${RESERVED_CATALOG_TYPE_KEY}" with specific --type values.`,
+		);
 
 	if (wantsAll) return new Set(availableTypes);
 
@@ -85,14 +130,15 @@ function parseTypeFilter(
 function typeSelectOptions(
 	availableTypes: string[],
 	typeMeta: Record<string, RegistryItemTypeDefinition>,
-) {
-	return availableTypes.map((type) => ({
-		label: typeMeta[type]?.label ?? type,
-		value: type,
-		...(typeMeta[type]?.description
-			? { hint: typeMeta[type].description }
-			: {}),
-	}));
+): Array<{ label: string; value: string; hint?: string }> {
+	return availableTypes.map((type) => {
+		const meta = typeDefinition(type, typeMeta);
+		return {
+			label: meta.label ?? type,
+			value: type,
+			...(meta.description ? { hint: meta.description } : {}),
+		};
+	});
 }
 
 /**
@@ -125,7 +171,7 @@ async function promptTypeFilter(
  * @param typeMeta - Display metadata keyed by type value.
  * @returns Allowed item types.
  */
-async function resolveTypeFilter(
+async function typeFilterFromOption(
 	typeOption: TypeFilterOption,
 	availableTypes: string[],
 	typeMeta: Record<string, RegistryItemTypeDefinition>,
@@ -213,7 +259,7 @@ function printItemsByType(
 		const group = byType.get(type);
 		if (!group) continue;
 
-		printTypeGroup(type, group, typeMeta[type]);
+		printTypeGroup(type, group, typeDefinition(type, typeMeta));
 	}
 }
 
@@ -226,24 +272,27 @@ export async function listCommand(
 	registry: Registry,
 	type?: TypeFilterOption,
 ): Promise<void> {
+	assertItemTypesDeclared(registry);
 	const itemTypes = Object.keys(registry.types);
-	const allowedTypes = await resolveTypeFilter(type, itemTypes, registry.types);
+	assertAllIsNotACatalogType(itemTypes);
+	const allowedTypes = await typeFilterFromOption(
+		type,
+		itemTypes,
+		registry.types,
+	);
 	const matches = Object.values(registry.items).filter((item) =>
 		allowedTypes.has(item.type),
 	);
 
+	console.log();
+	console.log(defaultText("─".repeat(40)));
+	console.log();
+
 	if (matches.length === 0) {
-		console.log();
-		console.log(defaultText("─".repeat(40)));
-		console.log();
 		console.log(defaultText("No registry items match the requested types."));
 		console.log();
 		return;
 	}
-
-	console.log();
-	console.log(defaultText("─".repeat(40)));
-	console.log();
 
 	printItemsByType(matches, itemTypes, registry.types);
 

@@ -105,6 +105,28 @@ describe("core/schema", () => {
 			).toBe(false);
 		});
 
+		it("rejects absolute, URL, and parent-escape file paths", () => {
+			for (const target of [
+				"/etc/passwd",
+				"https://evil.example/x",
+				"../outside.txt",
+				String.raw`foo\bar.txt`,
+				"C:/Windows/system.ini",
+			]) {
+				expect(rejectMessage(registryFileSchema, validFile({ target }))).toBe(
+					`invalid_path:${target}`,
+				);
+			}
+		});
+
+		it("accepts dotted directory names in relative file paths", () => {
+			expect(
+				registryFileSchema.parse(
+					validFile({ target: ".github/workflows/build.yml" }),
+				),
+			).toMatchObject({ target: ".github/workflows/build.yml" });
+		});
+
 		it("rejects unknown keys", () => {
 			expect(
 				registryFileSchema.safeParse(validFile({ extra: "nope" })).success,
@@ -139,6 +161,15 @@ describe("core/schema", () => {
 				}).success,
 			).toBe(false);
 		});
+
+		it("rejects an escaping compiled file target", () => {
+			expect(
+				rejectMessage(compiledItemFileSchema, {
+					target: "../secret.txt",
+					content: "hello",
+				}),
+			).toBe("invalid_path:../secret.txt");
+		});
 	});
 
 	describe("compiledItemSchema", () => {
@@ -162,11 +193,15 @@ describe("core/schema", () => {
 			});
 		});
 
-		it("accepts a payload with an empty files list", () => {
-			expect(compiledItemSchema.parse({ files: [] })).toEqual({
-				files: [],
-			});
-			expect(compiledItemSchema.parse({})).toEqual({ files: [] });
+		it("rejects duplicate compiled file targets", () => {
+			expect(
+				rejectMessage(compiledItemSchema, {
+					files: [
+						{ target: "a.txt", content: "one" },
+						{ target: "a.txt", content: "two" },
+					],
+				}),
+			).toBe("duplicate_target:a.txt");
 		});
 
 		it("rejects leftover identity fields", () => {
@@ -263,6 +298,17 @@ describe("core/schema", () => {
 				commands: { npm: { test: "vitest run" } },
 				secrets: ["GH_ADMIN_TOKEN"],
 			});
+		});
+
+		it("rejects a __proto__ command name", () => {
+			expect(
+				rejectMessage(
+					compiledItemSchema,
+					JSON.parse(
+						'{"files":[{"target":"a.txt","content":"x"}],"commands":{"npm":{"__proto__":"x"}}}',
+					),
+				),
+			).toBe("unsafe_key:__proto__");
 		});
 
 		it("rejects untagged dependency lists", () => {
@@ -389,6 +435,41 @@ describe("core/schema", () => {
 					}),
 				),
 			).toBe("duplicate:ts");
+		});
+
+		it("rejects the reserved select value None", () => {
+			expect(
+				rejectMessage(
+					registryConditionSchema,
+					validCondition({
+						kind: "select",
+						values: [validConditionValue({ value: "None", label: "None" })],
+					}),
+				),
+			).toBe("reserved_value:None");
+		});
+
+		it("rejects a select default that is not a declared value", () => {
+			expect(
+				rejectMessage(
+					registryConditionSchema,
+					validCondition({
+						kind: "select",
+						default: "python",
+					}),
+				),
+			).toBe("undeclared_default:python");
+		});
+
+		it("keeps a select default that is a declared value", () => {
+			expect(
+				registryConditionSchema.parse(
+					validCondition({
+						kind: "select",
+						default: "typescript",
+					}),
+				),
+			).toMatchObject({ default: "typescript" });
 		});
 
 		it("rejects an empty values list", () => {
@@ -674,6 +755,20 @@ describe("core/schema", () => {
 			).toBe(false);
 		});
 
+		it("rejects duplicate pack file targets", () => {
+			expect(
+				rejectMessage(
+					registryPackSchema,
+					validPack({
+						files: [
+							validFile({ target: "src/a.ts" }),
+							validFile({ target: "src/a.ts", source: "other.ts" }),
+						],
+					}),
+				),
+			).toBe("duplicate_target:src/a.ts");
+		});
+
 		it("rejects empty required strings, empty when values, and unknown keys", () => {
 			expect(registryPackSchema.safeParse(validPack({ id: "" })).success).toBe(
 				false,
@@ -810,30 +905,30 @@ describe("core/schema", () => {
 			expect(
 				registryItemSchema.parse({
 					...withoutPacks,
-					prepare: "handler.ts",
+					beforeWrite: "handler.ts",
 				}),
 			).toEqual({
 				id: "button",
 				title: "Button",
 				description: "A button",
 				type: "component",
-				prepare: ["handler.ts"],
+				beforeWrite: ["handler.ts"],
 			});
 		});
 
-		it("accepts finalize-only script items without prepare", () => {
+		it("accepts afterInstall-only script items without beforeWrite", () => {
 			const { packs: _packs, ...withoutPacks } = validItem();
 			expect(
 				registryItemSchema.parse({
 					...withoutPacks,
-					finalize: "cleanup.ts",
+					afterInstall: "cleanup.ts",
 				}),
 			).toEqual({
 				id: "button",
 				title: "Button",
 				description: "A button",
 				type: "component",
-				finalize: ["cleanup.ts"],
+				afterInstall: ["cleanup.ts"],
 			});
 		});
 
@@ -848,7 +943,7 @@ describe("core/schema", () => {
 				expect(
 					rejectMessage(registryItemSchema, {
 						...withoutPacks,
-						prepare: script,
+						beforeWrite: script,
 					}),
 				).toBe(`invalid_script:${script}`);
 			}
@@ -859,7 +954,7 @@ describe("core/schema", () => {
 			expect(
 				registryItemSchema.parse({
 					...withoutPacks,
-					prepare: "handler.ts",
+					beforeWrite: "handler.ts",
 					requires: ["authorName"],
 					conditions: {
 						coverageThreshold: {
@@ -874,7 +969,7 @@ describe("core/schema", () => {
 				title: "Button",
 				description: "A button",
 				type: "component",
-				prepare: ["handler.ts"],
+				beforeWrite: ["handler.ts"],
 				requires: ["authorName"],
 				conditions: {
 					coverageThreshold: {
@@ -887,7 +982,7 @@ describe("core/schema", () => {
 			expect(
 				registryItemSchema.safeParse({
 					...withoutPacks,
-					prepare: "handler.ts",
+					beforeWrite: "handler.ts",
 					conditions: ["authorName"],
 				}).success,
 			).toBe(false);
@@ -898,7 +993,7 @@ describe("core/schema", () => {
 			expect(
 				rejectMessage(registryItemSchema, {
 					...withoutPacks,
-					prepare: "handler.ts",
+					beforeWrite: "handler.ts",
 					requires: ["coverageThreshold"],
 					conditions: {
 						coverageThreshold: { kind: "text", label: "Coverage" },
@@ -922,19 +1017,44 @@ describe("core/schema", () => {
 			).toBe(false);
 		});
 
-		it("keeps prepare and finalize scripts and rejects duplicates", () => {
+		it("rejects reserved item type all", () => {
+			expect(
+				rejectMessage(registryItemSchema, validItem({ type: "all" })),
+			).toBe("reserved_type:all");
+		});
+
+		it("rejects a __proto__ item id", () => {
+			expect(
+				rejectMessage(registryItemSchema, validItem({ id: "__proto__" })),
+			).toBe("unsafe_key:__proto__");
+		});
+
+		it("rejects duplicate item file targets", () => {
+			const { packs: _packs, ...withoutPacks } = validItem();
+			expect(
+				rejectMessage(registryItemSchema, {
+					...withoutPacks,
+					files: [
+						validFile({ target: "src/a.ts" }),
+						validFile({ target: "src/a.ts", source: "other.ts" }),
+					],
+				}),
+			).toBe("duplicate_target:src/a.ts");
+		});
+
+		it("keeps beforeWrite and afterInstall scripts and rejects duplicates", () => {
 			const { packs: _packs, ...withoutPacks } = validItem();
 			expect(
 				registryItemSchema.parse({
 					...withoutPacks,
 					files: [validFile()],
-					prepare: ["handler.ts"],
-					finalize: ["./commit.ts"],
+					beforeWrite: ["handler.ts"],
+					afterInstall: ["./commit.ts"],
 					dependsOn: ["shared"],
 				}),
 			).toMatchObject({
-				prepare: ["handler.ts"],
-				finalize: ["./commit.ts"],
+				beforeWrite: ["handler.ts"],
+				afterInstall: ["./commit.ts"],
 				dependsOn: ["shared"],
 			});
 			expect(
@@ -943,10 +1063,10 @@ describe("core/schema", () => {
 					validItem({
 						files: [validFile()],
 						packs: [],
-						prepare: ["handler.ts", "handler.ts"],
+						beforeWrite: ["handler.ts", "handler.ts"],
 					}),
 				),
-			).toBe("duplicate_hook:prepare:handler.ts");
+			).toBe("duplicate_hook:beforeWrite:handler.ts");
 		});
 	});
 
@@ -1083,6 +1203,34 @@ describe("core/schema", () => {
 			).toBe("binding_parent_key:toolchain");
 		});
 
+		it("rejects item-local option bindings that reuse another local condition key", () => {
+			expect(
+				rejectMessage(indexItemSchema, {
+					title: "Testing",
+					description: "Tests",
+					type: "configuration",
+					source: "r/testing.json",
+					conditions: {
+						language: {
+							label: "Language",
+							kind: "select",
+							values: [
+								{
+									value: "typescript",
+									label: "TypeScript",
+									bindings: { defaultBranch: "main" },
+								},
+							],
+						},
+						defaultBranch: {
+							label: "Default branch",
+							kind: "text",
+						},
+					},
+				}),
+			).toBe("binding_parent_key:defaultBranch");
+		});
+
 		it("rejects an item with neither source, packs, nor install scripts", () => {
 			expect(
 				rejectMessage(indexItemSchema, {
@@ -1099,31 +1247,31 @@ describe("core/schema", () => {
 					title: "License",
 					description: "SPDX license",
 					type: "configuration",
-					prepare: ["r/license-configuration.prepare.0.js"],
+					beforeWrite: ["r/license-configuration.beforeWrite.0.js"],
 					requires: ["authorName"],
 				}),
 			).toEqual({
 				title: "License",
 				description: "SPDX license",
 				type: "configuration",
-				prepare: ["r/license-configuration.prepare.0.js"],
+				beforeWrite: ["r/license-configuration.beforeWrite.0.js"],
 				requires: ["authorName"],
 			});
 		});
 
-		it("accepts finalize-only index items", () => {
+		it("accepts afterInstall-only index items", () => {
 			expect(
 				indexItemSchema.parse({
 					title: "Cleanup",
 					description: "Post-install cleanup",
 					type: "configuration",
-					finalize: ["r/cleanup.finalize.0.js"],
+					afterInstall: ["r/cleanup.afterInstall.0.js"],
 				}),
 			).toEqual({
 				title: "Cleanup",
 				description: "Post-install cleanup",
 				type: "configuration",
-				finalize: ["r/cleanup.finalize.0.js"],
+				afterInstall: ["r/cleanup.afterInstall.0.js"],
 			});
 		});
 
@@ -1227,6 +1375,24 @@ describe("core/schema", () => {
 					baseUrl: "https://example.com/content",
 				}).success,
 			).toBe(false);
+		});
+
+		it("rejects a __proto__ items map key", () => {
+			expect(
+				rejectMessage(
+					registryDocumentFieldsSchema,
+					JSON.parse('{"items":{"__proto__":{}}}'),
+				),
+			).toBe("unsafe_key:__proto__");
+		});
+
+		it("rejects an invalid integrity digest", () => {
+			expect(
+				rejectMessage(registryDocumentFieldsSchema, {
+					items: {},
+					scriptIntegrity: { "r/hook.js": "md5-not-sha256" },
+				}),
+			).toBe("invalid_integrity");
 		});
 	});
 });

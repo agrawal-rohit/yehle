@@ -3,18 +3,25 @@ import {
 	policyForConditionKind,
 	type RegistryWhenValue,
 } from "./condition-kind";
-import { isNpmPackageManager, PACKAGE_MANAGER_KEY } from "./packages";
+import {
+	isPackageManagerForEcosystem,
+	PACKAGE_MANAGER_KEY,
+	reservedInterpolationKeys,
+} from "./packages";
 import {
 	assertConditionMapBindingKeys,
 	type IndexItem,
 	indexItemSchema,
+	RESERVED_CATALOG_TYPE_KEY,
 	type Registry,
 	type RegistryCondition,
+	RegistryEcosystem,
 	type RegistryItemTypeDefinition,
 	registryConditionSchema,
 	registryDocumentFieldsSchema,
 	registryItemTypeSchema,
 } from "./schema";
+import { assertSinglePathSegment } from "./urls";
 
 /**
  * Append a Zod issue path to a parse label.
@@ -55,7 +62,8 @@ function messageForCustomIssue(
 		"duplicate:": (value) => `${label} has duplicate value "${value}".`,
 		"duplicate_pack:": (value) => `${label} has duplicate pack id "${value}".`,
 		"duplicate_hook:": (value) => {
-			const [listName, entry] = value.split(":");
+			const [listName, ...entryParts] = value.split(":");
+			const entry = entryParts.join(":");
 			return `${label} lists "${entry}" more than once in ${listName}.`;
 		},
 		"invalid_id:": () =>
@@ -63,9 +71,9 @@ function messageForCustomIssue(
 		"invalid_script:": () =>
 			`${fieldLabel} must be a relative path under the registry (no absolute paths, URLs, or "..").`,
 		missing_files_or_packs: () =>
-			`${label} must declare files, an install script (prepare/finalize), or at least one pack.`,
+			`${label} must declare files, an install script (beforeWrite/afterInstall), or at least one pack.`,
 		missing_source_or_packs: () =>
-			`${label} must declare source, an install script (prepare/finalize), or at least one pack.`,
+			`${label} must declare source, an install script (beforeWrite/afterInstall), or at least one pack.`,
 		select_requires_values: () => `${label} must declare at least one value.`,
 		text_with_values: () => `${label} of kind "text" cannot declare values.`,
 		boolean_with_values: () =>
@@ -79,6 +87,16 @@ function messageForCustomIssue(
 			`${label} lists "${value}" in both requires and local conditions.`,
 		min_on_non_multiselect: () =>
 			`${label} can only declare min for kind "multiselect".`,
+		"invalid_path:": () =>
+			`${fieldLabel} must be a relative path (no absolute paths, URLs, or "..").`,
+		"unsafe_key:": (value) => `${label} key "${value}" is not allowed.`,
+		"reserved_value:": (value) => `${label} value "${value}" is reserved.`,
+		"undeclared_default:": (value) =>
+			`${label} default "${value}" is not a declared value.`,
+		"reserved_type:": (value) => `${label} type "${value}" is reserved.`,
+		"duplicate_target:": (value) =>
+			`${label} declares duplicate file target "${value}".`,
+		invalid_integrity: () => `${fieldLabel} must be a sha256 integrity digest.`,
 	};
 
 	const prefix =
@@ -188,11 +206,37 @@ function mapZodError(error: z.ZodError, label: string): Error {
 }
 
 /**
+ * Reject empty, prototype-polluting, path-escaping, and reserved keys on a raw map.
+ * Zod's `z.record` copies into a new object and drops `__proto__`, so this must run first.
+ * @param raw - Candidate map (already known to be a non-array object).
+ * @param recordLabel - Error context for the record itself.
+ * @param entryLabel - Builds the error label for one key.
+ * @param reservedKeys - Keys that throw `${entryLabel(key)} is reserved.`
+ * @throws Error when a key is unsafe or reserved.
+ */
+function rejectUnsafeKeyedRecordKeys(
+	raw: object,
+	recordLabel: string,
+	entryLabel: (key: string) => string,
+	reservedKeys: readonly string[] = [],
+): void {
+	for (const key of Object.keys(raw)) {
+		if (key === "__proto__")
+			throw new Error(`${recordLabel} key "${key}" is not allowed.`);
+		if (key.length === 0)
+			throw new Error(`${recordLabel} key must be a non-empty string.`);
+		assertSinglePathSegment(entryLabel(key), key);
+		if (reservedKeys.includes(key))
+			throw new Error(`${entryLabel(key)} is reserved.`);
+	}
+}
+
+/**
  * Parse raw input with a Zod schema and map failures to labeled errors.
  * @param schema - Zod schema to validate against.
  * @param raw - Raw input value.
  * @param label - Error context prefix.
- * @returns Parsed and normalized value.
+ * @returns Parsed value with schema transformations applied.
  * @throws Error when validation fails.
  */
 export function parseWithSchema<T>(
@@ -215,7 +259,8 @@ export function parseWithSchema<T>(
  * @param recordLabel - Error context for the record itself.
  * @param entryLabel - Builds the error label for one key.
  * @param required - When set, absent or empty records throw these messages.
- * @returns Parsed map, or undefined when the record is absent/empty and `required` is omitted.
+ * @param reservedKeys - Map keys that throw `${entryLabel(key)} is reserved.`
+ * @returns Parsed map (present when `required` is passed).
  * @throws Error when `required` is set and the record is absent or empty, or an entry fails validation.
  */
 export function parseKeyedRecord<T>(
@@ -223,15 +268,35 @@ export function parseKeyedRecord<T>(
 	raw: unknown,
 	recordLabel: string,
 	entryLabel: (key: string) => string,
+	required: { absent: string; empty: string },
+	reservedKeys?: readonly string[],
+): Record<string, T>;
+export function parseKeyedRecord<T>(
+	schema: ZodType<T>,
+	raw: unknown,
+	recordLabel: string,
+	entryLabel: (key: string) => string,
+	required?: undefined,
+	reservedKeys?: readonly string[],
+): Record<string, T> | undefined;
+export function parseKeyedRecord<T>(
+	schema: ZodType<T>,
+	raw: unknown,
+	recordLabel: string,
+	entryLabel: (key: string) => string,
 	required?: { absent: string; empty: string },
+	reservedKeys: readonly string[] = [],
 ): Record<string, T> | undefined {
 	if (raw === undefined || raw === null) {
 		if (!required) return undefined;
 		throw new Error(required.absent);
 	}
 
+	if (typeof raw === "object" && !Array.isArray(raw))
+		rejectUnsafeKeyedRecordKeys(raw, recordLabel, entryLabel, reservedKeys);
+
 	const source = parseWithSchema(
-		z.record(z.string(), z.unknown()),
+		z.record(z.string().min(1), z.unknown()),
 		raw,
 		recordLabel,
 	);
@@ -279,7 +344,7 @@ function remapWhenAssertionError(
 }
 
 /**
- * Validate a pack `when.packageManager` value against known npm managers.
+ * Validate a pack `when.packageManager` value against known managers for supported ecosystems.
  * @param subject - Error label naming the item or pack.
  * @param value - Matcher value from the `when` map.
  * @throws Error when the value is not a supported manager id.
@@ -290,7 +355,12 @@ function validatePackageManagerWhenValue(
 ): void {
 	const entries = Array.isArray(value) ? value : [value];
 	for (const entry of entries) {
-		if (typeof entry !== "string" || !isNpmPackageManager(entry))
+		const known =
+			typeof entry === "string" &&
+			Object.values(RegistryEcosystem).some((ecosystem) =>
+				isPackageManagerForEcosystem(ecosystem, entry),
+			);
+		if (!known)
 			throw new Error(
 				`${subject} uses undeclared when value "${String(entry)}" for key "${PACKAGE_MANAGER_KEY}".`,
 			);
@@ -315,9 +385,9 @@ function validateWhenEntries(
 			continue;
 		}
 
-		const condition = conditions?.[key];
-		if (!condition)
+		if (!conditions || !Object.hasOwn(conditions, key))
 			throw new Error(`${subject} references unknown when key "${key}".`);
+		const condition = conditions[key];
 
 		try {
 			policyForConditionKind(condition.kind).assertWhenValue(
@@ -331,28 +401,61 @@ function validateWhenEntries(
 }
 
 /**
- * Reject requires / local-condition collisions for one item.
+ * Fail when an item condition key reuses the reserved packageManager key.
  * @param itemId - Registry item id.
- * @param item - Catalog item.
- * @param conditions - Shared condition definitions.
- * @param localOwners - Map of local condition key → declaring item id.
- * @throws Error when a key is unknown, collides with shared, or is claimed twice.
+ * @param key - Condition key being declared or required.
+ * @param role - Whether the item is requiring or declaring the condition.
+ * @throws Error when the key matches the built-in package manager key.
  */
-function assertItemConditionOwnership(
+function assertItemConditionKeyNotReserved(
 	itemId: string,
-	item: IndexItem,
-	conditions: Record<string, RegistryCondition> | undefined,
-	localOwners: Map<string, string>,
+	key: string,
+	role: "require" | "declare",
 ): void {
-	for (const key of item.requires ?? []) {
-		if (!conditions?.[key])
+	if (key === PACKAGE_MANAGER_KEY)
+		throw new Error(
+			`Registry item "${itemId}" cannot ${role} reserved condition "${PACKAGE_MANAGER_KEY}" (built-in install context).`,
+		);
+}
+
+/**
+ * Validate that all conditions required by an item are declared and non-reserved.
+ * @param itemId - Registry item id.
+ * @param requires - List of required condition keys.
+ * @param conditions - Shared condition definitions.
+ * @throws Error when a required condition is reserved or undeclared.
+ */
+function assertItemRequiresConditions(
+	itemId: string,
+	requires: string[] | undefined,
+	conditions: Record<string, RegistryCondition> | undefined,
+): void {
+	for (const key of requires ?? []) {
+		assertItemConditionKeyNotReserved(itemId, key, "require");
+		if (!conditions || !Object.hasOwn(conditions, key))
 			throw new Error(
 				`Registry item "${itemId}" requires unknown condition "${key}".`,
 			);
 	}
+}
 
-	for (const key of Object.keys(item.conditions ?? {})) {
-		if (conditions?.[key])
+/**
+ * Validate item-level conditions and check for collisions across items.
+ * @param itemId - Registry item id.
+ * @param localConditions - Conditions declared on this item.
+ * @param conditions - Shared condition definitions.
+ * @param localOwners - Map tracking condition key ownership across items.
+ * @throws Error when a local condition is reserved, collides with shared, or is claimed by another item.
+ */
+function assertItemLocalConditions(
+	itemId: string,
+	localConditions: Record<string, RegistryCondition> | undefined,
+	conditions: Record<string, RegistryCondition> | undefined,
+	localOwners: Map<string, string>,
+): void {
+	for (const key of Object.keys(localConditions ?? {})) {
+		assertItemConditionKeyNotReserved(itemId, key, "declare");
+		if (conditions && Object.hasOwn(conditions, key))
 			throw new Error(
 				`Registry item "${itemId}" condition "${key}" collides with a shared condition.`,
 			);
@@ -364,6 +467,24 @@ function assertItemConditionOwnership(
 			);
 		localOwners.set(key, itemId);
 	}
+}
+
+/**
+ * Reject requires / local-condition collisions for one item.
+ * @param itemId - Registry item id.
+ * @param item - Catalog item.
+ * @param conditions - Shared condition definitions.
+ * @param localOwners - Map of local condition key → declaring item id.
+ * @throws Error when a key is unknown, reserved, collides with shared, or is claimed twice.
+ */
+function assertItemConditionOwnership(
+	itemId: string,
+	item: IndexItem,
+	conditions: Record<string, RegistryCondition> | undefined,
+	localOwners: Map<string, string>,
+): void {
+	assertItemRequiresConditions(itemId, item.requires, conditions);
+	assertItemLocalConditions(itemId, item.conditions, conditions, localOwners);
 }
 
 /**
@@ -414,7 +535,7 @@ function crossValidateItemTypes(
 	types: Record<string, RegistryItemTypeDefinition>,
 ): void {
 	for (const [itemId, item] of Object.entries(items)) {
-		if (!(item.type in types))
+		if (!Object.hasOwn(types, item.type))
 			throw new Error(
 				`Registry item "${itemId}" has undeclared type "${item.type}".`,
 			);
@@ -431,6 +552,11 @@ export function parseRegistryDocument(raw: unknown): Registry {
 	const source = parseWithSchema(registryDocumentFieldsSchema, raw, "Registry");
 
 	const items: Record<string, IndexItem> = {};
+	rejectUnsafeKeyedRecordKeys(
+		source.items,
+		"Registry items",
+		(key) => `Registry item "${key}"`,
+	);
 	for (const [key, item] of Object.entries(source.items)) {
 		items[key] = parseWithSchema(
 			indexItemSchema,
@@ -445,7 +571,14 @@ export function parseRegistryDocument(raw: unknown): Registry {
 		"Registry conditions",
 		(key) => `Registry condition "${key}"`,
 	);
-	assertConditionMapBindingKeys(conditions);
+	if (conditions && Object.hasOwn(conditions, PACKAGE_MANAGER_KEY))
+		throw new Error(
+			`Registry conditions cannot declare reserved condition "${PACKAGE_MANAGER_KEY}" (built-in install context).`,
+		);
+	assertConditionMapBindingKeys(
+		[conditions, ...Object.values(items).map((item) => item.conditions)],
+		reservedInterpolationKeys(),
+	);
 	crossValidateWhen(items, conditions);
 
 	const types = parseKeyedRecord(
@@ -457,7 +590,8 @@ export function parseRegistryDocument(raw: unknown): Registry {
 			absent: "Registry types must be declared.",
 			empty: "Registry types must declare at least one type.",
 		},
-	) as Record<string, RegistryItemTypeDefinition>;
+		[RESERVED_CATALOG_TYPE_KEY],
+	);
 	crossValidateItemTypes(items, types);
 
 	return {

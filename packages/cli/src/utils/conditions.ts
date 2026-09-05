@@ -3,12 +3,12 @@ import {
 	buildInstallPlan,
 	collectItemLocalConditions,
 	collectRegistryDependencies,
-	collectRequiredConditions,
-	createHandlerRuntime,
+	collectRequiredConditionWave,
 	type HandlerRuntime,
+	type IndexEntry,
 	type InstallNode,
 	inferConditionDefault,
-	isFileAsync,
+	packWhenUsesCapturedKeys,
 	policyForConditionKind,
 	type Registry,
 	RegistryConditionKind,
@@ -16,8 +16,6 @@ import {
 	type RegistryContextValue,
 	type RegistryPackageManager,
 	type RequiredCondition,
-	readFileAsync,
-	runAsync,
 } from "@tuckshop/core";
 import {
 	confirmInput,
@@ -25,32 +23,46 @@ import {
 	selectInput,
 	textInput,
 } from "../cli/prompts";
-
-/**
- * Build shared handler runtime helpers for the current project.
- * @param projectDir - Absolute project root.
- * @returns Handler runtime bound to the project filesystem and shell.
- */
-export function createProjectHandlerRuntime(
-	projectDir: string,
-): HandlerRuntime {
-	return createHandlerRuntime(projectDir, {
-		isFile: isFileAsync,
-		readFile: readFileAsync,
-		run: (command) => runAsync(command, { cwd: projectDir, stdio: "pipe" }),
-	});
-}
+import { projectScriptHelpers } from "./scripts";
 
 /**
  * Map condition values to Clack select/multiselect options.
  * @param condition - Condition whose labelled values become options.
  * @returns Options for a select or multiselect prompt.
  */
-function conditionSelectOptions(condition: RequiredCondition) {
+function conditionSelectOptions(
+	condition: RequiredCondition,
+): Array<{ label: string; value: string }> {
 	return condition.values.map((entry) => ({
 		label: entry.label,
 		value: entry.value,
 	}));
+}
+
+/**
+ * Fail when a select or multiselect has no options to offer.
+ * @param condition - Selectable condition about to be prompted.
+ * @throws Error when `values` is empty.
+ */
+function assertSelectableValues(condition: RequiredCondition): void {
+	if (condition.values.length === 0)
+		throw new Error(
+			`Condition "${condition.key}" has no selectable values for the current install set.`,
+		);
+}
+
+/**
+ * Sole option value when a non-optional condition offers exactly one choice.
+ * @param condition - Selectable condition about to be prompted.
+ * @param optional - Whether the condition may be skipped.
+ * @returns The single option value, or `undefined` when a prompt is required.
+ */
+function soleOptionValue(
+	condition: RequiredCondition,
+	optional: boolean,
+): string | undefined {
+	if (optional || condition.values.length !== 1) return undefined;
+	return condition.values[0]?.value;
 }
 
 /**
@@ -65,9 +77,10 @@ async function promptMultiselectCondition(
 	promptMessage: string,
 	inferred: RegistryContextValue | undefined,
 ): Promise<string[] | undefined> {
+	assertSelectableValues(condition);
 	const optional = condition.optional === true;
-	if (!optional && condition.values.length === 1)
-		return [condition.values[0].value];
+	const sole = soleOptionValue(condition, optional);
+	if (sole !== undefined) return [sole];
 
 	let defaultValues: string[] | undefined;
 	if (Array.isArray(inferred)) defaultValues = inferred;
@@ -94,12 +107,22 @@ async function promptSelectCondition(
 	promptMessage: string,
 	inferred: RegistryContextValue | undefined,
 ): Promise<string | undefined> {
+	assertSelectableValues(condition);
+	const skipValue = "None";
 	const optional = condition.optional === true;
-	if (!optional && condition.values.length === 1)
-		return condition.values[0].value;
+	if (optional && condition.values.some((entry) => entry.value === skipValue))
+		throw new Error(
+			`Condition "${condition.key}" value "${skipValue}" is reserved for skipping optional selects.`,
+		);
+
+	const sole = soleOptionValue(condition, optional);
+	if (sole !== undefined) return sole;
 
 	const options = optional
-		? [...conditionSelectOptions(condition), { label: "None", value: "None" }]
+		? [
+				...conditionSelectOptions(condition),
+				{ label: skipValue, value: skipValue },
+			]
 		: conditionSelectOptions(condition);
 
 	const selected = await selectInput<string>(
@@ -108,7 +131,7 @@ async function promptSelectCondition(
 		typeof inferred === "string" ? inferred : undefined,
 	);
 
-	if (optional && selected === "None") return undefined;
+	if (optional && selected === skipValue) return undefined;
 	return selected;
 }
 
@@ -214,6 +237,32 @@ async function promptConditionValue(
 }
 
 /**
+ * Whether a condition has only one legal value, so infer cannot change the answer.
+ * @param condition - Condition about to be captured.
+ * @returns True when the prompt will auto-select and ignore inferred defaults.
+ */
+function conditionValueIsDetermined(condition: RequiredCondition): boolean {
+	if (condition.optional === true) return false;
+	const { kind } = policyForConditionKind(condition.kind);
+	switch (kind) {
+		case RegistryConditionKind.SELECT:
+		case RegistryConditionKind.MULTISELECT:
+			return condition.values.length === 1;
+		case RegistryConditionKind.BOOLEAN:
+		case RegistryConditionKind.TEXT:
+			return false;
+		/* v8 ignore start */
+		// Stryker disable all: unreachable exhaustive default
+		default: {
+			const exhaustive: never = kind;
+			throw new Error(`Unsupported condition kind: ${String(exhaustive)}`);
+		}
+		// Stryker restore all
+		/* v8 ignore stop */
+	}
+}
+
+/**
  * Capture defaults and prompt for each pending condition, merging answers into context.
  * @param indexLocation - Absolute path or HTTPS URL of the index document.
  * @param conditions - Conditions still missing from context.
@@ -226,16 +275,16 @@ async function captureConditionValues(
 	conditions: RequiredCondition[],
 	runtime: HandlerRuntime,
 	context: RegistryContext,
+	allowInfer: boolean,
 ): Promise<RegistryContext> {
 	const next: RegistryContext = { ...context };
 
 	for (const condition of conditions) {
-		const inferred = await inferConditionDefault(
-			indexLocation,
-			condition,
-			runtime,
-			next,
-		);
+		const inferred = !conditionValueIsDetermined(condition)
+			? await inferConditionDefault(indexLocation, condition, runtime, next, {
+					allowHandler: allowInfer,
+				})
+			: undefined;
 		const value = await promptConditionValue(condition, inferred);
 		if (value !== undefined) next[condition.key] = value;
 	}
@@ -250,6 +299,7 @@ async function captureConditionValues(
  * @param context - Condition values already captured.
  * @param collectPending - Returns conditions that are promptable for the current context.
  * @param afterBatch - Optional work after each capture batch (e.g. rebuild the install plan).
+ * @param allowInfer - When false, skip infer handlers and keep schema `default`.
  * @returns Context after no further conditions remain.
  */
 async function capturePendingConditions(
@@ -257,7 +307,11 @@ async function capturePendingConditions(
 	runtime: HandlerRuntime,
 	context: RegistryContext,
 	collectPending: (context: RegistryContext) => RequiredCondition[],
-	afterBatch?: (context: RegistryContext) => void,
+	afterBatch?: (
+		context: RegistryContext,
+		capturedKeys: readonly string[],
+	) => void,
+	allowInfer = true,
 ): Promise<RegistryContext> {
 	const askedKeys = new Set<string>();
 	let next = context;
@@ -269,12 +323,42 @@ async function capturePendingConditions(
 
 	while (pending.length > 0) {
 		for (const condition of pending) askedKeys.add(condition.key);
-		next = await captureConditionValues(indexLocation, pending, runtime, next);
-		afterBatch?.(next);
+		next = await captureConditionValues(
+			indexLocation,
+			pending,
+			runtime,
+			next,
+			allowInfer,
+		);
+		afterBatch?.(
+			next,
+			pending.map((condition) => condition.key),
+		);
 		pending = unread(next);
 	}
 
 	return next;
+}
+
+/**
+ * Resolve install-plan nodes to catalog entries.
+ * @param plan - Ordered install nodes.
+ * @param registry - Loaded registry.
+ * @returns Index entries in plan order.
+ * @throws Error when a node names an item missing from the registry.
+ */
+function installEntriesForPlan(
+	plan: InstallNode[],
+	registry: Registry,
+): IndexEntry[] {
+	return plan.map((node) => {
+		const item = registry.items[node.itemId];
+		if (item === undefined)
+			throw new Error(
+				`Install plan references unknown registry item "${node.itemId}".`,
+			);
+		return { itemId: node.itemId, item };
+	});
 }
 
 /**
@@ -283,7 +367,7 @@ async function capturePendingConditions(
  * @param indexLocation - Absolute path or HTTPS URL of the index document.
  * @param projectDir - Absolute project root.
  * @param items - Selected items (`id` or `id@pack`).
- * @param runtime - Shared handler runtime for condition inference.
+ * @param options - Runtime, package manager, infer policy, and optional seeded context.
  * @returns Captured condition context for pack selection.
  */
 export async function captureRequiredConditions(
@@ -291,23 +375,40 @@ export async function captureRequiredConditions(
 	indexLocation: string,
 	projectDir: string,
 	items: string[],
-	runtime = createProjectHandlerRuntime(projectDir),
-	packageManager?: RegistryPackageManager,
+	options: {
+		runtime?: HandlerRuntime;
+		packageManager?: RegistryPackageManager;
+		allowInfer?: boolean;
+		context?: RegistryContext;
+	} = {},
 ): Promise<RegistryContext> {
-	const context = assumeContextFromSelectedItems(
-		items,
-		registry.items,
-		registry.conditions,
-	);
-	const dependencies = collectRegistryDependencies(items, registry.items);
+	const runtime = options.runtime ?? projectScriptHelpers(projectDir);
+	const { packageManager, allowInfer = true } = options;
+	const context =
+		options.context ??
+		assumeContextFromSelectedItems(items, registry.items, registry.conditions);
 
-	return capturePendingConditions(indexLocation, runtime, context, (current) =>
-		collectRequiredConditions(
-			dependencies,
-			registry.conditions,
-			current,
-			packageManager,
-		),
+	return capturePendingConditions(
+		indexLocation,
+		runtime,
+		context,
+		(current) => {
+			const dependencies = collectRegistryDependencies(
+				items,
+				registry.items,
+				current,
+				packageManager,
+			);
+			return collectRequiredConditionWave(
+				dependencies,
+				registry.conditions,
+				current,
+				packageManager,
+				items,
+			);
+		},
+		undefined,
+		allowInfer,
 	);
 }
 
@@ -319,8 +420,9 @@ export async function captureRequiredConditions(
  * @param plan - Ordered install nodes from the latest plan.
  * @param context - Shared conditions already captured.
  * @param runtime - Shared handler runtime.
- * @param packageManager - Selected npm package manager for pack `when`.
+ * @param options - Package manager and whether infer handlers may run.
  * @returns Context and plan after local conditions are settled.
+ * @throws Error when a plan node names an item missing from the registry.
  */
 export async function captureItemLocalConditionsForPlan(
 	registry: Registry,
@@ -329,23 +431,28 @@ export async function captureItemLocalConditionsForPlan(
 	plan: InstallNode[],
 	context: RegistryContext,
 	runtime: HandlerRuntime,
-	packageManager?: RegistryPackageManager,
+	options: {
+		packageManager?: RegistryPackageManager;
+		allowInfer?: boolean;
+	} = {},
 ): Promise<{ context: RegistryContext; plan: InstallNode[] }> {
 	let nextPlan = plan;
+	const { packageManager, allowInfer = true } = options;
 
 	const nextContext = await capturePendingConditions(
 		indexLocation,
 		runtime,
 		context,
-		(current) => {
-			const entries = nextPlan.flatMap((node) => {
-				const item = registry.items[node.itemId];
-				return item ? [{ itemId: node.itemId, item }] : [];
-			});
-			return collectItemLocalConditions(entries, current, packageManager);
-		},
-		(current) => {
-			// Newly matching packs may add dependsOn items with their own local conditions.
+		(current) =>
+			collectItemLocalConditions(
+				installEntriesForPlan(nextPlan, registry),
+				current,
+				packageManager,
+				items,
+			),
+		(current, capturedKeys) => {
+			const entries = installEntriesForPlan(nextPlan, registry);
+			if (!packWhenUsesCapturedKeys(entries, capturedKeys)) return;
 			nextPlan = buildInstallPlan(
 				items,
 				registry.items,
@@ -353,6 +460,7 @@ export async function captureItemLocalConditionsForPlan(
 				packageManager,
 			);
 		},
+		allowInfer,
 	);
 
 	return { context: nextContext, plan: nextPlan };

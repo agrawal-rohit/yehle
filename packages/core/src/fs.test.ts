@@ -2,12 +2,13 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
 	InvalidJsonError,
 	isFileAsync,
 	isMissingPathError,
+	lstatAsync,
 	PathKind,
 	pathKindAsync,
 	readDirectoryAsync,
@@ -17,10 +18,22 @@ import {
 	writeFileAsync,
 } from "./fs";
 
+const createdDirs: string[] = [];
+
 function makeTempDir(prefix = "fs-test-"): string {
 	const tmp = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+	createdDirs.push(tmp);
 	return tmp;
 }
+
+afterEach(() => {
+	while (createdDirs.length > 0) {
+		const dir = createdDirs.pop();
+		if (dir) {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	}
+});
 
 describe("core/fs", () => {
 	describe("isMissingPathError", () => {
@@ -55,6 +68,29 @@ describe("core/fs", () => {
 				"neither a file nor a directory",
 			);
 		});
+
+		it("rethrows filesystem errors other than missing paths", async () => {
+			vi.spyOn(fs.promises, "stat").mockRejectedValueOnce(
+				Object.assign(new Error("permission denied"), { code: "EACCES" }),
+			);
+
+			await expect(pathKindAsync("/tmp/forbidden")).rejects.toThrow(
+				"permission denied",
+			);
+		});
+	});
+
+	describe("lstatAsync", () => {
+		it("returns stats for existing paths and undefined for missing ones", async () => {
+			const root = makeTempDir();
+			const file = path.join(root, "file.txt");
+			fs.writeFileSync(file, "content", "utf8");
+
+			await expect(lstatAsync(file)).resolves.toBeInstanceOf(fs.Stats);
+			await expect(lstatAsync(path.join(root, "missing.txt"))).resolves.toBe(
+				undefined,
+			);
+		});
 	});
 
 	describe("isFileAsync", () => {
@@ -77,6 +113,16 @@ describe("core/fs", () => {
 			const root = makeTempDir();
 
 			await expect(isFileAsync(root)).resolves.toBe(false);
+		});
+
+		it("rethrows filesystem errors other than missing paths", async () => {
+			vi.spyOn(fs.promises, "stat").mockRejectedValueOnce(
+				Object.assign(new Error("permission denied"), { code: "EACCES" }),
+			);
+
+			await expect(isFileAsync("/tmp/forbidden")).rejects.toThrow(
+				"permission denied",
+			);
 		});
 	});
 

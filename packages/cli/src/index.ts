@@ -5,6 +5,19 @@ import { loadRuntimeRegistry } from "./utils/registry";
 
 export { printError } from "./cli/errors";
 
+/**
+ * Narrow the global `--registry` flag to a source string.
+ * @param flag - Parsed CAC `--registry` value.
+ * @returns Trimmed source, or `undefined` when the flag is omitted.
+ * @throws Error when the flag is present but not a non-empty string.
+ */
+function registryFlagValue(flag: unknown): string | undefined {
+	if (flag === undefined) return undefined;
+	if (typeof flag !== "string" || !flag.trim())
+		throw new Error("--registry requires a non-empty URL or file path.");
+	return flag.trim();
+}
+
 /** Run the tuckshop CLI. */
 export default async function run(): Promise<void> {
 	const app = cac("tuckshop");
@@ -16,11 +29,11 @@ export default async function run(): Promise<void> {
 	 * @returns Parsed registry and the index location it was loaded from.
 	 */
 	async function loadRegistry() {
+		const flag = registryFlagValue(app.options.registry);
+		if (flag) return loadRuntimeRegistry(flag);
+
 		const saved = await readConfig();
-		const flag = app.options.registry;
-		const override =
-			typeof flag === "string" && flag.length > 0 ? flag : undefined;
-		return loadRuntimeRegistry(override, saved.registry);
+		return loadRuntimeRegistry(undefined, saved.registry);
 	}
 
 	registerCommandsCli(app, loadRegistry);

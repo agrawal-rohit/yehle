@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type ZodType, z } from "zod";
 import { conditionKindPolicy, RegistryConditionKind } from "./condition-kind";
+import { reservedInterpolationKeys } from "./packages";
 import {
 	parseKeyedRecord,
 	parseRegistryDocument,
@@ -23,7 +24,7 @@ function parseRegistryConditions(raw: unknown) {
 		"Registry conditions",
 		(key) => `Registry condition "${key}"`,
 	);
-	assertConditionMapBindingKeys(parsed);
+	assertConditionMapBindingKeys([parsed], reservedInterpolationKeys());
 	return parsed;
 }
 
@@ -38,6 +39,7 @@ function parseRegistryItemTypes(raw: unknown) {
 			absent: "Registry types must be declared.",
 			empty: "Registry types must declare at least one type.",
 		},
+		["all"],
 	);
 }
 
@@ -116,7 +118,7 @@ describe("registry/parse", () => {
 				}),
 			),
 		).toThrow(
-			'Registry items["button"] must declare source, an install script (prepare/finalize), or at least one pack.',
+			'Registry items["button"] must declare source, an install script (beforeWrite/afterInstall), or at least one pack.',
 		);
 	});
 
@@ -348,6 +350,38 @@ describe("registry/parse", () => {
 				}),
 			).toThrow('Registry type "component" label must be a non-empty string.');
 		});
+
+		it("rejects reserved type key all", () => {
+			expect(() =>
+				parseRegistryItemTypes({
+					all: { label: "All items" },
+				}),
+			).toThrow('Registry type "all" is reserved.');
+		});
+
+		it("rejects a __proto__ type key", () => {
+			expect(() =>
+				parseRegistryItemTypes(JSON.parse('{"__proto__":{"label":"X"}}')),
+			).toThrow('Registry types key "__proto__" is not allowed.');
+		});
+
+		it("rejects an empty type key", () => {
+			expect(() =>
+				parseRegistryItemTypes({
+					"": { label: "Empty" },
+				}),
+			).toThrow("Registry types key must be a non-empty string.");
+		});
+
+		it("rejects a path-escaping type key", () => {
+			expect(() =>
+				parseRegistryItemTypes({
+					"../escape": { label: "Escape" },
+				}),
+			).toThrow(
+				String.raw`Registry type "../escape" must be a single path segment (no "/", "\", or "..").`,
+			);
+		});
 	});
 
 	it("round-trips types through parseRegistryDocument", () => {
@@ -390,6 +424,45 @@ describe("registry/parse", () => {
 				}),
 			),
 		).toThrow('Registry item "button" has undeclared type "component".');
+	});
+
+	it("throws when an item type matches an Object.prototype name", () => {
+		expect(() =>
+			parseRegistryDocument(
+				validDocument({
+					items: {
+						button: validIndexItem({ type: "toString" }),
+					},
+				}),
+			),
+		).toThrow('Registry item "button" has undeclared type "toString".');
+	});
+
+	it("rejects reserved catalog type all", () => {
+		expect(() =>
+			parseRegistryDocument(
+				validDocument({
+					types: {
+						component: { label: "Components" },
+						all: { label: "All items" },
+					},
+				}),
+			),
+		).toThrow('Registry type "all" is reserved.');
+	});
+
+	it("rejects a path-escaping item map key", () => {
+		expect(() =>
+			parseRegistryDocument(
+				validDocument({
+					items: {
+						"../escape": validIndexItem(),
+					},
+				}),
+			),
+		).toThrow(
+			String.raw`Registry item "../escape" must be a single path segment (no "/", "\", or "..").`,
+		);
 	});
 
 	it("omits an empty conditions map from the parsed document", () => {
@@ -489,7 +562,51 @@ describe("registry/parse", () => {
 					},
 				}),
 			).toThrow(
-				'Registry condition "toolchain" value "pnpm" cannot declare bindings.toolchain (collides with the condition key).',
+				'Registry condition "toolchain" value "pnpm" cannot declare bindings.toolchain (collides with a condition key).',
+			);
+		});
+
+		it("rejects option bindings that reuse another condition key", () => {
+			expect(() =>
+				parseRegistryConditions({
+					defaultBranch: {
+						kind: "text",
+						label: "Default branch",
+					},
+					language: {
+						kind: "select",
+						label: "Language",
+						values: [
+							{
+								value: "typescript",
+								label: "TypeScript",
+								bindings: { defaultBranch: "main" },
+							},
+						],
+					},
+				}),
+			).toThrow(
+				'Registry condition "language" value "typescript" cannot declare bindings.defaultBranch (collides with a condition key).',
+			);
+		});
+
+		it("rejects option bindings that reuse a reserved interpolation key", () => {
+			expect(() =>
+				parseRegistryConditions({
+					language: {
+						kind: "select",
+						label: "Language",
+						values: [
+							{
+								value: "typescript",
+								label: "TypeScript",
+								bindings: { pmExec: "npx" },
+							},
+						],
+					},
+				}),
+			).toThrow(
+				'Registry condition "language" value "typescript" cannot declare bindings.pmExec (reserved interpolation key).',
 			);
 		});
 
@@ -572,6 +689,19 @@ describe("registry/parse", () => {
 			).toThrow('Registry condition "language" has duplicate value "ts".');
 		});
 
+		it("rejects a path-escaping condition key", () => {
+			expect(() =>
+				parseRegistryConditions({
+					"../escape": {
+						kind: "text",
+						label: "Escape",
+					},
+				}),
+			).toThrow(
+				String.raw`Registry condition "../escape" must be a single path segment (no "/", "\", or "..").`,
+			);
+		});
+
 		it("rejects an empty nested condition value", () => {
 			expect(() =>
 				parseRegistryConditions({
@@ -601,6 +731,29 @@ describe("registry/parse", () => {
 				),
 			).toThrow(
 				'Registry item "button" pack "react" references unknown when key "language".',
+			);
+		});
+
+		it("rejects a when key that matches an Object.prototype name", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						conditions: {
+							language: {
+								kind: "select",
+								label: "Language",
+								values: [{ value: "typescript", label: "TypeScript" }],
+							},
+						},
+						items: {
+							button: validIndexItem({
+								packs: [validIndexPack({ when: { toString: "typescript" } })],
+							}),
+						},
+					}),
+				),
+			).toThrow(
+				'Registry item "button" pack "react" references unknown when key "toString".',
 			);
 		});
 
@@ -655,7 +808,7 @@ describe("registry/parse", () => {
 								description: "License file",
 								requires: ["authorName"],
 								packs: undefined,
-								prepare: ["r/license.prepare.0.js"],
+								beforeWrite: ["r/license.beforeWrite.0.js"],
 							}),
 						},
 					}),
@@ -665,7 +818,34 @@ describe("registry/parse", () => {
 			);
 		});
 
-		it("rejects requiring an undeclared packageManager condition", () => {
+		it("rejects requiring an Object.prototype name as a condition", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						conditions: {
+							language: {
+								kind: "select",
+								label: "Language",
+								values: [{ value: "typescript", label: "TypeScript" }],
+							},
+						},
+						items: {
+							license: validIndexItem({
+								title: "License",
+								description: "License file",
+								requires: ["toString"],
+								packs: undefined,
+								beforeWrite: ["r/license.beforeWrite.0.js"],
+							}),
+						},
+					}),
+				),
+			).toThrow(
+				'Registry item "license" requires unknown condition "toString".',
+			);
+		});
+
+		it("rejects requiring the reserved packageManager condition", () => {
 			expect(() =>
 				parseRegistryDocument(
 					validDocument({
@@ -677,11 +857,11 @@ describe("registry/parse", () => {
 					}),
 				),
 			).toThrow(
-				'Registry item "button" requires unknown condition "packageManager".',
+				'Registry item "button" cannot require reserved condition "packageManager" (built-in install context).',
 			);
 		});
 
-		it("allows requiring a declared packageManager condition", () => {
+		it("rejects declaring packageManager as a shared condition", () => {
 			expect(() =>
 				parseRegistryDocument(
 					validDocument({
@@ -696,13 +876,13 @@ describe("registry/parse", () => {
 							},
 						},
 						items: {
-							button: validIndexItem({
-								requires: ["packageManager"],
-							}),
+							button: validIndexItem(),
 						},
 					}),
 				),
-			).not.toThrow();
+			).toThrow(
+				'Registry conditions cannot declare reserved condition "packageManager" (built-in install context).',
+			);
 		});
 
 		it("allows pack when to reference the built-in packageManager key", () => {
@@ -740,6 +920,37 @@ describe("registry/parse", () => {
 				),
 			).toThrow(
 				'Registry item "button" pack "react" uses undeclared when value "pip" for key "packageManager".',
+			);
+		});
+
+		it("rejects item-local option bindings that reuse a shared condition key", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						conditions: {
+							defaultBranch: { kind: "text", label: "Default branch" },
+						},
+						items: {
+							button: validIndexItem({
+								conditions: {
+									language: {
+										kind: "select",
+										label: "Language",
+										values: [
+											{
+												value: "typescript",
+												label: "TypeScript",
+												bindings: { defaultBranch: "main" },
+											},
+										],
+									},
+								},
+							}),
+						},
+					}),
+				),
+			).toThrow(
+				'Registry condition "language" value "typescript" cannot declare bindings.defaultBranch (collides with a condition key).',
 			);
 		});
 
@@ -934,13 +1145,13 @@ describe("registry/parse", () => {
 						title: "License",
 						description: "License",
 						type: "configuration",
-						prepare: "/abs/handler.ts",
+						beforeWrite: "/abs/handler.ts",
 						files: [{ source: "a.txt", target: "a.txt" }],
 					},
 					"Registry item",
 				),
 			).toThrow(
-				'Registry item.prepare must be a relative path under the registry (no absolute paths, URLs, or "..").',
+				'Registry item.beforeWrite must be a relative path under the registry (no absolute paths, URLs, or "..").',
 			);
 		});
 
@@ -957,7 +1168,7 @@ describe("registry/parse", () => {
 					"Registry item",
 				),
 			).toThrow(
-				"Registry item must declare files, an install script (prepare/finalize), or at least one pack.",
+				"Registry item must declare files, an install script (beforeWrite/afterInstall), or at least one pack.",
 			);
 		});
 
@@ -971,11 +1182,13 @@ describe("registry/parse", () => {
 						description: "License",
 						type: "configuration",
 						files: [{ source: "a.txt", target: "a.txt" }],
-						finalize: ["cleanup.ts", "cleanup.ts"],
+						afterInstall: ["cleanup:linux.ts", "cleanup:linux.ts"],
 					},
 					"Registry item",
 				),
-			).toThrow('Registry item lists "cleanup.ts" more than once in finalize.');
+			).toThrow(
+				'Registry item lists "cleanup:linux.ts" more than once in afterInstall.',
+			);
 		});
 
 		it("rejects min on a non-multiselect condition", () => {
@@ -1068,6 +1281,110 @@ describe("registry/parse", () => {
 				}),
 			).toThrow(
 				'Registry condition "tools" of kind "multiselect" cannot declare option bindings.',
+			);
+		});
+
+		it("rejects escaping file targets with a readable message", () => {
+			expect(() =>
+				parseWithSchema(
+					registryItemSchema,
+					{
+						id: "license",
+						title: "License",
+						description: "License",
+						type: "configuration",
+						files: [{ source: "a.txt", target: "../outside.txt" }],
+					},
+					"Registry item",
+				),
+			).toThrow(
+				'Registry item.files[0].target must be a relative path (no absolute paths, URLs, or "..").',
+			);
+		});
+
+		it("rejects a __proto__ item id with a readable message", () => {
+			expect(() =>
+				parseWithSchema(
+					registryItemSchema,
+					{
+						id: "__proto__",
+						title: "Bad",
+						description: "Bad",
+						type: "configuration",
+						files: [{ source: "a.txt", target: "a.txt" }],
+					},
+					"Registry item",
+				),
+			).toThrow('Registry item key "__proto__" is not allowed.');
+		});
+
+		it("rejects the reserved select value None with a readable message", () => {
+			expect(() =>
+				parseRegistryConditions({
+					language: {
+						kind: "select",
+						label: "Language",
+						values: [{ value: "None", label: "None" }],
+					},
+				}),
+			).toThrow('Registry condition "language" value "None" is reserved.');
+		});
+
+		it("rejects an undeclared select default with a readable message", () => {
+			expect(() =>
+				parseRegistryConditions({
+					language: {
+						kind: "select",
+						label: "Language",
+						default: "python",
+						values: [{ value: "typescript", label: "TypeScript" }],
+					},
+				}),
+			).toThrow(
+				'Registry condition "language" default "python" is not a declared value.',
+			);
+		});
+
+		it("rejects reserved item type all with a readable message", () => {
+			expect(() =>
+				parseWithSchema(
+					registryItemSchema,
+					{
+						id: "license",
+						title: "License",
+						description: "License",
+						type: "all",
+						files: [{ source: "a.txt", target: "a.txt" }],
+					},
+					"Registry item",
+				),
+			).toThrow('Registry item type "all" is reserved.');
+		});
+
+		it("rejects duplicate compiled file targets with a readable message", () => {
+			expect(() =>
+				parseWithSchema(
+					compiledItemSchema,
+					{
+						files: [
+							{ target: "a.txt", content: "one" },
+							{ target: "a.txt", content: "two" },
+						],
+					},
+					"Compiled item",
+				),
+			).toThrow('Compiled item declares duplicate file target "a.txt".');
+		});
+
+		it("rejects an invalid integrity digest with a readable message", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						scriptIntegrity: { "r/hook.js": "md5-not-sha256" },
+					}),
+				),
+			).toThrow(
+				"Registry.scriptIntegrity.r/hook.js must be a sha256 integrity digest.",
 			);
 		});
 

@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
 	InterruptError,
-	isErrnoCode,
 	OperationCanceledError,
 	printCancel,
 	printError,
@@ -59,14 +58,6 @@ describe("cli/errors", () => {
 		expect(error.name).toBe("InterruptError");
 		expect(error.message).toBe("Interrupted");
 		expect(error.exitCode).toBe(130);
-	});
-
-	test("isErrnoCode matches objects with the given code and rejects other values", () => {
-		expect(isErrnoCode({ code: "ENOENT" }, "ENOENT")).toBe(true);
-		expect(isErrnoCode({ code: "EACCES" }, "ENOENT")).toBe(false);
-		expect(isErrnoCode(null, "ENOENT")).toBe(false);
-		expect(isErrnoCode("ENOENT", "ENOENT")).toBe(false);
-		expect(isErrnoCode(undefined, "ENOENT")).toBe(false);
 	});
 
 	test("runCliCommand succeeds when the action succeeds", async () => {

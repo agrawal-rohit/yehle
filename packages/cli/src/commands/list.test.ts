@@ -389,6 +389,58 @@ describe("commands/list", () => {
 		expect(mockMultiselectInput).not.toHaveBeenCalled();
 	});
 
+	it("throws when a registry item has an undeclared type", async () => {
+		await expect(
+			listCommand(
+				makeRegistry({
+					widget: makeItem({
+						id: "widget",
+						title: "Widget",
+						type: "ghost",
+					}),
+				}),
+				"theme",
+			),
+		).rejects.toThrow('Registry item "widget" has undeclared type "ghost".');
+		expect(mockMultiselectInput).not.toHaveBeenCalled();
+	});
+
+	it("throws when a catalog type has no definition", async () => {
+		await expect(
+			listCommand(
+				makeRegistry(
+					{
+						"theme-a": makeItem({
+							id: "theme-a",
+							title: "Alpha Theme",
+							type: "theme",
+						}),
+					},
+					{
+						theme: undefined as unknown as Registry["types"][string],
+					},
+				),
+				"theme",
+			),
+		).rejects.toThrow('Registry item type "theme" is not declared.');
+	});
+
+	it('throws when the catalog declares type "all"', async () => {
+		await expect(
+			listCommand(
+				makeRegistry(
+					{},
+					{
+						all: { label: "All" },
+					},
+				),
+			),
+		).rejects.toThrow(
+			'Registry item type "all" is reserved for the --type all filter.',
+		);
+		expect(mockMultiselectInput).not.toHaveBeenCalled();
+	});
+
 	it("throws when no registry item types are available", async () => {
 		await expect(listCommand(makeRegistry({}, {}))).rejects.toThrow(
 			"No registry item types found.",

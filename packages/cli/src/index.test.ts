@@ -170,7 +170,6 @@ describe("index", () => {
 			await loader();
 			expect(loadRuntimeRegistry).toHaveBeenCalledWith(
 				"https://example.com/registry.json",
-				undefined,
 			);
 		});
 
@@ -197,11 +196,10 @@ describe("index", () => {
 			await loader();
 			expect(loadRuntimeRegistry).toHaveBeenCalledWith(
 				"https://example.com/registry.json",
-				undefined,
 			);
 		});
 
-		it("should ignore a boolean --registry flag when loading the registry", async () => {
+		it("should reject a boolean --registry flag when loading the registry", async () => {
 			vi.stubGlobal("process", {
 				argv: ["node", "tuckshop", "list", "--registry"],
 			});
@@ -216,12 +214,13 @@ describe("index", () => {
 
 			const loader = vi.mocked(registerCommandsCli).mock
 				.calls[0]?.[1] as () => Promise<unknown>;
-			await loader();
-			expect(loadRuntimeRegistry).toHaveBeenCalledWith(undefined, undefined);
-			expect(mockApp.runMatchedCommand).toHaveBeenCalled();
+			await expect(loader()).rejects.toThrow(
+				"--registry requires a non-empty URL or file path.",
+			);
+			expect(loadRuntimeRegistry).not.toHaveBeenCalled();
 		});
 
-		it("should ignore an empty --registry value when loading the registry", async () => {
+		it("should reject an empty --registry value when loading the registry", async () => {
 			vi.stubGlobal("process", {
 				argv: ["node", "tuckshop", "--registry=", "list"],
 			});
@@ -236,8 +235,33 @@ describe("index", () => {
 
 			const loader = vi.mocked(registerCommandsCli).mock
 				.calls[0]?.[1] as () => Promise<unknown>;
+			await expect(loader()).rejects.toThrow(
+				"--registry requires a non-empty URL or file path.",
+			);
+			expect(loadRuntimeRegistry).not.toHaveBeenCalled();
+		});
+
+		it("should trim a global --registry override", async () => {
+			vi.stubGlobal("process", {
+				argv: [
+					"node",
+					"tuckshop",
+					"--registry",
+					"  https://example.com/registry.json  ",
+					"list",
+				],
+			});
+			mockApp.matchedCommand = { name: "list" };
+			mockApp.options = { registry: "  https://example.com/registry.json  " };
+
+			await run();
+
+			const loader = vi.mocked(registerCommandsCli).mock
+				.calls[0]?.[1] as () => Promise<unknown>;
 			await loader();
-			expect(loadRuntimeRegistry).toHaveBeenCalledWith(undefined, undefined);
+			expect(loadRuntimeRegistry).toHaveBeenCalledWith(
+				"https://example.com/registry.json",
+			);
 		});
 
 		it("should forward a saved registry when no flag is present", async () => {
@@ -258,7 +282,7 @@ describe("index", () => {
 			);
 		});
 
-		it("should prefer the flag over a saved registry", async () => {
+		it("should prefer the flag over a saved registry without reading the config", async () => {
 			vi.stubGlobal("process", {
 				argv: [
 					"node",
@@ -285,8 +309,8 @@ describe("index", () => {
 			await loader();
 			expect(loadRuntimeRegistry).toHaveBeenCalledWith(
 				"https://example.com/flag-registry.json",
-				"https://example.com/saved-registry.json",
 			);
+			expect(readConfig).not.toHaveBeenCalled();
 		});
 
 		it("should skip registry loading when only config commands run", async () => {

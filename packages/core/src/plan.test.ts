@@ -4,11 +4,16 @@ import { NpmPackageManager } from "./packages";
 import {
 	assumeContextFromSelectedItems,
 	buildInstallPlan,
+	catalogNeedsPackageManager,
 	collectItemLocalConditions,
 	collectRegistryDependencies,
 	collectRequiredConditions,
+	collectRequiredConditionWave,
+	packageManagerDropsCandidateDependsOn,
+	packWhenUsesCapturedKeys,
 	parseItemId,
 	selectRegistryPacks,
+	uniqueKnownRegistryItems,
 	whenMatchesContext,
 } from "./plan";
 import type { IndexItem, IndexPack } from "./schema";
@@ -58,6 +63,92 @@ describe("core/plan", () => {
 			expect(() => parseItemId("git-hooks@")).toThrow(
 				"Invalid registry item id",
 			);
+			expect(() => parseItemId("git-hooks@typescript@mobile")).toThrow(
+				"Invalid registry item id",
+			);
+		});
+
+		it("rejects prototype-polluting and path-escaping tokens", () => {
+			expect(() => parseItemId("__proto__")).toThrow(
+				'Registry item id "__proto__" is not allowed.',
+			);
+			expect(() => parseItemId("../escape")).toThrow(
+				String.raw`Registry item id "../escape" must be a single path segment (no "/", "\", or "..").`,
+			);
+			expect(() => parseItemId("item@../pack")).toThrow(
+				String.raw`Registry pack id "../pack" must be a single path segment (no "/", "\", or "..").`,
+			);
+		});
+	});
+
+	describe("uniqueKnownRegistryItems", () => {
+		it("returns unique tokens in original order", () => {
+			const items = {
+				alpha: makeItem({ source: "r/alpha.json" }),
+				beta: makeItem({ source: "r/beta.json" }),
+			};
+			expect(
+				uniqueKnownRegistryItems(["beta", "alpha", "beta", "alpha"], items),
+			).toEqual(["beta", "alpha"]);
+		});
+
+		it("accepts a declared pack pin", () => {
+			const items = {
+				release: makeItem({
+					source: "r/release.json",
+					packs: [
+						makePack({
+							id: "typescript",
+							title: "TypeScript",
+							source: "r/release.typescript.json",
+						}),
+					],
+				}),
+			};
+			expect(uniqueKnownRegistryItems(["release@typescript"], items)).toEqual([
+				"release@typescript",
+			]);
+		});
+
+		it("rejects a missing item id", () => {
+			expect(() => uniqueKnownRegistryItems(["missing"], {})).toThrow(
+				'Registry item not found: "missing"',
+			);
+		});
+
+		it("does not treat Object.prototype names as catalog items", () => {
+			expect(() => uniqueKnownRegistryItems(["toString"], {})).toThrow(
+				'Registry item not found: "toString"',
+			);
+			expect(() =>
+				uniqueKnownRegistryItems(["constructor"], {
+					item: makeItem({ source: "r/item.json" }),
+				}),
+			).toThrow('Registry item not found: "constructor"');
+		});
+
+		it("rejects pinning a pack on a pack-less item", () => {
+			expect(() =>
+				uniqueKnownRegistryItems(["item@react"], {
+					item: makeItem({ source: "r/item.json" }),
+				}),
+			).toThrow('Registry item "item" has no packs.');
+		});
+
+		it("rejects a missing pinned pack id", () => {
+			expect(() =>
+				uniqueKnownRegistryItems(["item@missing"], {
+					item: makeItem({
+						packs: [
+							makePack({
+								id: "default",
+								title: "Default",
+								source: "r/item/default.json",
+							}),
+						],
+					}),
+				}),
+			).toThrow('Registry item "item" has no pack "missing".');
 		});
 	});
 
@@ -93,13 +184,13 @@ describe("core/plan", () => {
 					"item",
 					makeItem({
 						source: "r/item.json",
-						prepare: ["r/item.prepare.0.js"],
+						beforeWrite: ["r/item.beforeWrite.0.js"],
 					}),
 					{},
 				),
 			).toEqual({
 				sources: ["r/item.json"],
-				prepareScripts: ["r/item.prepare.0.js"],
+				beforeWriteScripts: ["r/item.beforeWrite.0.js"],
 			});
 		});
 
@@ -107,15 +198,15 @@ describe("core/plan", () => {
 			expect(
 				selectRegistryPacks(
 					"item",
-					makeItem({ prepare: ["r/item.prepare.0.js"] }),
+					makeItem({ beforeWrite: ["r/item.beforeWrite.0.js"] }),
 					{},
 				),
-			).toEqual({ prepareScripts: ["r/item.prepare.0.js"] });
+			).toEqual({ beforeWriteScripts: ["r/item.beforeWrite.0.js"] });
 		});
 
 		it("includes item-level install scripts on matching packs", () => {
 			const item = makeItem({
-				prepare: ["r/item.prepare.0.js"],
+				beforeWrite: ["r/item.beforeWrite.0.js"],
 				packs: [
 					makePack({
 						id: "default",
@@ -128,19 +219,19 @@ describe("core/plan", () => {
 			expect(selectRegistryPacks("item", item, {})).toEqual({
 				packIds: ["default"],
 				sources: ["r/item/default.json"],
-				prepareScripts: ["r/item.prepare.0.js"],
+				beforeWriteScripts: ["r/item.beforeWrite.0.js"],
 			});
 		});
 
 		it("stacks item-level and selected-pack install scripts", () => {
 			const item = makeItem({
-				prepare: ["r/item.prepare.0.js"],
+				beforeWrite: ["r/item.beforeWrite.0.js"],
 				packs: [
 					makePack({
 						id: "typescript",
 						title: "TypeScript",
 						source: "r/item/typescript.json",
-						prepare: ["r/item/typescript.prepare.0.js"],
+						beforeWrite: ["r/item/typescript.beforeWrite.0.js"],
 					}),
 				],
 			});
@@ -148,9 +239,9 @@ describe("core/plan", () => {
 			expect(selectRegistryPacks("item", item, {})).toEqual({
 				packIds: ["typescript"],
 				sources: ["r/item/typescript.json"],
-				prepareScripts: [
-					"r/item.prepare.0.js",
-					"r/item/typescript.prepare.0.js",
+				beforeWriteScripts: [
+					"r/item.beforeWrite.0.js",
+					"r/item/typescript.beforeWrite.0.js",
 				],
 			});
 		});
@@ -199,7 +290,7 @@ describe("core/plan", () => {
 			);
 		});
 
-		it("returns empty sources when no pack matches and the item has no base source", () => {
+		it("throws when no pack matches and the item has no base source", () => {
 			const item = makeItem({
 				packs: [
 					makePack({
@@ -210,8 +301,144 @@ describe("core/plan", () => {
 					}),
 				],
 			});
+			expect(() => selectRegistryPacks("item", item, {})).toThrow(
+				'Registry item "item" has packs but none match the current install context.',
+			);
+		});
+
+		it("keeps the base source when no pack matches", () => {
+			const item = makeItem({
+				source: "r/item.json",
+				packs: [
+					makePack({
+						id: "typescript",
+						title: "TypeScript",
+						source: "r/item/typescript.json",
+						when: { language: "typescript" },
+					}),
+				],
+			});
 			expect(selectRegistryPacks("item", item, {})).toEqual({
-				sources: [],
+				sources: ["r/item.json"],
+			});
+		});
+
+		it("keeps item-level install scripts when no pack matches", () => {
+			const item = makeItem({
+				beforeWrite: ["r/item.beforeWrite.0.js"],
+				packs: [
+					makePack({
+						id: "typescript",
+						title: "TypeScript",
+						source: "r/item/typescript.json",
+						when: { language: "typescript" },
+					}),
+				],
+			});
+			expect(selectRegistryPacks("item", item, {})).toEqual({
+				beforeWriteScripts: ["r/item.beforeWrite.0.js"],
+			});
+		});
+
+		it("throws when two matching packs share the same when", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "strict",
+						title: "Strict",
+						source: "r/item/strict.json",
+						when: { language: "typescript" },
+					}),
+					makePack({
+						id: "loose",
+						title: "Loose",
+						source: "r/item/loose.json",
+						when: { language: "typescript" },
+					}),
+				],
+			});
+			expect(() =>
+				selectRegistryPacks("item", item, { language: "typescript" }),
+			).toThrow(
+				'Registry item "item" selected indistinguishable packs "strict", "loose" (same when).',
+			);
+		});
+
+		it("treats multiselect when values as unordered", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "mobile",
+						title: "Mobile",
+						source: "r/item/mobile.json",
+						when: { platforms: ["ios", "android"] },
+					}),
+					makePack({
+						id: "mobile-alt",
+						title: "Mobile alternative",
+						source: "r/item/mobile-alt.json",
+						when: { platforms: ["android", "ios"] },
+					}),
+				],
+			});
+
+			expect(() =>
+				selectRegistryPacks("item", item, {
+					platforms: ["android", "ios"],
+				}),
+			).toThrow(
+				'Registry item "item" selected indistinguishable packs "mobile", "mobile-alt" (same when).',
+			);
+		});
+
+		it("throws when two unconditional packs both match", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "css",
+						title: "CSS",
+						source: "r/item/css.json",
+					}),
+					makePack({
+						id: "js",
+						title: "JS",
+						source: "r/item/js.json",
+					}),
+				],
+			});
+			expect(() => selectRegistryPacks("item", item, {})).toThrow(
+				'Registry item "item" selected indistinguishable packs "css", "js" (same when).',
+			);
+		});
+
+		it("layers packs whose when matchers are distinct", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "typescript",
+						title: "TypeScript",
+						source: "r/item/typescript.json",
+						when: { language: "typescript" },
+					}),
+					makePack({
+						id: "typescript-pnpm",
+						title: "TypeScript pnpm",
+						source: "r/item/typescript-pnpm.json",
+						when: { language: "typescript", packageManager: "pnpm" },
+					}),
+				],
+			});
+			expect(
+				selectRegistryPacks(
+					"item",
+					item,
+					{ language: "typescript" },
+					undefined,
+					NpmPackageManager.PNPM,
+				),
+			).toEqual({
+				packIds: ["typescript", "typescript-pnpm"],
+				sources: ["r/item/typescript.json", "r/item/typescript-pnpm.json"],
 			});
 		});
 
@@ -316,14 +543,26 @@ describe("core/plan", () => {
 			);
 		});
 
+		it("does not treat Object.prototype names as catalog items", () => {
+			expect(() =>
+				buildInstallPlan(
+					["toString"],
+					{
+						item: makeItem({ source: "r/item.json" }),
+					},
+					{},
+				),
+			).toThrow('Registry item not found: "toString"');
+		});
+
 		it("includes script-only items without a compiled item source", () => {
 			const license = makeItem({
-				prepare: ["r/license.prepare.0.js"],
+				beforeWrite: ["r/license.beforeWrite.0.js"],
 			});
 			expect(buildInstallPlan(["license"], { license }, {})).toEqual([
 				{
 					itemId: "license",
-					prepareScripts: ["r/license.prepare.0.js"],
+					beforeWriteScripts: ["r/license.beforeWrite.0.js"],
 				},
 			]);
 		});
@@ -349,6 +588,22 @@ describe("core/plan", () => {
 					sources: ["r/item/typescript.json"],
 				},
 			]);
+		});
+
+		it("throws when a packed item has no matching pack and no base source", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "typescript",
+						title: "TypeScript",
+						source: "r/item/typescript.json",
+						when: { language: "typescript" },
+					}),
+				],
+			});
+			expect(() => buildInstallPlan(["item"], { item }, {})).toThrow(
+				'Registry item "item" has packs but none match the current install context.',
+			);
 		});
 
 		it("detects dependency cycles", () => {
@@ -453,25 +708,25 @@ describe("core/plan", () => {
 				selectRegistryPacks(
 					"template",
 					makeItem({
-						prepare: ["r/template.prepare.0.js"],
-						finalize: ["r/template.finalize.0.js"],
+						beforeWrite: ["r/template.beforeWrite.0.js"],
+						afterInstall: ["r/template.afterInstall.0.js"],
 					}),
 					{},
 				),
 			).toEqual({
-				prepareScripts: ["r/template.prepare.0.js"],
-				finalizeScripts: ["r/template.finalize.0.js"],
+				beforeWriteScripts: ["r/template.beforeWrite.0.js"],
+				afterInstallScripts: ["r/template.afterInstall.0.js"],
 			});
 		});
 
 		it("orders dependsOn before the consumer and ignores phase item-like names", () => {
 			const license = makeItem({ source: "r/license.json" });
 			const gitInit = makeItem({
-				finalize: ["r/git-init.finalize.0.js"],
+				afterInstall: ["r/git-init.afterInstall.0.js"],
 			});
 			const template = makeItem({
 				source: "r/template.json",
-				prepare: ["r/template.prepare.0.js"],
+				beforeWrite: ["r/template.beforeWrite.0.js"],
 				dependsOn: ["license", "git-init"],
 			});
 
@@ -488,13 +743,13 @@ describe("core/plan", () => {
 			]);
 			expect(plan[2]).toMatchObject({
 				itemId: "template",
-				prepareScripts: ["r/template.prepare.0.js"],
+				beforeWriteScripts: ["r/template.beforeWrite.0.js"],
 			});
 		});
 
 		it("places a shared dependsOn once before every consumer", () => {
 			const gitInit = makeItem({
-				finalize: ["r/git-init.finalize.0.js"],
+				afterInstall: ["r/git-init.afterInstall.0.js"],
 			});
 			const left = makeItem({
 				source: "r/left.json",
@@ -537,12 +792,12 @@ describe("core/plan", () => {
 	describe("collectRegistryDependencies", () => {
 		it("walks dependsOn and ignores install-phase scripts", () => {
 			const gitInit = makeItem({
-				finalize: ["r/git-init.finalize.0.js"],
+				afterInstall: ["r/git-init.afterInstall.0.js"],
 			});
 			const template = makeItem({
 				source: "r/template.json",
 				dependsOn: ["git-init"],
-				finalize: ["r/template.finalize.0.js"],
+				afterInstall: ["r/template.afterInstall.0.js"],
 			});
 
 			const dependencies = collectRegistryDependencies(["template"], {
@@ -621,6 +876,248 @@ describe("core/plan", () => {
 			expect(() => collectRegistryDependencies(["missing"], {})).toThrow(
 				'Registry item not found: "missing"',
 			);
+		});
+
+		it("detects dependency cycles", () => {
+			const a = makeItem({ dependsOn: ["b"] });
+			const b = makeItem({ dependsOn: ["a"] });
+
+			expect(() => collectRegistryDependencies(["a"], { a, b })).toThrow(
+				'Registry dependency cycle detected at "a".',
+			);
+		});
+
+		it("skips dependsOn from packs ruled out by known context", () => {
+			const typescriptSetup = makeItem({ source: "r/typescript-setup.json" });
+			const pythonSetup = makeItem({ source: "r/python-setup.json" });
+			const testing = makeItem({
+				packs: [
+					makePack({
+						id: "typescript",
+						title: "TypeScript",
+						source: "r/testing/typescript.json",
+						when: { language: "typescript" },
+						dependsOn: ["typescript-setup"],
+					}),
+					makePack({
+						id: "python",
+						title: "Python",
+						source: "r/testing/python.json",
+						when: { language: "python" },
+						dependsOn: ["python-setup"],
+					}),
+				],
+			});
+
+			const dependencies = collectRegistryDependencies(
+				["testing-configuration"],
+				{
+					"testing-configuration": testing,
+					"typescript-setup": typescriptSetup,
+					"python-setup": pythonSetup,
+				},
+				{ language: "typescript" },
+			);
+
+			expect(dependencies.map((entry) => entry.itemId)).toEqual([
+				"testing-configuration",
+				"typescript-setup",
+			]);
+		});
+
+		it("includes undecided pack dependsOn when context is empty", () => {
+			const setup = makeItem({ source: "r/setup.json" });
+			const testing = makeItem({
+				packs: [
+					makePack({
+						id: "typescript",
+						title: "TypeScript",
+						source: "r/testing/typescript.json",
+						when: { language: "typescript" },
+						dependsOn: ["setup-workspace"],
+					}),
+				],
+			});
+
+			const dependencies = collectRegistryDependencies(
+				["testing-configuration"],
+				{
+					"testing-configuration": testing,
+					"setup-workspace": setup,
+				},
+			);
+
+			expect(dependencies.map((entry) => entry.itemId)).toEqual([
+				"testing-configuration",
+				"setup-workspace",
+			]);
+		});
+	});
+
+	describe("catalogNeedsPackageManager", () => {
+		it("is true when a pack when mentions packageManager", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "pnpm",
+						title: "pnpm",
+						source: "r/item/pnpm.json",
+						when: { packageManager: "pnpm" },
+					}),
+				],
+			});
+			expect(catalogNeedsPackageManager([{ itemId: "item", item }])).toBe(true);
+		});
+
+		it("is true when a shared condition when mentions packageManager", () => {
+			expect(
+				catalogNeedsPackageManager([], {
+					lockfile: {
+						kind: RegistryConditionKind.BOOLEAN,
+						label: "Lockfile",
+						when: { packageManager: "pnpm" },
+					},
+				}),
+			).toBe(true);
+		});
+
+		it("is false when no when clause mentions packageManager", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "typescript",
+						title: "TypeScript",
+						source: "r/item/typescript.json",
+						when: { language: "typescript" },
+					}),
+				],
+			});
+			expect(
+				catalogNeedsPackageManager([{ itemId: "item", item }], {
+					language: {
+						kind: RegistryConditionKind.SELECT,
+						label: "Language",
+						values: [{ value: "typescript", label: "TypeScript" }],
+					},
+				}),
+			).toBe(false);
+		});
+	});
+
+	describe("packageManagerDropsCandidateDependsOn", () => {
+		it("is false when matching packs have no dependsOn", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "pnpm",
+						title: "pnpm",
+						source: "r/item/pnpm.json",
+						when: { packageManager: "pnpm" },
+					}),
+					makePack({
+						id: "npm",
+						title: "npm",
+						source: "r/item/npm.json",
+						when: { packageManager: ["npm", "yarn", "bun"] },
+					}),
+				],
+			});
+			expect(
+				packageManagerDropsCandidateDependsOn(
+					[{ itemId: "item", item }],
+					["item"],
+					{},
+					NpmPackageManager.PNPM,
+				),
+			).toBe(false);
+		});
+
+		it("is true when a still-possible pack with dependsOn would be ruled out", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "npm",
+						title: "npm",
+						source: "r/item/npm.json",
+						when: { packageManager: "npm" },
+						dependsOn: ["eslint-npm"],
+					}),
+				],
+			});
+			expect(
+				packageManagerDropsCandidateDependsOn(
+					[{ itemId: "item", item }],
+					["item"],
+					{},
+					NpmPackageManager.PNPM,
+				),
+			).toBe(true);
+		});
+
+		it("is false when the selected manager still matches the pack with dependsOn", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "pnpm",
+						title: "pnpm",
+						source: "r/item/pnpm.json",
+						when: { packageManager: "pnpm" },
+						dependsOn: ["eslint-pnpm"],
+					}),
+				],
+			});
+			expect(
+				packageManagerDropsCandidateDependsOn(
+					[{ itemId: "item", item }],
+					["item"],
+					{},
+					NpmPackageManager.PNPM,
+				),
+			).toBe(false);
+		});
+
+		it("is false when the pack with dependsOn is already ruled out", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "python-npm",
+						title: "Python npm",
+						source: "r/item/python-npm.json",
+						when: { language: "python", packageManager: "npm" },
+						dependsOn: ["eslint-npm"],
+					}),
+				],
+			});
+			expect(
+				packageManagerDropsCandidateDependsOn(
+					[{ itemId: "item", item }],
+					["item"],
+					{ language: "typescript" },
+					NpmPackageManager.PNPM,
+				),
+			).toBe(false);
+		});
+
+		it("is false when a pin keeps the pack even if the manager would not match", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "npm",
+						title: "npm",
+						source: "r/item/npm.json",
+						when: { packageManager: "npm" },
+						dependsOn: ["eslint-npm"],
+					}),
+				],
+			});
+			expect(
+				packageManagerDropsCandidateDependsOn(
+					[{ itemId: "item", item }],
+					["item@npm"],
+					{},
+					NpmPackageManager.PNPM,
+				),
+			).toBe(false);
 		});
 	});
 
@@ -1066,6 +1563,50 @@ describe("core/plan", () => {
 			).toThrow('Install plan references undeclared condition "language".');
 		});
 
+		it("does not treat Object.prototype names as declared conditions", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "yes",
+						title: "Yes",
+						source: "r/item/yes.json",
+						when: { toString: "yes" },
+					}),
+				],
+			});
+
+			expect(() =>
+				collectRequiredConditions([{ itemId: "item", item }], {}, {}),
+			).toThrow('Install plan references undeclared condition "toString".');
+		});
+
+		it("prompts for a declared condition whose key is an Object.prototype name", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "yes",
+						title: "Yes",
+						source: "r/item/yes.json",
+						when: { toString: "yes" },
+					}),
+				],
+			});
+
+			expect(
+				collectRequiredConditions(
+					[{ itemId: "item", item }],
+					{
+						toString: {
+							kind: RegistryConditionKind.SELECT,
+							label: "To string",
+							values: [{ value: "yes", label: "Yes" }],
+						},
+					},
+					{},
+				).map((entry) => entry.key),
+			).toEqual(["toString"]);
+		});
+
 		it("rejects select conditions whose intersected values are empty", () => {
 			const item = makeItem({
 				packs: [
@@ -1115,6 +1656,123 @@ describe("core/plan", () => {
 			).toThrow(
 				'Condition "language" has no selectable values for the current install set.',
 			);
+		});
+
+		it("omits when keys from packs ruled out by the selected package manager", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "pnpm",
+						title: "pnpm",
+						source: "r/item/pnpm.json",
+						when: { packageManager: "pnpm", language: "typescript" },
+					}),
+					makePack({
+						id: "python-npm",
+						title: "Python npm",
+						source: "r/item/python.json",
+						when: {
+							packageManager: "npm",
+							language: "python",
+							framework: "django",
+						},
+					}),
+				],
+			});
+
+			expect(
+				collectRequiredConditions(
+					[{ itemId: "item", item }],
+					{
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [
+								{ value: "typescript", label: "TypeScript" },
+								{ value: "python", label: "Python" },
+							],
+						},
+						framework: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Framework",
+							values: [
+								{ value: "django", label: "Django" },
+								{ value: "next", label: "Next" },
+							],
+						},
+					},
+					{},
+					NpmPackageManager.PNPM,
+				).map((entry) => entry.key),
+			).toEqual(["language"]);
+		});
+	});
+
+	describe("collectRequiredConditionWave", () => {
+		it("asks item requires before pack-when keys", () => {
+			const item = makeItem({
+				requires: ["defaultBranch"],
+				packs: [
+					makePack({
+						id: "next",
+						title: "Next",
+						source: "r/item/next.json",
+						when: { language: "typescript", framework: "next" },
+					}),
+					makePack({
+						id: "django",
+						title: "Django",
+						source: "r/item/django.json",
+						when: { language: "python", framework: "django" },
+					}),
+				],
+			});
+			const conditions = {
+				defaultBranch: {
+					kind: RegistryConditionKind.TEXT,
+					label: "Default branch",
+				},
+				language: {
+					kind: RegistryConditionKind.SELECT,
+					label: "Language",
+					values: [
+						{ value: "typescript", label: "TypeScript" },
+						{ value: "python", label: "Python" },
+					],
+				},
+				framework: {
+					kind: RegistryConditionKind.SELECT,
+					label: "Framework",
+					values: [
+						{ value: "next", label: "Next" },
+						{ value: "django", label: "Django" },
+					],
+				},
+			};
+
+			expect(
+				collectRequiredConditionWave(
+					[{ itemId: "item", item }],
+					conditions,
+					{},
+				).map((entry) => entry.key),
+			).toEqual(["defaultBranch"]);
+
+			expect(
+				collectRequiredConditionWave([{ itemId: "item", item }], conditions, {
+					defaultBranch: "main",
+				}).map((entry) => entry.key),
+			).toEqual(["framework"]);
+
+			expect(
+				collectRequiredConditionWave([{ itemId: "item", item }], conditions, {
+					defaultBranch: "main",
+					framework: "next",
+				}).map((entry) => ({
+					key: entry.key,
+					values: entry.values.map((value) => value.value),
+				})),
+			).toEqual([{ key: "language", values: ["typescript"] }]);
 		});
 	});
 
@@ -1210,6 +1868,51 @@ describe("core/plan", () => {
 		});
 	});
 
+	describe("whenMatchesContext with allowUndecided", () => {
+		it("treats unknown keys as still possible", () => {
+			expect(
+				whenMatchesContext({ language: "typescript" }, {}, undefined, {
+					allowUndecided: true,
+				}),
+			).toBe(true);
+			expect(
+				whenMatchesContext(
+					{ language: "typescript" },
+					{ language: "python" },
+					undefined,
+					{ allowUndecided: true },
+				),
+			).toBe(false);
+			expect(
+				whenMatchesContext(
+					{ language: "typescript" },
+					{ language: "typescript" },
+					undefined,
+					{ allowUndecided: true },
+				),
+			).toBe(true);
+		});
+
+		it("rules out packs when the selected manager does not match", () => {
+			expect(
+				whenMatchesContext(
+					{ packageManager: "npm" },
+					{},
+					NpmPackageManager.PNPM,
+					{ allowUndecided: true },
+				),
+			).toBe(false);
+			expect(
+				whenMatchesContext(
+					{ packageManager: "pnpm" },
+					{},
+					NpmPackageManager.PNPM,
+					{ allowUndecided: true },
+				),
+			).toBe(true);
+		});
+	});
+
 	describe("assumeContextFromSelectedItems", () => {
 		it("seeds from a pinned pack when map", () => {
 			const item = makeItem({
@@ -1236,6 +1939,48 @@ describe("core/plan", () => {
 					},
 				),
 			).toEqual({ language: "typescript" });
+		});
+
+		it("rejects conflicting values from pinned packs", () => {
+			const typescript = makeItem({
+				packs: [
+					makePack({
+						id: "typescript",
+						title: "TypeScript",
+						source: "r/typescript.json",
+						when: { language: "typescript" },
+					}),
+				],
+			});
+			const python = makeItem({
+				packs: [
+					makePack({
+						id: "python",
+						title: "Python",
+						source: "r/python.json",
+						when: { language: "python" },
+					}),
+				],
+			});
+
+			expect(() =>
+				assumeContextFromSelectedItems(
+					["typescript@typescript", "python@python"],
+					{ typescript, python },
+					{
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [
+								{ value: "typescript", label: "TypeScript" },
+								{ value: "python", label: "Python" },
+							],
+						},
+					},
+				),
+			).toThrow(
+				'Pinned pack "python@python" requires a conflicting value for condition "language".',
+			);
 		});
 
 		it("does not seed context without a pinned pack", () => {
@@ -1308,6 +2053,33 @@ describe("core/plan", () => {
 			).toThrow(
 				'Pinned pack "item@typescript" references undeclared condition "language".',
 			);
+		});
+
+		it("seeds from an item-local condition named in the pinned pack when", () => {
+			const item = makeItem({
+				conditions: {
+					flavor: {
+						kind: RegistryConditionKind.SELECT,
+						label: "Flavor",
+						values: [
+							{ value: "basic", label: "Basic" },
+							{ value: "advanced", label: "Advanced" },
+						],
+					},
+				},
+				packs: [
+					makePack({
+						id: "advanced",
+						title: "Advanced",
+						source: "r/item/advanced.json",
+						when: { flavor: "advanced" },
+					}),
+				],
+			});
+
+			expect(
+				assumeContextFromSelectedItems(["item@advanced"], { item }),
+			).toEqual({ flavor: "advanced" });
 		});
 
 		it("coerces boolean and multiselect when values when conditions are provided", () => {
@@ -1444,7 +2216,121 @@ describe("core/plan", () => {
 
 			expect(() =>
 				collectItemLocalConditions([{ itemId: "item", item }], {}),
-			).toThrow('Item-level condition "language" has no selectable values.');
+			).toThrow(
+				'Condition "language" has no selectable values for the current install set.',
+			);
+		});
+
+		it("narrows local select options to values present on still-possible packs", () => {
+			const item = makeItem({
+				conditions: {
+					flavor: {
+						kind: RegistryConditionKind.SELECT,
+						label: "Flavor",
+						values: [
+							{ value: "basic", label: "Basic" },
+							{ value: "advanced", label: "Advanced" },
+							{ value: "enterprise", label: "Enterprise" },
+						],
+					},
+				},
+				packs: [
+					makePack({
+						id: "basic",
+						title: "Basic",
+						source: "r/item/basic.json",
+						when: { flavor: "basic" },
+					}),
+					makePack({
+						id: "advanced",
+						title: "Advanced",
+						source: "r/item/advanced.json",
+						when: { flavor: "advanced" },
+					}),
+				],
+			});
+
+			expect(
+				collectItemLocalConditions([{ itemId: "item", item }], {}),
+			).toEqual([
+				{
+					key: "flavor",
+					label: "Flavor",
+					kind: RegistryConditionKind.SELECT,
+					values: [
+						{ value: "basic", label: "Basic" },
+						{ value: "advanced", label: "Advanced" },
+					],
+				},
+			]);
+		});
+
+		it("keeps all local select values when no pack when uses the key", () => {
+			const item = makeItem({
+				source: "r/item.json",
+				conditions: {
+					flavor: {
+						kind: RegistryConditionKind.SELECT,
+						label: "Flavor",
+						values: [
+							{ value: "basic", label: "Basic" },
+							{ value: "advanced", label: "Advanced" },
+						],
+					},
+				},
+			});
+
+			expect(
+				collectItemLocalConditions([{ itemId: "item", item }], {}),
+			).toEqual([
+				{
+					key: "flavor",
+					label: "Flavor",
+					kind: RegistryConditionKind.SELECT,
+					values: [
+						{ value: "basic", label: "Basic" },
+						{ value: "advanced", label: "Advanced" },
+					],
+				},
+			]);
+		});
+	});
+
+	describe("packWhenUsesCapturedKeys", () => {
+		it("is true when a captured key appears in a planned pack when", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "advanced",
+						title: "Advanced",
+						source: "r/item/advanced.json",
+						when: { flavor: "advanced" },
+					}),
+				],
+			});
+			expect(
+				packWhenUsesCapturedKeys([{ itemId: "item", item }], ["flavor"]),
+			).toBe(true);
+		});
+
+		it("is false for interpolation-only captured keys", () => {
+			const item = makeItem({
+				source: "r/item.json",
+				packs: [
+					makePack({
+						id: "typescript",
+						title: "TypeScript",
+						source: "r/item/typescript.json",
+						when: { language: "typescript" },
+					}),
+				],
+			});
+			expect(
+				packWhenUsesCapturedKeys(
+					[{ itemId: "item", item }],
+					["coverageThreshold"],
+				),
+			).toBe(false);
 		});
 	});
 });

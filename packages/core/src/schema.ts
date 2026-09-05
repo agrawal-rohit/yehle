@@ -3,18 +3,64 @@ import {
 	policyForConditionKind,
 	RegistryConditionKind,
 } from "./condition-kind";
+import { isEscapingRelativePath } from "./urls";
+
+/** Catalog type key reserved for the CLI `--type all` filter. */
+export const RESERVED_CATALOG_TYPE_KEY = "all";
 
 /** Non-empty string field. */
 const nonEmptyString = z.string().min(1);
 
 /** Item / pack ids must be a single path segment so default payload paths cannot escape `r/`. */
 const safePathSegment = nonEmptyString.superRefine((id, context) => {
+	if (id === "__proto__") {
+		context.addIssue({
+			code: "custom",
+			message: `unsafe_key:${id}`,
+		});
+		return;
+	}
 	if (id === "." || id === ".." || id.includes("/") || id.includes("\\"))
 		context.addIssue({
 			code: "custom",
 			message: `invalid_id:${id}`,
 		});
 });
+
+/**
+ * Reject record keys that pollute object prototypes.
+ * Must run on the raw object: Zod's `z.record` copies into a new object and drops `__proto__`.
+ * @param record - Raw string-keyed map.
+ * @param context - Zod refinement context.
+ */
+function rejectUnsafeMapKeys(
+	record: Record<string, unknown>,
+	context: z.RefinementCtx,
+): void {
+	for (const key of Object.keys(record)) {
+		if (key === "__proto__")
+			context.addIssue({
+				code: "custom",
+				message: `unsafe_key:${key}`,
+			});
+	}
+}
+
+/**
+ * String-keyed map that rejects empty and prototype-polluting keys on the raw input.
+ * @param valueSchema - Schema for each map value.
+ * @returns Zod record schema.
+ */
+function safeKeyedRecord<Value extends z.ZodType>(valueSchema: Value) {
+	return z
+		.unknown()
+		.superRefine((value, context) => {
+			if (typeof value !== "object" || value === null || Array.isArray(value))
+				return;
+			rejectUnsafeMapKeys(value as Record<string, unknown>, context);
+		})
+		.pipe(z.record(nonEmptyString, valueSchema));
+}
 
 /** Make keys whose value may be `undefined` optional, matching {@link omitUndefined}. */
 type OmitUndefinedKeys<T> = {
@@ -40,12 +86,13 @@ function omitUndefined<T extends Record<string, unknown>>(
 }
 
 /**
- * Optional string list that collapses absent or empty arrays to `undefined`.
- * @returns Zod schema for optional dependency-style string arrays.
+ * Optional list that collapses absent or empty arrays to `undefined`.
+ * @param schema - Schema for each element.
+ * @returns Zod schema for an optional non-empty element list.
  */
-function optionalNonEmptyStringArray() {
+function optionalNonEmptyArray<T extends z.ZodType>(schema: T) {
 	return z
-		.array(nonEmptyString)
+		.array(schema)
 		.optional()
 		.transform((value) => (value && value.length > 0 ? value : undefined));
 }
@@ -63,21 +110,26 @@ function optionalNonEmptyString() {
 		);
 }
 
-/** Relative path to a colocated script or compiled script URI under the index. */
-const registryScriptPathSchema = nonEmptyString.superRefine(
-	(value, context) => {
-		if (
-			value.startsWith("/") ||
-			value.includes("\\") ||
-			value.split("/").includes("..") ||
-			/^https?:\/\//i.test(value)
-		)
+/**
+ * Non-empty relative path that cannot escape its root.
+ * @param issuePrefix - Custom issue prefix (`invalid_script` or `invalid_path`).
+ * @returns Zod string schema.
+ */
+function relativePathSchema(issuePrefix: "invalid_script" | "invalid_path") {
+	return nonEmptyString.superRefine((value, context) => {
+		if (isEscapingRelativePath(value))
 			context.addIssue({
 				code: "custom",
-				message: `invalid_script:${value}`,
+				message: `${issuePrefix}:${value}`,
 			});
-	},
-);
+	});
+}
+
+/** Relative path to a colocated script or compiled script URI under the index. */
+const registryScriptPathSchema = relativePathSchema("invalid_script");
+
+/** Relative file path under the registry (source) or consuming project (target). */
+const relativeFilePathSchema = relativePathSchema("invalid_path");
 
 /**
  * Optional install-phase field accepting one script path or a non-empty list.
@@ -97,17 +149,17 @@ function optionalInstallPhaseList() {
 /** Install lifecycle phase field names on catalog and raw items. */
 export enum InstallPhase {
 	/** Mutate the install plan before files are written. */
-	PREPARE = "prepare",
+	BEFORE_WRITE = "beforeWrite",
 	/** Run side effects after files and packages are applied. */
-	FINALIZE = "finalize",
+	AFTER_INSTALL = "afterInstall",
 }
 
 /** File metadata in an raw `registry-item.json`. */
 export const registryFileSchema = z.strictObject({
 	/** Path to the file in the item folder. */
-	source: nonEmptyString,
+	source: relativeFilePathSchema,
 	/** Destination path in the consuming project. */
-	target: nonEmptyString,
+	target: relativeFilePathSchema,
 });
 export type RegistryFile = z.infer<typeof registryFileSchema>;
 
@@ -117,7 +169,7 @@ export type RegistryFile = z.infer<typeof registryFileSchema>;
  */
 export const compiledItemFileSchema = z.strictObject({
 	/** Destination path in the consuming project. */
-	target: nonEmptyString,
+	target: relativeFilePathSchema,
 	/** Raw template text inlined at build time. */
 	content: nonEmptyString,
 });
@@ -134,14 +186,12 @@ export enum RegistryDependencyKind {
 	DEV = "dev",
 }
 
-const registryDependencySetShape = {
-	[RegistryDependencyKind.RUNTIME]: optionalNonEmptyStringArray(),
-	[RegistryDependencyKind.DEV]: optionalNonEmptyStringArray(),
-};
-
 /** Runtime and dev package names for one ecosystem. */
 export const registryDependencySetSchema = z
-	.strictObject(registryDependencySetShape)
+	.strictObject({
+		[RegistryDependencyKind.RUNTIME]: optionalNonEmptyArray(nonEmptyString),
+		[RegistryDependencyKind.DEV]: optionalNonEmptyArray(nonEmptyString),
+	})
 	.transform(omitUndefined);
 export type RegistryDependencySet = z.infer<typeof registryDependencySetSchema>;
 
@@ -185,7 +235,7 @@ export type RegistryEcosystemDependencies = NonNullable<
 >;
 
 /** Named project commands for one ecosystem (e.g. `package.json` scripts for npm). */
-const registryCommandSetSchema = z.record(nonEmptyString, nonEmptyString);
+const registryCommandSetSchema = safeKeyedRecord(nonEmptyString);
 export type RegistryCommandSet = z.infer<typeof registryCommandSetSchema>;
 
 /** Ecosystem keys accepted on registry command maps. */
@@ -205,6 +255,29 @@ export type RegistryEcosystemCommands = NonNullable<
 	z.infer<typeof registryEcosystemCommandsSchema>
 >;
 
+/**
+ * Reject duplicate install targets in one file list.
+ * @param files - Files that may share a target path.
+ * @param context - Zod refinement context.
+ */
+function rejectDuplicateFileTargets(
+	files: Array<{ target: string }> | undefined,
+	context: z.RefinementCtx,
+): void {
+	if (!files) return;
+	const seen = new Set<string>();
+	for (const file of files) {
+		if (seen.has(file.target)) {
+			context.addIssue({
+				code: "custom",
+				message: `duplicate_target:${file.target}`,
+			});
+			return;
+		}
+		seen.add(file.target);
+	}
+}
+
 /** Compiled item for one item or pack (templates, not rendered output). */
 export const compiledItemSchema = z
 	.strictObject({
@@ -215,7 +288,10 @@ export const compiledItemSchema = z
 		/** Ecosystem commands to merge into the project manifest, keyed by ecosystem. */
 		commands: registryEcosystemCommandsSchema.optional(),
 		/** Repository secret names the consumer must configure manually (e.g. in GitHub) */
-		secrets: optionalNonEmptyStringArray(),
+		secrets: optionalNonEmptyArray(nonEmptyString),
+	})
+	.superRefine((item, context) => {
+		rejectDuplicateFileTargets(item.files, context);
 	})
 	.transform(omitUndefined);
 export type CompiledItem = z.infer<typeof compiledItemSchema>;
@@ -227,8 +303,7 @@ export const registryWhenValueSchema = z.union([
 	z.boolean(),
 ]);
 /** Condition matcher shared by conditions and packs. */
-export const registryWhenSchema = z
-	.record(z.string(), registryWhenValueSchema)
+export const registryWhenSchema = safeKeyedRecord(registryWhenValueSchema)
 	.optional()
 	.transform((value) => {
 		if (!value || Object.keys(value).length === 0) return undefined;
@@ -236,7 +311,7 @@ export const registryWhenSchema = z
 	});
 export type RegistryWhen = NonNullable<z.infer<typeof registryWhenSchema>>;
 
-/** A labelled value for a shared condition. */
+/** A labelled value for a shared or item-local condition. */
 export const registryConditionValueSchema = z
 	.strictObject({
 		/** Matcher value referenced by pack and condition `when` entries. */
@@ -244,7 +319,7 @@ export const registryConditionValueSchema = z
 		/** Display label for this value. */
 		label: nonEmptyString,
 		/** Extra interpolation keys merged when this select option is chosen. */
-		bindings: z.record(nonEmptyString, nonEmptyString).optional(),
+		bindings: safeKeyedRecord(nonEmptyString).optional(),
 	})
 	.superRefine((entry, context) => {
 		if (
@@ -334,6 +409,11 @@ function rejectInvalidSelectableCondition(
 		}
 		seenValues.add(entry.value);
 
+		if (entry.value === "None") {
+			addConditionIssue(context, "reserved_value:None");
+			return true;
+		}
+
 		if (
 			kind === RegistryConditionKind.MULTISELECT &&
 			entry.bindings !== undefined
@@ -391,7 +471,13 @@ export const registryConditionSchema = z
 		const { kind, requiresValues } = policyForConditionKind(data.kind);
 		if (rejectInvalidConditionMin(data, kind, context)) return;
 		if (requiresValues) {
-			rejectInvalidSelectableCondition(data, kind, context);
+			if (rejectInvalidSelectableCondition(data, kind, context)) return;
+			if (
+				data.default !== undefined &&
+				!(data.values ?? []).some((entry) => entry.value === data.default)
+			) {
+				addConditionIssue(context, `undeclared_default:${data.default}`);
+			}
 			return;
 		}
 		rejectInvalidNonSelectableCondition(data, kind, context);
@@ -412,26 +498,64 @@ export const registryConditionSchema = z
 export type RegistryCondition = z.infer<typeof registryConditionSchema>;
 
 /**
- * Throw when any option `bindings` key equals its parent condition key.
- * @param conditions - Parsed condition map keyed by condition name.
- * @throws Error when a binding reuses the condition key.
+ * Throw when option `bindings` reuse a condition key or a reserved interpolation key.
+ * @param maps - Shared and item-local condition maps to union.
+ * @param reservedKeys - `packageManager` and `pm*` keys that bindings must not reuse.
+ * @throws Error when a binding collides.
  */
 export function assertConditionMapBindingKeys(
-	conditions: Record<string, RegistryCondition> | undefined,
+	maps: Array<Record<string, RegistryCondition> | undefined>,
+	reservedKeys: readonly string[] = [],
 ): void {
-	if (!conditions) return;
+	const conditions: Record<string, RegistryCondition> = {};
+	for (const map of maps) {
+		if (!map) continue;
+		Object.assign(conditions, map);
+	}
+	const conditionKeys = new Set(Object.keys(conditions));
+	const reserved = new Set(reservedKeys);
 	for (const [key, condition] of Object.entries(conditions)) {
 		for (const entry of condition.values ?? []) {
-			if (!entry.bindings || !Object.hasOwn(entry.bindings, key)) continue;
-			throw new Error(
-				`Registry condition "${key}" value "${entry.value}" cannot declare bindings.${key} (collides with the condition key).`,
-			);
+			for (const bindingKey of Object.keys(entry.bindings ?? {})) {
+				assertOptionBindingKey(
+					key,
+					entry.value,
+					bindingKey,
+					conditionKeys,
+					reserved,
+				);
+			}
 		}
 	}
 }
 
 /**
- * Reject option `bindings` keys that collide with the parent condition key.
+ * Throw when one option binding key is reserved or collides with a condition name.
+ * @param conditionKey - Condition that declared the binding.
+ * @param value - Option value that declared the binding.
+ * @param bindingKey - Binding key to check.
+ * @param conditionKeys - Union of condition names across maps.
+ * @param reserved - Reserved interpolation keys.
+ */
+function assertOptionBindingKey(
+	conditionKey: string,
+	value: string,
+	bindingKey: string,
+	conditionKeys: Set<string>,
+	reserved: ReadonlySet<string>,
+): void {
+	if (reserved.has(bindingKey))
+		throw new Error(
+			`Registry condition "${conditionKey}" value "${value}" cannot declare bindings.${bindingKey} (reserved interpolation key).`,
+		);
+	if (conditionKeys.has(bindingKey))
+		throw new Error(
+			`Registry condition "${conditionKey}" value "${value}" cannot declare bindings.${bindingKey} (collides with a condition key).`,
+		);
+}
+
+/**
+ * Reject option `bindings` keys that collide with any condition key in the same map.
  * @param conditions - Parsed condition map keyed by condition name.
  * @param context - Zod refinement context.
  */
@@ -441,19 +565,20 @@ function rejectBindingParentKeyCollisions(
 ): void {
 	for (const [key, condition] of Object.entries(conditions)) {
 		for (const [index, entry] of (condition.values ?? []).entries()) {
-			if (!entry.bindings || !Object.hasOwn(entry.bindings, key)) continue;
-			context.addIssue({
-				code: "custom",
-				message: `binding_parent_key:${key}`,
-				path: [key, "values", index, "bindings", key],
-			});
+			for (const bindingKey of Object.keys(entry.bindings ?? {})) {
+				if (!Object.hasOwn(conditions, bindingKey)) continue;
+				context.addIssue({
+					code: "custom",
+					message: `binding_parent_key:${bindingKey}`,
+					path: [key, "values", index, "bindings", bindingKey],
+				});
+			}
 		}
 	}
 }
 
 /** Optional condition map that collapses absent or empty records to `undefined`. */
-const optionalConditionMap = z
-	.record(z.string(), registryConditionSchema)
+const optionalConditionMap = safeKeyedRecord(registryConditionSchema)
 	.superRefine((conditions, context) => {
 		rejectBindingParentKeyCollisions(conditions, context);
 	})
@@ -528,13 +653,13 @@ function rejectDuplicateListEntries(
 function rejectInstallPhaseConflicts(
 	item: {
 		dependsOn?: string[];
-		prepare?: string[];
-		finalize?: string[];
+		beforeWrite?: string[];
+		afterInstall?: string[];
 	},
 	context: z.RefinementCtx,
 ): void {
-	rejectDuplicateListEntries(item.prepare, "prepare", context);
-	rejectDuplicateListEntries(item.finalize, "finalize", context);
+	rejectDuplicateListEntries(item.beforeWrite, "beforeWrite", context);
+	rejectDuplicateListEntries(item.afterInstall, "afterInstall", context);
 	rejectDuplicateListEntries(item.dependsOn, "dependsOn", context);
 }
 
@@ -547,11 +672,11 @@ const packSharedFields = {
 	/** Condition matcher that includes this pack when it matches. */
 	when: registryWhenSchema,
 	/** Other registry items this pack depends on. */
-	dependsOn: optionalNonEmptyStringArray(),
+	dependsOn: optionalNonEmptyArray(nonEmptyString),
 	/** Colocated scripts that mutate the install plan before files are written. */
-	prepare: optionalInstallPhaseList(),
+	beforeWrite: optionalInstallPhaseList(),
 	/** Colocated scripts that run side effects after files and packages are applied. */
-	finalize: optionalInstallPhaseList(),
+	afterInstall: optionalInstallPhaseList(),
 };
 
 /** Pack from an raw `registry-item.json`. */
@@ -565,10 +690,11 @@ export const registryPackSchema = z
 		/** Ecosystem commands added with this pack, keyed by ecosystem. */
 		commands: registryEcosystemCommandsSchema.optional(),
 		/** Repository secret names to remind about after install (never prompted). */
-		secrets: optionalNonEmptyStringArray(),
+		secrets: optionalNonEmptyArray(nonEmptyString),
 	})
 	.superRefine((pack, context) => {
 		rejectInstallPhaseConflicts(pack, context);
+		rejectDuplicateFileTargets(pack.files, context);
 	})
 	.transform(omitUndefined);
 export type RawRegistryPack = z.infer<typeof registryPackSchema>;
@@ -586,31 +712,30 @@ export const indexPackSchema = z
 	.transform(omitUndefined);
 export type IndexPack = z.infer<typeof indexPackSchema>;
 
-/** Optional packs list that collapses empty arrays to undefined. */
-const optionalPacks = <T extends z.ZodType>(packSchema: T) =>
-	z
-		.array(packSchema)
-		.optional()
-		.transform((value) => (value && value.length > 0 ? value : undefined));
-
 /** Shared fields for authored and index items (excluding id / install source). */
 const itemSharedFields = {
 	/** Display title. */
 	title: nonEmptyString,
 	/** Short description of the item. */
 	description: nonEmptyString,
-	/** Item type key declared in `types`. */
-	type: nonEmptyString,
+	/** Item type key declared in `types`. `"all"` is reserved for the CLI `--type all` filter. */
+	type: nonEmptyString.superRefine((type, context) => {
+		if (type === RESERVED_CATALOG_TYPE_KEY)
+			context.addIssue({
+				code: "custom",
+				message: `reserved_type:${RESERVED_CATALOG_TYPE_KEY}`,
+			});
+	}),
 	/** Shared condition keys this item consumes. */
-	requires: optionalNonEmptyStringArray(),
+	requires: optionalNonEmptyArray(nonEmptyString),
 	/** Local conditions used by this item only. */
 	conditions: optionalConditionMap,
 	/** Other registry items this item depends on. */
-	dependsOn: optionalNonEmptyStringArray(),
+	dependsOn: optionalNonEmptyArray(nonEmptyString),
 	/** Colocated scripts that mutate the install plan before files are written. */
-	prepare: optionalInstallPhaseList(),
+	beforeWrite: optionalInstallPhaseList(),
 	/** Colocated scripts that run side effects after files and packages are applied. */
-	finalize: optionalInstallPhaseList(),
+	afterInstall: optionalInstallPhaseList(),
 };
 
 /**
@@ -625,13 +750,13 @@ function hasEntries(value: readonly unknown[] | undefined): boolean {
 /**
  * Whether an item declares at least one install-phase script.
  * @param item - Parsed item candidate.
- * @returns True when prepare or finalize is non-empty.
+ * @returns True when beforeWrite or afterInstall is non-empty.
  */
 function hasInstallPhaseScripts(item: {
-	prepare?: string[];
-	finalize?: string[];
+	beforeWrite?: string[];
+	afterInstall?: string[];
 }): boolean {
-	return hasEntries(item.prepare) || hasEntries(item.finalize);
+	return hasEntries(item.beforeWrite) || hasEntries(item.afterInstall);
 }
 
 /**
@@ -642,9 +767,9 @@ function hasInstallPhaseScripts(item: {
 function refineRawRegistryItem(
 	item: {
 		packs?: Array<{ id: string }>;
-		prepare?: string[];
-		finalize?: string[];
-		files?: unknown[];
+		beforeWrite?: string[];
+		afterInstall?: string[];
+		files?: Array<{ target: string }>;
 		requires?: string[];
 		conditions?: Record<string, unknown>;
 	},
@@ -663,6 +788,7 @@ function refineRawRegistryItem(
 	}
 
 	rejectDuplicatePackIds(item.packs, context);
+	rejectDuplicateFileTargets(item.files, context);
 	rejectRequiresAndLocalConditionOverlap(item, context);
 }
 
@@ -674,8 +800,8 @@ function refineRawRegistryItem(
 function refineIndexItem(
 	item: {
 		packs?: Array<{ id: string }>;
-		prepare?: string[];
-		finalize?: string[];
+		beforeWrite?: string[];
+		afterInstall?: string[];
 		source?: string;
 		requires?: string[];
 		conditions?: Record<string, unknown>;
@@ -730,9 +856,9 @@ export const registryItemSchema = z
 		/** Ecosystem commands added with this item, keyed by ecosystem. */
 		commands: registryEcosystemCommandsSchema.optional(),
 		/** Repository secret names to remind about after install (never prompted). */
-		secrets: optionalNonEmptyStringArray(),
+		secrets: optionalNonEmptyArray(nonEmptyString),
 		/** Optional included packs for conditional subsets of this item. */
-		packs: optionalPacks(registryPackSchema),
+		packs: optionalNonEmptyArray(registryPackSchema),
 	})
 	.superRefine((item, context) => {
 		refineRawRegistryItem(item, context);
@@ -748,7 +874,7 @@ export const indexItemSchema = z
 		/** Compiled item URI for item-level files, joined against the index location. */
 		source: nonEmptyString.optional(),
 		/** Optional included packs compiled as additional payloads. */
-		packs: optionalPacks(indexPackSchema),
+		packs: optionalNonEmptyArray(indexPackSchema),
 	})
 	.superRefine((item, context) => {
 		refineIndexItem(item, context);
@@ -757,21 +883,36 @@ export const indexItemSchema = z
 	.transform(omitUndefined);
 export type IndexItem = z.infer<typeof indexItemSchema>;
 
+/** sha256 Subresource Integrity digest (`sha256-<base64>`). */
+const integrityDigestSchema = nonEmptyString.superRefine((value, context) => {
+	if (!/^sha256-[A-Za-z0-9+/]+={0,2}$/.test(value))
+		context.addIssue({
+			code: "custom",
+			message: "invalid_integrity",
+		});
+});
+
+/** String-keyed map that rejects empty and prototype-polluting keys. */
+const unknownKeyedRecord = safeKeyedRecord(z.unknown());
+
+/** Integrity digest map keyed by catalog URI. */
+const integrityMapSchema = safeKeyedRecord(integrityDigestSchema).optional();
+
 /**
  * Top-level registry document fields validated before nested parsing.
  * Nested maps stay `unknown` so callers can parse each entry with a labeled schema.
  */
 export const registryDocumentFieldsSchema = z.strictObject({
 	/** Shared condition definitions keyed by condition key. */
-	conditions: z.record(z.string(), z.unknown()).optional(),
+	conditions: unknownKeyedRecord.optional(),
 	/** Item type display metadata keyed by type value. */
 	types: z.unknown().optional(),
 	/** Registry items keyed by id. */
-	items: z.record(z.string(), z.unknown()),
+	items: unknownKeyedRecord,
 	/** sha256 integrity digests for compiled script URIs (`sha256-<base64>`). */
-	scriptIntegrity: z.record(z.string(), z.string()).optional(),
+	scriptIntegrity: integrityMapSchema,
 	/** sha256 integrity digests for compiled item `source` URIs (`sha256-<base64>`). */
-	itemIntegrity: z.record(z.string(), z.string()).optional(),
+	itemIntegrity: integrityMapSchema,
 });
 
 /** Fully parsed index document written to registry.json. */

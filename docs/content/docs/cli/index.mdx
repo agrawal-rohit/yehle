@@ -21,7 +21,7 @@ npx tuckshop add testing-configuration --overwrite
 npx tuckshop add
 ```
 
-`add` captures shared and item-local conditions (local `infer` handlers can suggest prompt defaults), selects every matching pack plus any base files, fetches compiled items from the index location, runs any local item hooks, writes files into the project, and optionally installs packages using the captured `packageManager` condition.
+`add` captures shared and item-local conditions (local `infer` handlers can suggest prompt defaults), selects every matching pack plus any base files, fetches compiled items from the index location, runs any local item hooks, writes files into the project, and optionally installs Node packages using the selected Node package manager.
 
 That keeps the default experience fast and offline-capable after install.
 

@@ -19,18 +19,14 @@ export class InterruptError extends Error {
 }
 
 /**
- * True when `error` looks like a Node errno exception with the given code.
- * @param error - Caught value from Node I/O.
- * @param code - Expected errno code (e.g. `"ENOENT"`).
- * @returns Whether the error matches.
+ * Print a message with a colored background label prefix.
+ * @param label - Styled label (e.g. `" error "` from {@link dangerHighlight}).
+ * @param message - Message to display.
  */
-export function isErrnoCode(error: unknown, code: string): boolean {
-	return (
-		typeof error === "object" &&
-		error !== null &&
-		"code" in error &&
-		(error as { code: unknown }).code === code
-	);
+function printLabeled(label: string, message: string): void {
+	console.log();
+	console.error(`${label} ${message}`);
+	console.log();
 }
 
 /**
@@ -38,9 +34,7 @@ export function isErrnoCode(error: unknown, code: string): boolean {
  * @param message - The error message to display.
  */
 export function printError(message: string): void {
-	console.log();
-	console.error(`${dangerHighlight(" error ")} ${message}`);
-	console.log();
+	printLabeled(dangerHighlight(" error "), message);
 }
 
 /**
@@ -48,9 +42,7 @@ export function printError(message: string): void {
  * @param message - The cancel message to display.
  */
 export function printCancel(message: string): void {
-	console.log();
-	console.error(`${defaultText(" canceled ")} ${message}`);
-	console.log();
+	printLabeled(defaultText(" canceled "), message);
 }
 
 /**

@@ -98,6 +98,14 @@ describe("cli/prompts", () => {
 				OperationCanceledError,
 			);
 		});
+
+		test("should throw when the result is not a string", async () => {
+			mockText.mockResolvedValue(42);
+
+			await expect(textInput("Enter text")).rejects.toThrow(
+				'Text prompt "Enter text" returned a non-string value.',
+			);
+		});
 	});
 
 	describe("selectInput", () => {
@@ -120,7 +128,7 @@ describe("cli/prompts", () => {
 		});
 
 		test("should return selected value", async () => {
-			mockSelect.mockResolvedValue("selected-option");
+			mockSelect.mockResolvedValue("opt1");
 
 			await expect(
 				selectInput("Select", {
@@ -129,18 +137,18 @@ describe("cli/prompts", () => {
 						{ label: "opt2", value: "opt2" },
 					],
 				}),
-			).resolves.toBe("selected-option");
+			).resolves.toBe("opt1");
 		});
 
 		test("should pass default value as initialValue", async () => {
-			mockSelect.mockResolvedValue("default-option");
+			mockSelect.mockResolvedValue("option1");
 
-			await selectInput("Select", { options: [] }, "default-option");
+			await selectInput("Select", { options }, "option1");
 
 			expect(mockSelect).toHaveBeenCalledWith({
 				message: "Select",
-				options: [],
-				initialValue: "default-option",
+				options,
+				initialValue: "option1",
 			});
 		});
 
@@ -148,20 +156,33 @@ describe("cli/prompts", () => {
 			mockSelect.mockResolvedValue(Symbol("clack:cancel"));
 			mockIsCancel.mockReturnValue(true);
 
-			await expect(
-				selectInput("Select", { options: [] }),
-			).rejects.toBeInstanceOf(OperationCanceledError);
+			await expect(selectInput("Select", { options })).rejects.toBeInstanceOf(
+				OperationCanceledError,
+			);
 		});
 
-		test("should use empty options when opts are not provided", async () => {
-			mockSelect.mockResolvedValue("option1");
+		test("should throw when options are empty", async () => {
+			await expect(
+				selectInput("Select an option", { options: [] }),
+			).rejects.toThrow('Select prompt "Select an option" has no options.');
+			expect(mockSelect).not.toHaveBeenCalled();
+		});
 
-			await selectInput("Select an option");
+		test("should throw when the default is not an offered option", async () => {
+			await expect(
+				selectInput("Select", { options }, "missing"),
+			).rejects.toThrow(
+				'Select prompt "Select" has an unexpected default value.',
+			);
+			expect(mockSelect).not.toHaveBeenCalled();
+		});
 
-			expect(mockSelect).toHaveBeenCalledWith({
-				message: "Select an option",
-				options: [],
-			});
+		test("should throw when the selected value is not an offered option", async () => {
+			mockSelect.mockResolvedValue("missing");
+
+			await expect(selectInput("Select", { options })).rejects.toThrow(
+				'Select prompt "Select" returned an unexpected value.',
+			);
 		});
 	});
 
@@ -188,7 +209,7 @@ describe("cli/prompts", () => {
 		});
 
 		test("should return array of selected values", async () => {
-			const selectedValues = ["option1", "option3"];
+			const selectedValues = ["option1", "option2"];
 			mockMultiselect.mockResolvedValue(selectedValues);
 
 			await expect(
@@ -197,14 +218,14 @@ describe("cli/prompts", () => {
 		});
 
 		test("should pass default values as initialValues", async () => {
-			mockMultiselect.mockResolvedValue(["default1", "default2"]);
+			mockMultiselect.mockResolvedValue(["option1"]);
 
-			const defaultValues = ["default1", "default2"];
-			await multiselectInput("Select", { options: [] }, defaultValues);
+			const defaultValues = ["option1"];
+			await multiselectInput("Select", { options }, defaultValues);
 
 			expect(mockMultiselect).toHaveBeenCalledWith({
 				message: "Select",
-				options: [],
+				options,
 				initialValues: defaultValues,
 			});
 		});
@@ -214,19 +235,36 @@ describe("cli/prompts", () => {
 			mockIsCancel.mockReturnValue(true);
 
 			await expect(
-				multiselectInput("Select multiple", { options: [] }),
+				multiselectInput("Select multiple", { options }),
 			).rejects.toBeInstanceOf(OperationCanceledError);
 		});
 
-		test("should use empty options when opts are not provided", async () => {
-			mockMultiselect.mockResolvedValue(["option1"]);
+		test("should throw when options are empty", async () => {
+			await expect(
+				multiselectInput("Select multiple options", { options: [] }),
+			).rejects.toThrow(
+				'Select prompt "Select multiple options" has no options.',
+			);
+			expect(mockMultiselect).not.toHaveBeenCalled();
+		});
 
-			await multiselectInput("Select multiple options");
+		test("should throw when a default is not an offered option", async () => {
+			await expect(
+				multiselectInput("Select", { options }, ["missing"]),
+			).rejects.toThrow(
+				'Select prompt "Select" has an unexpected default value.',
+			);
+			expect(mockMultiselect).not.toHaveBeenCalled();
+		});
 
-			expect(mockMultiselect).toHaveBeenCalledWith({
-				message: "Select multiple options",
-				options: [],
-			});
+		test("should throw when a selected value is not an offered option", async () => {
+			mockMultiselect.mockResolvedValue(["option1", "missing"]);
+
+			await expect(
+				multiselectInput("Select multiple", { options }),
+			).rejects.toThrow(
+				'Multiselect prompt "Select multiple" returned an unexpected value.',
+			);
 		});
 	});
 
@@ -266,6 +304,28 @@ describe("cli/prompts", () => {
 					options,
 				),
 			).rejects.toBeInstanceOf(OperationCanceledError);
+		});
+
+		test("should throw when no grouped options are offered", async () => {
+			await expect(
+				groupedMultiselectInput("Which registry items should be added?", {}),
+			).rejects.toThrow(
+				'Select prompt "Which registry items should be added?" has no options.',
+			);
+			expect(mockGroupMultiselect).not.toHaveBeenCalled();
+		});
+
+		test("should throw when a selected value is not an offered option", async () => {
+			mockGroupMultiselect.mockResolvedValue(["missing"]);
+
+			await expect(
+				groupedMultiselectInput(
+					"Which registry items should be added?",
+					options,
+				),
+			).rejects.toThrow(
+				'Multiselect prompt "Which registry items should be added?" returned an unexpected value.',
+			);
 		});
 	});
 
@@ -311,6 +371,14 @@ describe("cli/prompts", () => {
 
 			await expect(confirmInput("Confirm?")).rejects.toBeInstanceOf(
 				OperationCanceledError,
+			);
+		});
+
+		test("should throw when the result is not a boolean", async () => {
+			mockConfirm.mockResolvedValue("yes");
+
+			await expect(confirmInput("Confirm?")).rejects.toThrow(
+				'Confirm prompt "Confirm?" returned a non-boolean value.',
 			);
 		});
 	});

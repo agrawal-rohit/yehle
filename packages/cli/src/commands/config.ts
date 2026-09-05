@@ -1,9 +1,9 @@
+import fs from "node:fs";
 import path from "node:path";
 import {
 	assertSafeRemoteUrl,
 	isAbsoluteHttpUrl,
-	PathKind,
-	pathKindAsync,
+	isMissingPathError,
 	publishedRegistryUrl,
 	readJsonFileAsync,
 } from "@tuckshop/core";
@@ -17,15 +17,35 @@ import { defaultText, primaryText } from "../cli/labels";
 import { textInput } from "../cli/prompts";
 
 /**
+ * Read a published CLI version from package.json for the default registry URL.
+ * @param pkg - Parsed CLI package.json value.
+ * @returns Trimmed version string safe to embed in {@link publishedRegistryUrl}.
+ * @throws Error when `version` is missing, empty, or contains URL/path metacharacters.
+ */
+function cliPackageVersion(pkg: unknown): string {
+	if (pkg === null || typeof pkg !== "object" || Array.isArray(pkg))
+		throw new Error("CLI package.json must be a JSON object.");
+
+	const { version } = pkg as Record<string, unknown>;
+	if (typeof version !== "string" || !version.trim())
+		throw new Error("CLI package.json is missing a version.");
+
+	const trimmed = version.trim();
+	if (/[/\\?#@]/.test(trimmed) || trimmed.includes(".."))
+		throw new Error("CLI package.json version is invalid.");
+	return trimmed;
+}
+
+/**
  * Read the published default registry URL for the current CLI version.
  * @returns Absolute HTTPS URL to `packages/registry/registry.json`.
  */
 async function defaultRegistryUrl(): Promise<string> {
-	const pkg = (await readJsonFileAsync(
+	const pkg = await readJsonFileAsync(
 		path.resolve(__dirname, "../../package.json"),
 		"CLI package.json",
-	)) as { version: string };
-	return publishedRegistryUrl(pkg.version);
+	);
+	return publishedRegistryUrl(cliPackageVersion(pkg));
 }
 
 /**
@@ -42,41 +62,80 @@ function printConfiguration(registry: string, filePath: string): void {
 }
 
 /**
+ * Assert that a local registry path's stats point to a regular file.
+ * @param source - Original source string passed by user.
+ * @param absolutePath - Absolute path on the filesystem.
+ * @param stat - File system stats.
+ * @throws Error when the path is a symbolic link, directory, or special node.
+ */
+function assertLocalRegistryStatIsFile(
+	source: string,
+	absolutePath: string,
+	stat: fs.Stats,
+): void {
+	if (stat.isSymbolicLink())
+		throw new Error(
+			`Registry path "${source}" points to ${absolutePath}, which is a symbolic link.`,
+		);
+	if (stat.isDirectory())
+		throw new Error(
+			`Registry path "${source}" points to ${absolutePath}, which is not a file.`,
+		);
+	if (!stat.isFile())
+		throw new Error(
+			`Registry path "${source}" points to ${absolutePath}, which is neither a file nor a directory.`,
+		);
+}
+
+/**
+ * Validate and resolve a local registry path to an absolute path.
+ * @param source - Local path passed to config.
+ * @returns Absolute filesystem path.
+ * @throws Error when the path does not exist, is a symlink, or is not a regular file.
+ */
+async function toPersistedLocalRegistryPath(source: string): Promise<string> {
+	const absolutePath = path.resolve(process.cwd(), source);
+	let stat: fs.Stats;
+	try {
+		stat = await fs.promises.lstat(absolutePath);
+	} catch (error) {
+		if (isMissingPathError(error))
+			throw new Error(
+				`Registry path "${source}" does not exist (looked up as ${absolutePath}). Pass an HTTPS URL or a path to an existing registry.json.`,
+			);
+		throw error;
+	}
+
+	assertLocalRegistryStatIsFile(source, absolutePath, stat);
+	return absolutePath;
+}
+
+/**
  * Validate a registry source and return the value to write to the config file.
  * @param source - Registry URL or local path (already trimmed).
  * @returns HTTPS URL or absolute local file path ready for the config file.
- * @throws Error when the source is empty, an unsafe remote URL, or is not an existing file.
+ * @throws Error when the source is empty, is not a valid HTTPS URL, uses another URL scheme, or is not an existing regular file.
  */
 async function toPersistedRegistrySource(source: string): Promise<string> {
 	if (!source) throw new Error("Registry source must not be empty.");
 
 	if (isAbsoluteHttpUrl(source)) {
-		assertSafeRemoteUrl(new URL(source));
-		return source;
+		let url: URL;
+		try {
+			url = new URL(source);
+		} catch {
+			throw new Error(`Registry URL "${source}" is not a valid URL.`);
+		}
+		assertSafeRemoteUrl(url);
+		return url.href;
 	}
 
-	const absolutePath = path.resolve(process.cwd(), source);
-	const kind = await pathKindAsync(absolutePath);
-	switch (kind) {
-		case PathKind.FILE:
-			return absolutePath;
-		case PathKind.DIRECTORY:
-			throw new Error(
-				`Registry path "${source}" points to ${absolutePath}, which is not a file.`,
-			);
-		case PathKind.ABSENT:
-			throw new Error(
-				`Registry path "${source}" does not exist (looked up as ${absolutePath}). Pass an HTTPS URL or a path to an existing registry.json.`,
-			);
-		/* v8 ignore start */
-		// Stryker disable all: unreachable exhaustive default
-		default: {
-			const _never: never = kind;
-			throw new Error(`Unhandled path kind: ${String(_never)}`);
-		}
-		// Stryker restore all
-		/* v8 ignore stop */
-	}
+	if (/^[a-z][a-z0-9+.-]*:\/\//i.test(source))
+		throw new Error(
+			"Registry source must be an HTTPS URL or a local file path.",
+		);
+
+	return toPersistedLocalRegistryPath(source);
 }
 
 /**
@@ -84,7 +143,7 @@ async function toPersistedRegistrySource(source: string): Promise<string> {
  * @param source - Optional registry URL or local path from the CLI.
  * @param env - Environment used for config path resolution. Defaults to `process.env`.
  * @returns Absolute path of the config file that was written.
- * @throws Error when the source is empty, an unsafe remote URL, or not an existing file.
+ * @throws Error when the source is empty, fails remote registry URL policy, or is not an existing file.
  */
 export async function configSetCommand(
 	source?: string,

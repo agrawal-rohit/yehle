@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { Registry } from "@tuckshop/core";
-import { InvalidJsonError } from "@tuckshop/core";
+import { InvalidJsonError, sha256Integrity } from "@tuckshop/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockIsFileAsync = vi.fn<(candidate: string) => Promise<boolean>>();
@@ -421,6 +421,18 @@ describe("loadRuntimeRegistry", () => {
 		).rejects.toThrow("Remote registry is too large.");
 	});
 
+	it("rejects remote registries with a non-integer content-length", async () => {
+		mockFetchOk({
+			headers: { "content-length": "not-a-number" },
+			body: publicRegistryBody,
+		});
+
+		await expect(
+			loadRuntimeRegistry("https://example.com/bad-length-registry.json"),
+		).rejects.toThrow("Remote registry has an invalid Content-Length.");
+		expect(mockParseRegistryDocument).not.toHaveBeenCalled();
+	});
+
 	it("accepts remote registries whose content-length equals the size limit", async () => {
 		mockFetchOk({
 			headers: { "content-length": String(5_000_000) },
@@ -567,17 +579,27 @@ describe("loadCompiledItems", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("loads unique payloads relative to the given index location", async () => {
-		mockReadFileAsync.mockResolvedValueOnce(
-			JSON.stringify({
-				files: [{ target: "a.txt", content: "hello" }],
-			}),
-		);
+	/**
+	 * Build an itemIntegrity map for one catalog source and its JSON body.
+	 * @param source - Catalog source URI.
+	 * @param body - Exact JSON bytes that will be read or fetched.
+	 * @returns Integrity map for {@link loadCompiledItems}.
+	 */
+	function digestFor(source: string, body: string): Record<string, string> {
+		return { [source]: sha256Integrity(body) };
+	}
 
-		const payloads = await loadCompiledItems("/workspace/registry.json", [
-			"r/item.json",
-			"r/item.json",
-		]);
+	it("loads unique payloads relative to the given index location", async () => {
+		const body = JSON.stringify({
+			files: [{ target: "a.txt", content: "hello" }],
+		});
+		mockReadFileAsync.mockResolvedValueOnce(body);
+
+		const payloads = await loadCompiledItems(
+			"/workspace/registry.json",
+			["r/item.json", "r/item.json"],
+			digestFor("r/item.json", body),
+		);
 
 		expect(payloads.size).toBe(1);
 		expect(payloads.get("r/item.json")).toEqual({
@@ -595,15 +617,15 @@ describe("loadCompiledItems", () => {
 	});
 
 	it("loads remote payloads relative to an HTTPS registry", async () => {
-		mockFetchOk({
-			body: JSON.stringify({
-				files: [{ target: "b.txt", content: "remote" }],
-			}),
+		const body = JSON.stringify({
+			files: [{ target: "b.txt", content: "remote" }],
 		});
+		mockFetchOk({ body });
 
 		const payloads = await loadCompiledItems(
 			"https://example.com/registry.json",
 			["r/item.json"],
+			digestFor("r/item.json", body),
 		);
 
 		expect(payloads.get("r/item.json")).toEqual({
@@ -624,13 +646,15 @@ describe("loadCompiledItems", () => {
 	});
 
 	it("loads same-origin absolute HTTPS compiled item sources for a remote index", async () => {
-		mockFetchOk({
-			body: JSON.stringify({ files: [{ target: "abs.txt", content: "b" }] }),
+		const body = JSON.stringify({
+			files: [{ target: "abs.txt", content: "b" }],
 		});
+		mockFetchOk({ body });
 
 		const payloads = await loadCompiledItems(
 			"https://example.com/registry.json",
 			["https://example.com/abs.json"],
+			digestFor("https://example.com/abs.json", body),
 		);
 
 		expect(payloads.get("https://example.com/abs.json")).toEqual({
@@ -658,10 +682,61 @@ describe("loadCompiledItems", () => {
 	});
 
 	it("propagates labeled local payload JSON parse failures", async () => {
-		mockReadFileAsync.mockResolvedValueOnce("{ not json");
+		const body = "{ not json";
+		mockReadFileAsync.mockResolvedValueOnce(body);
 
 		await expect(
-			loadCompiledItems("/workspace/registry.json", ["r/bad.json"]),
+			loadCompiledItems(
+				"/workspace/registry.json",
+				["r/bad.json"],
+				digestFor("r/bad.json", body),
+			),
 		).rejects.toBeInstanceOf(InvalidJsonError);
+	});
+
+	it("rejects a local compiled item that exceeds the size limit", async () => {
+		const body = "x".repeat(5_000_001);
+		mockReadFileAsync.mockResolvedValueOnce(body);
+
+		await expect(
+			loadCompiledItems("/workspace/registry.json", ["r/huge.json"]),
+		).rejects.toThrow("compiled item at /workspace/r/huge.json is too large.");
+	});
+
+	it("rejects compiled items when itemIntegrity is omitted", async () => {
+		const body = JSON.stringify({
+			files: [{ target: "a.txt", content: "hello" }],
+		});
+		mockReadFileAsync.mockResolvedValueOnce(body);
+
+		await expect(
+			loadCompiledItems("/workspace/registry.json", ["r/item.json"]),
+		).rejects.toThrow("Missing integrity digest for item r/item.json");
+	});
+
+	it("rejects a compiled item whose digest does not match", async () => {
+		const body = JSON.stringify({
+			files: [{ target: "a.txt", content: "hello" }],
+		});
+		mockReadFileAsync.mockResolvedValueOnce(body);
+
+		await expect(
+			loadCompiledItems("/workspace/registry.json", ["r/item.json"], {
+				"r/item.json": sha256Integrity("other"),
+			}),
+		).rejects.toThrow("Integrity check failed for item r/item.json");
+	});
+
+	it("rejects a compiled item that is not a compiled item document", async () => {
+		const body = JSON.stringify({ unexpected: true });
+		mockReadFileAsync.mockResolvedValueOnce(body);
+
+		await expect(
+			loadCompiledItems(
+				"/workspace/registry.json",
+				["r/item.json"],
+				digestFor("r/item.json", body),
+			),
+		).rejects.toThrow('Compiled item "r/item.json"');
 	});
 });

@@ -80,6 +80,13 @@ describe("cli/config", () => {
 	it("rethrows unexpected read errors without an errno code", async () => {
 		const root = await makeTempRoot();
 		const env = { XDG_CONFIG_HOME: root };
+		const filePath = configPath(env);
+		await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+		await fs.promises.writeFile(
+			filePath,
+			'{"registry":"https://example.com/registry.json"}\n',
+			"utf8",
+		);
 		const error = new Error("read boom");
 		vi.spyOn(fs.promises, "readFile").mockRejectedValueOnce(error);
 
@@ -89,10 +96,26 @@ describe("cli/config", () => {
 	it("rethrows non-ENOENT read errors", async () => {
 		const root = await makeTempRoot();
 		const env = { XDG_CONFIG_HOME: root };
+		const filePath = configPath(env);
+		await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+		await fs.promises.writeFile(
+			filePath,
+			'{"registry":"https://example.com/registry.json"}\n',
+			"utf8",
+		);
 		const error = Object.assign(new Error("permission denied"), {
 			code: "EACCES",
 		});
 		vi.spyOn(fs.promises, "readFile").mockRejectedValueOnce(error);
+
+		await expect(readConfig(env)).rejects.toBe(error);
+	});
+
+	it("rethrows unexpected lstat errors", async () => {
+		const root = await makeTempRoot();
+		const env = { XDG_CONFIG_HOME: root };
+		const error = new Error("lstat boom");
+		vi.spyOn(fs.promises, "lstat").mockRejectedValueOnce(error);
 
 		await expect(readConfig(env)).rejects.toBe(error);
 	});
@@ -197,18 +220,17 @@ describe("cli/config", () => {
 		const filePath = configPath(env);
 
 		await writeConfig({ registry: "https://example.com/registry.json" }, env);
-		const rmSpy = vi.spyOn(fs.promises, "rm");
 		await expect(unsetRegistryConfig(env)).resolves.toBe(true);
-		expect(rmSpy).toHaveBeenCalledWith(filePath, { force: true });
 		await expect(fs.promises.stat(filePath)).rejects.toMatchObject({
 			code: "ENOENT",
 		});
 		await expect(unsetRegistryConfig(env)).resolves.toBe(false);
 	});
 
-	it("preserves other keys when unsetting registry", async () => {
+	it("persists only known keys when extra properties are passed to writeConfig", async () => {
 		const root = await makeTempRoot();
 		const env = { XDG_CONFIG_HOME: root };
+		const filePath = configPath(env);
 
 		await writeConfig(
 			{ registry: "https://example.com/registry.json", future: true } as {
@@ -218,8 +240,100 @@ describe("cli/config", () => {
 			env,
 		);
 
-		await expect(unsetRegistryConfig(env)).resolves.toBe(true);
-		await expect(readConfig(env)).resolves.toEqual({ future: true });
+		expect(JSON.parse(await fs.promises.readFile(filePath, "utf8"))).toEqual({
+			registry: "https://example.com/registry.json",
+		});
+	});
+
+	it("rejects unknown keys on read", async () => {
+		const root = await makeTempRoot();
+		const env = { XDG_CONFIG_HOME: root };
+		const filePath = configPath(env);
+		await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+		await fs.promises.writeFile(
+			filePath,
+			'{"registry":"https://example.com/registry.json","future":true}\n',
+			"utf8",
+		);
+
+		await expect(readConfig(env)).rejects.toThrow(
+			`Malformed tuckshop config at ${filePath}: Unknown config key "future".`,
+		);
+	});
+
+	it("rejects a config file that is a symbolic link", async () => {
+		const root = await makeTempRoot();
+		const env = { XDG_CONFIG_HOME: root };
+		const filePath = configPath(env);
+		const realFile = path.join(root, "real-config.json");
+		await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+		await fs.promises.writeFile(
+			realFile,
+			'{"registry":"https://example.com/registry.json"}\n',
+			"utf8",
+		);
+		await fs.promises.symlink(realFile, filePath);
+
+		await expect(readConfig(env)).rejects.toThrow(
+			`Cannot read tuckshop config at ${filePath}: file is a symbolic link.`,
+		);
+		await expect(
+			writeConfig({ registry: "https://example.com/other.json" }, env),
+		).rejects.toThrow(
+			`Cannot write tuckshop config at ${filePath}: file is a symbolic link.`,
+		);
+	});
+
+	it("rejects a config path that is a directory", async () => {
+		const root = await makeTempRoot();
+		const env = { XDG_CONFIG_HOME: root };
+		const filePath = configPath(env);
+		await fs.promises.mkdir(filePath, { recursive: true });
+
+		await expect(readConfig(env)).rejects.toThrow(
+			`Cannot read tuckshop config at ${filePath}: path is a directory.`,
+		);
+		await expect(
+			writeConfig({ registry: "https://example.com/registry.json" }, env),
+		).rejects.toThrow(
+			`Cannot write tuckshop config at ${filePath}: path is a directory.`,
+		);
+	});
+
+	it("rejects a config file that is too large", async () => {
+		const root = await makeTempRoot();
+		const env = { XDG_CONFIG_HOME: root };
+		const filePath = configPath(env);
+		await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+		await fs.promises.writeFile(filePath, "x".repeat(65_537), "utf8");
+
+		await expect(readConfig(env)).rejects.toThrow(
+			`Cannot read tuckshop config at ${filePath}: file is too large.`,
+		);
+	});
+
+	it("rejects writing an empty registry value", async () => {
+		const root = await makeTempRoot();
+		const env = { XDG_CONFIG_HOME: root };
+
+		await expect(writeConfig({ registry: "   " }, env)).rejects.toThrow(
+			'"registry" must be a non-empty string URL or file path.',
+		);
+	});
+
+	it("trims a registry value on write", async () => {
+		const root = await makeTempRoot();
+		const env = { XDG_CONFIG_HOME: root };
+		const filePath = configPath(env);
+
+		await writeConfig(
+			{ registry: "  https://example.com/registry.json  " },
+			env,
+		);
+
+		expect(JSON.parse(await fs.promises.readFile(filePath, "utf8"))).toEqual({
+			registry: "https://example.com/registry.json",
+		});
 	});
 
 	it("rethrows non-ENOENT rm errors when unsetting", async () => {

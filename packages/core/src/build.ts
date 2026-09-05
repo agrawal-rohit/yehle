@@ -11,10 +11,10 @@ import {
 	writeFileAsync,
 } from "./fs";
 import {
-	mergeCommandSet,
-	mergeDependencySet,
-	mergeEcosystemMaps,
-	mergeSecretNames,
+	assertUniqueCompiledItemTargets,
+	compiledItem,
+	mergeCompiledItemFields,
+	reservedInterpolationKeys,
 } from "./packages";
 import {
 	parseKeyedRecord,
@@ -30,10 +30,9 @@ import {
 	InstallPhase,
 	type RawRegistryItem,
 	type RawRegistryPack,
+	RESERVED_CATALOG_TYPE_KEY,
 	type Registry,
 	type RegistryCondition,
-	type RegistryEcosystemCommands,
-	type RegistryEcosystemDependencies,
 	type RegistryFile,
 	type RegistryItemTypeDefinition,
 	registryConditionSchema,
@@ -41,7 +40,7 @@ import {
 	registryItemTypeSchema,
 } from "./schema";
 import { collectRegistryArtifactUris, sha256Integrity } from "./scripts";
-import { joinRelativePathUnderRoot } from "./urls";
+import { assertSinglePathSegment, joinRelativePathUnderRoot } from "./urls";
 
 export interface BuildRegistryOptions {
 	/** Absolute path to the registry source tree: item folders, types file, and optional shared conditions file. */
@@ -90,25 +89,6 @@ function escapeRegExp(value: string): string {
 }
 
 /**
- * Fail when a basename option is empty, `.`, `..`, or contains a path separator.
- * @param optionName - Options field name for the error message.
- * @param value - Candidate basename.
- * @throws Error when the value is not a single path segment.
- */
-function assertSinglePathSegment(optionName: string, value: string): void {
-	if (
-		!value ||
-		value === "." ||
-		value === ".." ||
-		value.includes("/") ||
-		value.includes("\\")
-	)
-		throw new Error(
-			String.raw`${optionName} must be a single path segment (no "/", "\", or "..").`,
-		);
-}
-
-/**
  * Fail when a basename is not a single `.json` path segment.
  * @param optionName - Options field name for the error message.
  * @param value - Candidate basename.
@@ -121,23 +101,22 @@ function assertJsonFileName(optionName: string, value: string): void {
 }
 
 /**
- * Always include `@tuckshop/core`, then fold in caller extras (deduping core).
+ * Trim and dedupe external package names, always including `@tuckshop/core`.
  * @param extras - Optional additional external package names.
  * @returns External package list for install/handler bundles.
  * @throws Error when an entry is empty or whitespace-only.
  */
-function normalizeBundleExternalPackages(
+function withCoreExternalPackages(
 	extras: string[] | undefined,
 ): readonly string[] {
-	const extraExternals = extras ?? [];
-	for (const pkg of extraExternals) {
-		if (!pkg.trim())
+	const externalPackages = new Set(["@tuckshop/core"]);
+	for (const packageName of extras ?? []) {
+		const pkg = packageName.trim();
+		if (!pkg)
 			throw new Error("bundleExternalPackages entries must be non-empty.");
+		externalPackages.add(pkg);
 	}
-	return [
-		"@tuckshop/core",
-		...extraExternals.filter((pkg) => pkg !== "@tuckshop/core"),
-	];
+	return [...externalPackages];
 }
 
 /**
@@ -158,7 +137,7 @@ function createBuildConfig(options: BuildRegistryOptions): BuildConfig {
 		options.conditionsFileName ?? "conditions/conditions.json"
 	).trim();
 	const compiledDirName = (options.compiledDirName ?? "r").trim();
-	const bundleExternalPackages = normalizeBundleExternalPackages(
+	const bundleExternalPackages = withCoreExternalPackages(
 		options.bundleExternalPackages,
 	);
 
@@ -230,8 +209,7 @@ async function compileInstallPhaseList(
 	if (!entries?.length) return undefined;
 
 	const compiled: string[] = [];
-	let scriptIndex = 0;
-	for (const entry of entries) {
+	for (const [scriptIndex, entry] of entries.entries()) {
 		const entryPath = joinRelativePathUnderRoot(
 			itemDir,
 			entry,
@@ -249,7 +227,6 @@ async function compileInstallPhaseList(
 			config.bundleExternalPackages,
 		);
 		compiled.push(uri);
-		scriptIndex++;
 	}
 
 	return compiled;
@@ -317,14 +294,14 @@ async function materializeCompiledItemFiles(
 				`Registry item "${itemId}" file source`,
 				"item folder",
 			);
-			if (await isFileAsync(absolutePath)) {
-				const content = await readFileAsync(absolutePath);
-				return { target: file.target, content };
-			}
-
-			throw new Error(
-				`Registry item "${itemId}" references missing file: ${path.relative(sourceDir, absolutePath)}`,
-			);
+			if (!(await isFileAsync(absolutePath)))
+				throw new Error(
+					`Registry item "${itemId}" references missing file: ${path.relative(sourceDir, absolutePath)}`,
+				);
+			return {
+				target: file.target,
+				content: await readFileAsync(absolutePath),
+			};
 		}),
 	);
 }
@@ -376,26 +353,6 @@ function itemNeedsBaseCompiledItem(item: RawRegistryItem): boolean {
 }
 
 /**
- * Fail when two compiled item files share the same install target path.
- * @param subject - Error label naming the item/pack.
- * @param files - Materialized compiled item files.
- * @throws Error when a target path appears more than once.
- */
-function assertUniqueCompiledItemTargets(
-	subject: string,
-	files: CompiledItemFile[],
-): void {
-	const seenTargets = new Set<string>();
-	for (const file of files) {
-		if (seenTargets.has(file.target))
-			throw new Error(
-				`${subject} declares duplicate file target "${file.target}".`,
-			);
-		seenTargets.add(file.target);
-	}
-}
-
-/**
  * Write one compiled item under the compiled output directory.
  * @param entry - Raw item with its source folder.
  * @param pack - Pack being compiled; omit for an item-level payload.
@@ -420,28 +377,17 @@ async function writeCompiledItem(
 	);
 
 	// Item-level and pack files share one destination namespace
-	assertUniqueCompiledItemTargets(subject, files);
-
-	const dependencies = mergeEcosystemMaps(
-		mergeDependencySet,
-		item.dependencies,
-		pack?.dependencies,
-	) as RegistryEcosystemDependencies | undefined;
-	const commands = mergeEcosystemMaps(
-		mergeCommandSet,
-		item.commands,
-		pack?.commands,
-	) as RegistryEcosystemCommands | undefined;
-	const secrets = mergeSecretNames(item.secrets, pack?.secrets);
+	assertUniqueCompiledItemTargets(
+		files,
+		(target) => `${subject} declares duplicate file target "${target}".`,
+	);
 
 	const payload = parseWithSchema(
 		compiledItemSchema,
-		{
+		compiledItem({
 			files,
-			dependencies,
-			commands,
-			secrets,
-		},
+			...mergeCompiledItemFields(item, pack),
+		}),
 		`Compiled item for "${item.id}"`,
 	);
 
@@ -518,7 +464,9 @@ async function bundleScript(
 	const output = await readFileAsync(outfile);
 	for (const pkg of bundleExternalPackages) {
 		const pattern = new RegExp(
-			String.raw`require\(["']` + escapeRegExp(pkg) + String.raw`["']\)`,
+			String.raw`(?:require|require\.resolve)\(["']` +
+				escapeRegExp(pkg) +
+				String.raw`(?:/[^"']+)?["']\)`,
 		);
 		if (pattern.test(output))
 			throw new Error(`${label} must not runtime-import ${pkg}.`);
@@ -591,22 +539,24 @@ async function indexPackEntry(
 	pack: RawRegistryPack,
 	config: BuildConfig,
 ): Promise<IndexPack> {
-	const packPREPARE = await compileInstallPhaseList(
-		itemDir,
-		itemId,
-		InstallPhase.PREPARE,
-		pack.prepare,
-		config,
-		pack.id,
-	);
-	const packFINALIZE = await compileInstallPhaseList(
-		itemDir,
-		itemId,
-		InstallPhase.FINALIZE,
-		pack.finalize,
-		config,
-		pack.id,
-	);
+	const [packBeforeWrite, packAfterInstall] = await Promise.all([
+		compileInstallPhaseList(
+			itemDir,
+			itemId,
+			InstallPhase.BEFORE_WRITE,
+			pack.beforeWrite,
+			config,
+			pack.id,
+		),
+		compileInstallPhaseList(
+			itemDir,
+			itemId,
+			InstallPhase.AFTER_INSTALL,
+			pack.afterInstall,
+			config,
+			pack.id,
+		),
+	]);
 
 	return {
 		id: pack.id,
@@ -614,8 +564,8 @@ async function indexPackEntry(
 		source: compiledItemUri(config.compiledDirName, itemId, pack.id),
 		...(pack.when ? { when: pack.when } : {}),
 		...(pack.dependsOn ? { dependsOn: pack.dependsOn } : {}),
-		...(packPREPARE ? { prepare: packPREPARE } : {}),
-		...(packFINALIZE ? { finalize: packFINALIZE } : {}),
+		...(packBeforeWrite ? { beforeWrite: packBeforeWrite } : {}),
+		...(packAfterInstall ? { afterInstall: packAfterInstall } : {}),
 	};
 }
 
@@ -631,23 +581,23 @@ async function compileItemIndexArtifacts(
 	item: RawRegistryItem,
 	config: BuildConfig,
 ): Promise<{
-	prepare: string[] | undefined;
-	finalize: string[] | undefined;
+	beforeWrite: string[] | undefined;
+	afterInstall: string[] | undefined;
 	itemConditions: Record<string, RegistryCondition> | undefined;
 }> {
-	const [prepare, finalize, itemConditions] = await Promise.all([
+	const [beforeWrite, afterInstall, itemConditions] = await Promise.all([
 		compileInstallPhaseList(
 			itemDir,
 			item.id,
-			InstallPhase.PREPARE,
-			item.prepare,
+			InstallPhase.BEFORE_WRITE,
+			item.beforeWrite,
 			config,
 		),
 		compileInstallPhaseList(
 			itemDir,
 			item.id,
-			InstallPhase.FINALIZE,
-			item.finalize,
+			InstallPhase.AFTER_INSTALL,
+			item.afterInstall,
 			config,
 		),
 		compileConditionHandlers(itemDir, item.conditions, config, {
@@ -660,7 +610,7 @@ async function compileItemIndexArtifacts(
 		}),
 	]);
 
-	return { prepare, finalize, itemConditions };
+	return { beforeWrite, afterInstall, itemConditions };
 }
 
 /**
@@ -680,10 +630,10 @@ function sharedIndexItemFields(
 	| "requires"
 	| "conditions"
 	| "dependsOn"
-	| "prepare"
-	| "finalize"
+	| "beforeWrite"
+	| "afterInstall"
 > {
-	const { prepare, finalize, itemConditions } = artifacts;
+	const { beforeWrite, afterInstall, itemConditions } = artifacts;
 	return {
 		title: item.title,
 		description: item.description,
@@ -691,8 +641,8 @@ function sharedIndexItemFields(
 		...(item.requires ? { requires: item.requires } : {}),
 		...(itemConditions ? { conditions: itemConditions } : {}),
 		...(item.dependsOn ? { dependsOn: item.dependsOn } : {}),
-		...(prepare ? { prepare } : {}),
-		...(finalize ? { finalize } : {}),
+		...(beforeWrite ? { beforeWrite } : {}),
+		...(afterInstall ? { afterInstall } : {}),
 	};
 }
 
@@ -736,13 +686,15 @@ async function buildIndexItems(
 	rawItems: RawItemEntry[],
 	config: BuildConfig,
 ): Promise<Record<string, IndexItem>> {
-	const indexItems: Record<string, IndexItem> = {};
-	for (const { itemDir, item } of rawItems)
-		indexItems[item.id] = await indexEntryForItem(itemDir, item, config);
-
-	return Object.fromEntries(
-		Object.entries(indexItems).sort(([a], [b]) => a.localeCompare(b)),
+	const indexItems = await Promise.all(
+		rawItems.map(
+			async ({ itemDir, item }) =>
+				[item.id, await indexEntryForItem(itemDir, item, config)] as const,
+		),
 	);
+
+	indexItems.sort(([a], [b]) => a.localeCompare(b));
+	return Object.fromEntries(indexItems);
 }
 
 /**
@@ -774,7 +726,8 @@ async function fetchTypesAndConditions(config: BuildConfig): Promise<{
 			absent: "Registry types must be declared.",
 			empty: "Registry types must declare at least one type.",
 		},
-	) as Record<string, RegistryItemTypeDefinition>;
+		[RESERVED_CATALOG_TYPE_KEY],
+	);
 
 	const conditions = parseKeyedRecord(
 		registryConditionSchema,
@@ -782,7 +735,7 @@ async function fetchTypesAndConditions(config: BuildConfig): Promise<{
 		"Registry conditions",
 		(key) => `Registry condition "${key}"`,
 	);
-	assertConditionMapBindingKeys(conditions);
+	assertConditionMapBindingKeys([conditions], reservedInterpolationKeys());
 
 	return {
 		conditions,
@@ -800,13 +753,18 @@ async function hashCatalogUris(
 	outDir: string,
 	uris: Iterable<string>,
 ): Promise<Record<string, string>> {
-	const integrity: Record<string, string> = {};
-	for (const uri of [...uris].sort((a, b) => a.localeCompare(b))) {
-		integrity[uri] = sha256Integrity(
-			await readFileAsync(path.join(outDir, uri)),
-		);
-	}
-	return integrity;
+	const entries = await Promise.all(
+		[...uris]
+			.sort((a, b) => a.localeCompare(b))
+			.map(
+				async (uri) =>
+					[
+						uri,
+						sha256Integrity(await readFileAsync(path.join(outDir, uri))),
+					] as const,
+			),
+	);
+	return Object.fromEntries(entries);
 }
 
 /**
@@ -823,9 +781,13 @@ async function collectIntegrityMaps(
 	itemIntegrity: Record<string, string>;
 }> {
 	const { scriptUris, itemUris } = collectRegistryArtifactUris(document);
+	const [scriptIntegrity, itemIntegrity] = await Promise.all([
+		hashCatalogUris(outDir, scriptUris),
+		hashCatalogUris(outDir, itemUris),
+	]);
 	return {
-		scriptIntegrity: await hashCatalogUris(outDir, scriptUris),
-		itemIntegrity: await hashCatalogUris(outDir, itemUris),
+		scriptIntegrity,
+		itemIntegrity,
 	};
 }
 

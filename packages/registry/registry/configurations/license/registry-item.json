@@ -66,5 +66,5 @@
 			"handler": "copyright-year.ts"
 		}
 	},
-	"prepare": "handler.ts"
+	"beforeWrite": "handler.ts"
 }

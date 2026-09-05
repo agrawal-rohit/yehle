@@ -26,7 +26,7 @@ Authors learn four things, in this order:
 | Answers that fill `{{keys}}` | Shared `requires` and/or item `conditions` |
 | Optional or language-specific file sets | `packs` with `when` (union match) |
 | Packages, scripts, secrets, or other items first | `dependencies`, `commands`, `secrets`, `dependsOn` |
-| Generated content from answers | `prepare` / `finalize` (local registry) |
+| Generated content from answers | `beforeWrite` / `afterInstall` (local registry) |
 
 ## Compiling a registry
 
@@ -47,7 +47,7 @@ That writes:
 - `r/{itemId}/{packId}.json` — per-pack compiled items
 - Bundled install scripts and condition handlers under `r/`
 
-Build fails if an item or pack declares npm `dependencies` or `commands` without `requires: ["packageManager"]`.
+Npm-ecosystem `dependencies` and `commands` identify packages and `package.json` scripts. The CLI selects a package manager (npm, pnpm, Yarn, or Bun) at install time. Packs can match that selection with `when.packageManager`. Templates can interpolate `{{packageManager}}`, `{{pmRun}}`, `{{pmExec}}`, `{{pmInstall}}`, and `{{pmPublish}}`.
 
 ## Conditions
 
@@ -55,7 +55,7 @@ Shared prompts live in `conditions/conditions.json`. Items opt in with `"require
 
 | Kind | Captured value | Notes |
 | --- | --- | --- |
-| `select` | `string` | Options may declare `bindings` (extra interpolation keys) |
+| `select` | `string` | Options may declare `bindings` (extra interpolation keys; not condition names, `packageManager`, or `pm*`) |
 | `multiselect` | `string[]` | Optional `min`; no option `bindings` |
 | `text` | `string` | Optional `default` |
 | `boolean` | `boolean` | |
@@ -130,11 +130,14 @@ Pin `item@pack` force-includes that pack and does not drop other matches.
 
 ## Interpolation
 
-After `prepare`, Mustache runs on file contents and command values. The view is typed:
+After `beforeWrite`, Mustache runs on file contents and command values (not targets, package names, or secrets). The view is typed:
 
 1. Captured conditions (booleans stay boolean, arrays stay arrays)
 2. Select option `bindings` for the chosen value
-3. Hook `bindings` (win on key conflicts)
+3. `packageManager` and `pmRun` / `pmExec` / `pmInstall` / `pmPublish` when a manager was selected
+4. beforeWrite-hook `bindings` (extra keys only)
+
+Unknown `{{key}}` throws. Sections (`{{#key}}` / `{{^key}}`) may name absent optionals. Option and hook bindings cannot reuse a condition key, `packageManager`, or `pm*`.
 
 GitHub Actions expressions (`${{ ... }}`) are left untouched. HTML escaping is disabled.
 
@@ -142,32 +145,35 @@ GitHub Actions expressions (`${{ ... }}`) are left untouched. HTML escaping is d
 
 | Phase | When it runs | Typical use |
 | --- | --- | --- |
-| `prepare` | Before planned files are written | Generate or upsert files from conditions |
-| write | After `prepare` | Static `files` plus hook upserts |
-| `finalize` | After files exist on disk | `git init`, format |
+| `beforeWrite` | Before planned files are written | Generate or upsert files from conditions |
+| write | After `beforeWrite` | Static `files` plus hook upserts |
+| package install | After writes and `package.json` script merge | Declared ecosystem packages |
+| `afterInstall` | After package install (still runs if declined) | `git init`, format |
 
 Hooks do **not** prompt. Put questions in conditions. Use `import type` from `@tuckshop/core` (do not runtime-import the package):
 
 ```ts
-import type { PrepareInstallHook } from "@tuckshop/core";
+import type { BeforeWriteHook } from "@tuckshop/core";
 
-const prepare: PrepareInstallHook = async (ctx) => {
+const beforeWrite: BeforeWriteHook = async (ctx) => {
 	const licenseId = ctx.conditions.licenseId;
 	return {
 		files: [{ target: "LICENSE", content: String(licenseId) }],
 	};
 };
 
-export default prepare;
+export default beforeWrite;
 ```
 
-`prepare` may return:
+`beforeWrite` may return:
 
 - `files` — **upsert by target** (replace matching targets, append new ones)
 - `removeFiles` — drop targets from the working compiled item
 - `bindings`, `commands`, `dependencies`, `secrets` — merged into the install state
 
 Working state is `ctx.compiledItem` (and `ctx.bindings` / `ctx.conditions`). There is no parallel `ctx.files` or `ctx.prompts` on install hooks.
+
+`afterInstall` must not return a value. Typical work is `ctx.run("git init")` or formatting files already on disk.
 
 Remote HTTPS registries cannot execute custom scripts or condition `infer` handlers.
 
@@ -178,7 +184,7 @@ Remote HTTPS registries cannot execute custom scripts or condition `infer` handl
 | Static files / packs | Yes | Yes |
 | Conditions prompts | Yes | Yes |
 | Condition `infer` handlers | Yes | No |
-| `prepare` / `finalize` | Yes | No |
+| `beforeWrite` / `afterInstall` | Yes | No |
 
 
 

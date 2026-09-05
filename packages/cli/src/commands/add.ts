@@ -1,45 +1,56 @@
 import {
+	assumeContextFromSelectedItems,
 	buildInstallPlan,
 	buildInterpolationContext,
 	type CompiledItem,
-	type CompiledItemFile,
-	compiledItemSchema,
+	catalogNeedsPackageManager,
+	collectRegistryDependencies,
+	compiledItem,
+	compiledItemUsesEcosystem,
+	foldCompiledItems,
 	type HandlerRuntime,
+	type IndexEntry,
+	type IndexItem,
 	type InstallNode,
 	interpolateCompiledItem,
-	mergeCommandSet,
-	mergeDependencySet,
-	mergeEcosystemMaps,
 	mergeSecretNames,
-	PACKAGE_MANAGER_KEY,
-	packageManagerBindings,
-	parseWithSchema,
+	packageManagerDropsCandidateDependsOn,
 	type Registry,
 	type RegistryConditionValue,
 	type RegistryContext,
-	type RegistryEcosystemDependencies,
+	RegistryEcosystem,
 	type RegistryPackageManager,
-	runFinalizeInstallHook,
-	runPrepareInstallHook,
-	selectNpmPackageManager,
+	runAfterInstallHook,
+	runBeforeWriteHook,
+	runInstallHookOptions,
+	selectPackageManager,
 	setScriptExecutor,
+	uniqueKnownRegistryItems,
 } from "@tuckshop/core";
 import chalk from "chalk";
 import { defaultText, primaryText } from "../cli/labels";
 import { groupedMultiselectInput, selectInput } from "../cli/prompts";
-import { runWithTasks } from "../cli/tasks";
+import { runWithTasks, task, taskGroup } from "../cli/tasks";
 import {
 	captureItemLocalConditionsForPlan,
 	captureRequiredConditions,
-	createProjectHandlerRuntime,
 } from "../utils/conditions";
-import { confirmFileOverwrites, writeCompiledItemFiles } from "../utils/files";
+import {
+	confirmFileOverwrites,
+	type PlannedItemWrites,
+	planFileWrites,
+	writePlannedFile,
+} from "../utils/files";
 import {
 	installDeclaredPackages,
 	mergeProjectCommands,
 } from "../utils/packages";
 import { loadCompiledItems } from "../utils/registry";
-import { confirmHookMutations, prepareScriptExecution } from "../utils/scripts";
+import {
+	confirmHookMutations,
+	prepareScriptExecution,
+	projectScriptHelpers,
+} from "../utils/scripts";
 
 /** Options accepted by the add command. */
 interface AddCommandOptions {
@@ -63,6 +74,11 @@ interface InstallPlanItem extends PreparedInstallItem {
 	node: InstallNode;
 }
 
+/** Where an interpolation option-value list was first recorded. */
+type InterpolationOptionOwner =
+	| { readonly kind: "shared" }
+	| { readonly kind: "item"; readonly itemId: string };
+
 /**
  * Prompt for registry items in one list grouped by type when none were provided on the command line.
  * @param registry - Loaded registry.
@@ -72,6 +88,7 @@ async function promptForItems(registry: Registry): Promise<string[]> {
 	const items = Object.entries(registry.items);
 	if (items.length === 0) throw new Error("No registry items are available.");
 
+	// Core's parse-time validation guarantees every item type is declared, so grouping over declared types covers each item at most once.
 	const options = Object.fromEntries(
 		Object.keys(registry.types).flatMap((type) => {
 			const group = items
@@ -100,100 +117,87 @@ async function promptForItems(registry: Registry): Promise<string[]> {
 }
 
 /**
- * Fail when two compiled item files share the same install target.
- * @param itemId - Registry item id for the error message.
- * @param files - Combined file list from base and pack compiled items.
- * @throws Error when a target appears more than once.
+ * Look up a catalog item named by the install plan.
+ * @param registry - Loaded registry.
+ * @param itemId - Plan node item id.
+ * @returns Catalog item for that id.
+ * @throws Error when the plan names an item that is not in the registry.
  */
-function assertUniqueCompiledItemTargets(
-	itemId: string,
-	files: CompiledItemFile[],
-): void {
-	const seen = new Set<string>();
-	for (const file of files) {
-		if (seen.has(file.target))
-			throw new Error(
-				`Registry item "${itemId}" has duplicate compiled item target "${file.target}".`,
-			);
-		seen.add(file.target);
-	}
+function registryItemForInstall(registry: Registry, itemId: string): IndexItem {
+	const item = registry.items[itemId];
+	if (item === undefined)
+		throw new Error(
+			`Install plan references unknown registry item "${itemId}".`,
+		);
+	return item;
+}
+
+/**
+ * Fail when the install plan is empty or names an item missing from the registry.
+ * @param plan - Ordered install nodes.
+ * @param registry - Loaded registry.
+ * @throws Error when nothing would install, or a node is unknown.
+ */
+function assertInstallPlan(plan: InstallNode[], registry: Registry): void {
+	if (plan.length === 0)
+		throw new Error("No registry items were selected for installation.");
+	for (const node of plan) registryItemForInstall(registry, node.itemId);
 }
 
 /**
  * Merge one or more compiled items for a single install node.
  * @param itemId - Registry item id for error messages.
  * @param sources - Compiled item URIs selected for this node.
- * @param compiledItemDocuments - Raw compiled item documents keyed by source URI.
+ * @param compiledItemDocuments - Parsed compiled items keyed by source URI.
  * @returns Merged payload (files concatenated; deps/commands/secrets folded).
  * @throws Error when a planned source is missing or targets collide.
  */
 function mergeCompiledItemSources(
 	itemId: string,
 	sources: string[],
-	compiledItemDocuments: Map<string, unknown>,
+	compiledItemDocuments: Map<string, CompiledItem>,
 ): CompiledItem {
-	const compiledItems: CompiledItem[] = [];
+	const payloads: CompiledItem[] = [];
 
 	for (const source of sources) {
-		const rawCompiledItem = compiledItemDocuments.get(source);
-		if (rawCompiledItem === undefined)
+		const payload = compiledItemDocuments.get(source);
+		if (payload === undefined)
 			throw new Error(
 				`Missing compiled item for registry item "${itemId}" (${source}).`,
 			);
-		compiledItems.push(
-			parseWithSchema(
-				compiledItemSchema,
-				rawCompiledItem,
-				`Compiled item for "${itemId}"`,
-			),
-		);
+		payloads.push(payload);
 	}
 
-	const files = compiledItems.flatMap((compiledItem) => compiledItem.files);
-	assertUniqueCompiledItemTargets(itemId, files);
-
-	const dependencies = mergeEcosystemMaps(
-		mergeDependencySet,
-		...compiledItems.map((compiledItem) => compiledItem.dependencies),
+	return foldCompiledItems(
+		payloads,
+		(target) =>
+			`Registry item "${itemId}" has duplicate compiled item target "${target}".`,
 	);
-	const commands = mergeEcosystemMaps(
-		mergeCommandSet,
-		...compiledItems.map((compiledItem) => compiledItem.commands),
-	);
-	const secrets = mergeSecretNames(
-		...compiledItems.map((compiledItem) => compiledItem.secrets),
-	);
-
-	return {
-		files,
-		...(dependencies ? { dependencies } : {}),
-		...(commands ? { commands } : {}),
-		...(secrets ? { secrets } : {}),
-	};
 }
 
 /**
- * Parse fetched compiled item documents into labeled install units.
+ * Fold fetched compiled items into labeled install units.
  * @param planItems - Ordered install nodes from the install plan.
  * @param registry - Loaded registry for display titles.
- * @param compiledItemDocuments - Raw compiled item documents keyed by source URI.
+ * @param compiledItemDocuments - Parsed compiled items keyed by source URI.
  * @returns Prepared items ready for lifecycle scripts, overwrite checks, and writes.
  * @throws Error when a planned source is missing from the fetched documents.
  */
 function prepareInstallItems(
 	planItems: InstallNode[],
 	registry: Registry,
-	compiledItemDocuments: Map<string, unknown>,
+	compiledItemDocuments: Map<string, CompiledItem>,
 ): InstallPlanItem[] {
 	return planItems.map((node) => {
-		const label = registry.items[node.itemId]?.title ?? node.itemId;
+		const item = registryItemForInstall(registry, node.itemId);
+		const label = item.title || node.itemId;
 		const sources = node.sources ?? [];
 
 		if (sources.length === 0)
 			return {
 				label,
 				node,
-				compiledItem: { files: [] },
+				compiledItem: compiledItem({ files: [] }),
 			};
 
 		return {
@@ -209,90 +213,168 @@ function prepareInstallItems(
 }
 
 /**
- * Apply one `prepare` hook result to a payload and shared bindings.
- * @param payload - Payload accumulated for the current item.
- * @param hookResult - Hook output to merge.
+ * Apply a beforeWrite-hook snapshot as the working compiled item.
+ * Omitted optional fields stay absent (they are not wiped to `undefined`).
+ * @param hookResult - Merged hook output from core.
  * @param bindings - Shared bindings map mutated in place.
- * @returns Payload with hook file and manifest updates applied.
+ * @returns Payload ready for the next beforeWrite script or confirm.
  */
-function applyPrepareInstallHookResult(
-	compiledItem: CompiledItem,
-	hookResult: Awaited<ReturnType<typeof runPrepareInstallHook>>,
+function compiledItemFromBeforeWriteHook(
+	hookResult: Awaited<ReturnType<typeof runBeforeWriteHook>>,
 	bindings: Record<string, string>,
 ): CompiledItem {
 	Object.assign(bindings, hookResult.bindings);
-	return {
-		...compiledItem,
+	return compiledItem({
 		files: hookResult.files,
 		commands: hookResult.commands,
 		dependencies: hookResult.dependencies,
 		secrets: hookResult.secrets,
-	};
+	});
 }
 
 /**
- * Run `prepare` scripts for install items in plan order.
+ * Run `beforeWrite` scripts for install items in plan order.
  * @param indexLocation - Absolute path or HTTPS URL of the index document.
  * @param runtime - Shared handler runtime.
  * @param conditions - Resolved condition context.
+ * @param packageManager - Selected package manager, if any.
  * @param installItems - Prepared install items with plan nodes.
  * @returns Updated items and merged bindings.
  */
-async function runPrepareInstallScripts(
+async function runBeforeWriteScripts(
 	indexLocation: string,
 	runtime: HandlerRuntime,
 	conditions: RegistryContext,
-	packageManager: RegistryPackageManager,
+	packageManager: RegistryPackageManager | undefined,
 	installItems: InstallPlanItem[],
 ): Promise<{ items: InstallPlanItem[]; bindings: Record<string, string> }> {
 	const bindings: Record<string, string> = {};
 	const result: InstallPlanItem[] = [];
 
 	for (const item of installItems) {
-		let compiledItem = item.compiledItem;
-		for (const scriptUri of item.node.prepareScripts ?? []) {
-			compiledItem = applyPrepareInstallHookResult(
-				compiledItem,
-				await runPrepareInstallHook(indexLocation, scriptUri, runtime, {
-					itemId: item.node.itemId,
-					...(item.node.packIds ? { packIds: item.node.packIds } : {}),
-					conditions,
-					packageManager,
-					bindings,
-					compiledItem,
-				}),
+		let payload = item.compiledItem;
+		for (const scriptUri of item.node.beforeWriteScripts ?? []) {
+			payload = compiledItemFromBeforeWriteHook(
+				await runBeforeWriteHook(
+					indexLocation,
+					scriptUri,
+					runtime,
+					runInstallHookOptions(item.node, {
+						conditions,
+						packageManager,
+						bindings,
+						compiledItem: payload,
+					}),
+				),
 				bindings,
 			);
 		}
 
-		result.push({ ...item, compiledItem });
+		result.push({ ...item, compiledItem: payload });
 	}
 
 	return { items: result, bindings };
 }
 
 /**
- * Write prepared payloads to disk and collect any declared package maps.
- * @param projectDir - Absolute project root.
- * @param preparedItems - Parsed payloads with display labels.
- * @returns Package declarations found on the written compiledItems.
+ * Write planned files with one progress tree: items as groups, files as subtasks.
+ * @param plannedItems - Items that still have files to write.
  */
 async function writePreparedItems(
-	projectDir: string,
-	preparedItems: PreparedInstallItem[],
-): Promise<RegistryEcosystemDependencies[]> {
-	const writtenTargets = new Set<string>();
-	const packageDeclarations: RegistryEcosystemDependencies[] = [];
+	plannedItems: PlannedItemWrites[],
+): Promise<void> {
+	if (plannedItems.length === 0) return;
 
-	for (const { label, compiledItem } of preparedItems) {
-		await runWithTasks(`Installing ${primaryText(label)}`, async () => {
-			if (compiledItem.dependencies)
-				packageDeclarations.push(compiledItem.dependencies);
-			await writeCompiledItemFiles(projectDir, compiledItem, writtenTargets);
-		});
+	await runWithTasks(
+		"Installing items",
+		plannedItems.map((item) =>
+			taskGroup(
+				`Installing ${primaryText(item.label)}`,
+				item.files.map((file) =>
+					task(primaryText(file.target), async () => {
+						await writePlannedFile(file);
+					}),
+				),
+			),
+		),
+	);
+}
+
+/**
+ * Whether two select option lists differ in value, label, or bindings.
+ * @param left - First option list.
+ * @param right - Second option list.
+ * @returns True when the lists are not equivalent.
+ */
+function interpolationOptionValueListsDiffer(
+	left: RegistryConditionValue[],
+	right: RegistryConditionValue[],
+): boolean {
+	if (left === right) return false;
+	if (left.length !== right.length) return true;
+	return left.some((entry, index) => {
+		const other = right[index];
+		if (entry.value !== other?.value || entry.label !== other?.label)
+			return true;
+		const leftBindings = entry.bindings ?? {};
+		const rightBindings = other.bindings ?? {};
+		const leftKeys = Object.keys(leftBindings);
+		return (
+			leftKeys.length !== Object.keys(rightBindings).length ||
+			leftKeys.some((key) => leftBindings[key] !== rightBindings[key])
+		);
+	});
+}
+
+/**
+ * Label an option-value owner for conflict errors.
+ * @param owner - Shared catalog or a registry item id.
+ * @returns Human-readable owner.
+ */
+function formatInterpolationOptionOwner(
+	owner: InterpolationOptionOwner,
+): string {
+	switch (owner.kind) {
+		case "shared":
+			return "shared conditions";
+		case "item":
+			return `"${owner.itemId}"`;
+		default: {
+			const _exhaustive: never = owner;
+			return _exhaustive;
+		}
 	}
+}
 
-	return packageDeclarations;
+/**
+ * Record select option lists, failing when the same key has two different lists.
+ * @param options - Option lists keyed by condition name.
+ * @param owners - First owner recorded for each key.
+ * @param key - Condition name.
+ * @param values - Option list to record, if any.
+ * @param owner - Shared catalog or item that declared the list.
+ * @throws Error when an existing list conflicts with `values`.
+ */
+function assignInterpolationOptionValues(
+	options: Record<string, RegistryConditionValue[]>,
+	owners: Map<string, InterpolationOptionOwner>,
+	key: string,
+	values: RegistryConditionValue[] | undefined,
+	owner: InterpolationOptionOwner,
+): void {
+	if (!values) return;
+	const existing = options[key];
+	if (
+		existing !== undefined &&
+		interpolationOptionValueListsDiffer(existing, values)
+	) {
+		const previous = owners.get(key) ?? owner;
+		throw new Error(
+			`Condition "${key}" declares conflicting interpolation option values (${formatInterpolationOptionOwner(previous)} and ${formatInterpolationOptionOwner(owner)}).`,
+		);
+	}
+	options[key] = values;
+	if (!owners.has(key)) owners.set(key, owner);
 }
 
 /**
@@ -300,48 +382,207 @@ async function writePreparedItems(
  * @param registry - Loaded registry.
  * @param plan - Ordered install nodes.
  * @returns Options keyed by condition name.
+ * @throws Error when a plan item is unknown or two sources disagree on a key's values.
  */
 function interpolationOptionValues(
 	registry: Registry,
 	plan: InstallNode[],
 ): Record<string, RegistryConditionValue[]> {
 	const options: Record<string, RegistryConditionValue[]> = {};
+	const owners = new Map<string, InterpolationOptionOwner>();
 	for (const [key, condition] of Object.entries(registry.conditions ?? {})) {
-		if (condition.values) options[key] = condition.values;
+		assignInterpolationOptionValues(options, owners, key, condition.values, {
+			kind: "shared",
+		});
 	}
 	for (const node of plan) {
-		const item = registry.items[node.itemId];
-		for (const [key, condition] of Object.entries(item?.conditions ?? {})) {
-			if (condition.values) options[key] = condition.values;
+		const item = registryItemForInstall(registry, node.itemId);
+		for (const [key, condition] of Object.entries(item.conditions ?? {})) {
+			assignInterpolationOptionValues(options, owners, key, condition.values, {
+				kind: "item",
+				itemId: node.itemId,
+			});
 		}
 	}
 	return options;
 }
 
 /**
+ * Print one numbered next-step with a bulleted list.
+ * @param step - 1-based step number.
+ * @param title - Step title printed before a colon.
+ * @param values - Lines listed under the step.
+ */
+function printNextStepList(
+	step: number,
+	title: string,
+	values: string[],
+): void {
+	console.log(`  ${step}. ${title}:`);
+	for (const value of values) console.log(`     - ${primaryText(value)}`);
+}
+
+/**
  * Print numbered Next steps for pending installs and repository secrets.
  * @param pendingInstallCommands - Package install commands still left for the user.
- * @param secrets - Repository secret names to configure manually.
+ * @param secrets - Repository secret names to configure manually, if any.
  */
 function printInstallNextSteps(
 	pendingInstallCommands: string[],
-	secrets: string[],
+	secrets: string[] | undefined,
 ): void {
-	if (pendingInstallCommands.length === 0 && secrets.length === 0) return;
+	if (pendingInstallCommands.length === 0 && (secrets?.length ?? 0) === 0)
+		return;
 
 	console.log();
 	console.log(chalk.bold("Next steps"));
 	let step = 1;
-	for (const command of pendingInstallCommands) {
-		console.log(`  ${step}. Install dependencies with ${primaryText(command)}`);
+	if (pendingInstallCommands.length > 0) {
+		printNextStepList(step, "Install dependencies", pendingInstallCommands);
 		step += 1;
 	}
-	if (secrets.length > 0) {
-		console.log(
-			`  ${step}. Configure the following repository secrets on GitHub:`,
+	if (secrets && secrets.length > 0)
+		printNextStepList(
+			step,
+			"Configure the following repository secrets in GitHub",
+			secrets,
 		);
-		for (const name of secrets) console.log(`     - ${primaryText(name)}`);
-	}
+}
+
+/**
+ * Select a package manager when the catalog or compiled payload needs one.
+ * @param ecosystem - Registry ecosystem to select for.
+ * @param projectDir - Absolute project root.
+ * @param needed - Whether a manager is required for this install.
+ * @returns Selected manager, or undefined when the install does not use the ecosystem.
+ */
+async function selectPackageManagerWhenNeeded(
+	ecosystem: RegistryEcosystem,
+	projectDir: string,
+	needed: boolean,
+): Promise<RegistryPackageManager | undefined> {
+	if (!needed) return undefined;
+	return selectPackageManager(ecosystem, projectDir, {
+		select: selectInput,
+	});
+}
+
+/**
+ * Select a package manager when any payload uses the npm ecosystem.
+ * @param projectDir - Absolute project root.
+ * @param items - Prepared install items to scan.
+ * @returns Selected manager, or undefined when no payload uses npm.
+ */
+async function selectPackageManagerForItems(
+	projectDir: string,
+	items: Array<{ compiledItem: CompiledItem }>,
+): Promise<RegistryPackageManager | undefined> {
+	return selectPackageManagerWhenNeeded(
+		RegistryEcosystem.NPM,
+		projectDir,
+		items.some((item) =>
+			compiledItemUsesEcosystem(item.compiledItem, RegistryEcosystem.NPM),
+		),
+	);
+}
+
+/**
+ * Walk the candidate graph and select a package manager when pack `when` needs one.
+ * Re-walks only when the selected manager can drop pack-level `dependsOn`.
+ * @param items - Selected item tokens.
+ * @param registry - Loaded registry.
+ * @param projectDir - Absolute project root.
+ * @returns Candidate entries, optional package manager, and pin-derived context.
+ */
+async function candidateEntriesWithPackageManager(
+	items: string[],
+	registry: Registry,
+	projectDir: string,
+): Promise<{
+	candidateEntries: IndexEntry[];
+	packageManager: RegistryPackageManager | undefined;
+	pinContext: RegistryContext;
+}> {
+	const pinContext = assumeContextFromSelectedItems(
+		items,
+		registry.items,
+		registry.conditions,
+	);
+	let candidateEntries = collectRegistryDependencies(
+		items,
+		registry.items,
+		pinContext,
+	);
+	const packageManager = await selectPackageManagerWhenNeeded(
+		RegistryEcosystem.NPM,
+		projectDir,
+		catalogNeedsPackageManager(candidateEntries, registry.conditions),
+	);
+	// If a package manager is selected and the presence of a package manager drops pack-level `dependsOn`, re-collect the dependencies with the package manager.
+	if (
+		packageManager !== undefined &&
+		packageManagerDropsCandidateDependsOn(
+			candidateEntries,
+			items,
+			pinContext,
+			packageManager,
+		)
+	)
+		candidateEntries = collectRegistryDependencies(
+			items,
+			registry.items,
+			pinContext,
+			packageManager,
+		);
+
+	return { candidateEntries, packageManager, pinContext };
+}
+
+/**
+ * Run afterInstall hooks after package install, with one progress tree when any exist.
+ * @param indexLocation - Absolute path or HTTPS URL of the index document.
+ * @param runtime - Shared handler runtime.
+ * @param conditions - Captured condition context.
+ * @param packageManager - Selected package manager, if any.
+ * @param bindings - Bindings from beforeWrite hooks.
+ * @param installItems - Interpolated install items.
+ */
+async function runAfterInstallScripts(
+	indexLocation: string,
+	runtime: HandlerRuntime,
+	conditions: RegistryContext,
+	packageManager: RegistryPackageManager | undefined,
+	bindings: Record<string, string>,
+	installItems: InstallPlanItem[],
+): Promise<void> {
+	const itemsWithScripts = installItems.filter(
+		(item) => (item.node.afterInstallScripts ?? []).length > 0,
+	);
+	if (itemsWithScripts.length === 0) return;
+
+	await runWithTasks(
+		"Running `afterInstall` hooks",
+		itemsWithScripts.map((item) =>
+			taskGroup(
+				primaryText(item.label),
+				(item.node.afterInstallScripts ?? []).map((scriptUri) =>
+					task(primaryText(scriptUri), async () => {
+						await runAfterInstallHook(
+							indexLocation,
+							scriptUri,
+							runtime,
+							runInstallHookOptions(item.node, {
+								conditions,
+								packageManager,
+								bindings,
+								compiledItem: item.compiledItem,
+							}),
+						);
+					}),
+				),
+			),
+		),
+	);
 }
 
 /**
@@ -356,36 +597,38 @@ export async function addCommand(
 	options: AddCommandOptions = {},
 ): Promise<void> {
 	const projectDir = process.cwd();
-	const items =
+	const selected =
 		options.items && options.items.length > 0
 			? options.items
 			: await promptForItems(registry);
-
-	await prepareScriptExecution({
-		indexLocation,
-		registry,
-		itemIds: items,
-		projectDir,
-	});
+	const items = uniqueKnownRegistryItems(selected, registry.items);
 
 	try {
-		const runtime = createProjectHandlerRuntime(projectDir);
+		let { candidateEntries, packageManager, pinContext } =
+			await candidateEntriesWithPackageManager(items, registry, projectDir);
 
-		const packageManager = await selectNpmPackageManager(projectDir, {
-			select: selectInput,
+		const runtime = projectScriptHelpers(projectDir);
+		const { allowInfer } = await prepareScriptExecution({
+			indexLocation,
+			registry,
+			itemIds: candidateEntries.map((entry) => entry.itemId),
+			selectedItems: items,
+			projectDir,
+			context: pinContext,
+			packageManager,
 		});
-		const pmBindings = {
-			[PACKAGE_MANAGER_KEY]: packageManager,
-			...packageManagerBindings(packageManager),
-		};
 
 		let conditions = await captureRequiredConditions(
 			registry,
 			indexLocation,
 			projectDir,
 			items,
-			runtime,
-			packageManager,
+			{
+				runtime,
+				packageManager,
+				allowInfer,
+				context: pinContext,
+			},
 		);
 
 		let plan = buildInstallPlan(
@@ -394,8 +637,7 @@ export async function addCommand(
 			conditions,
 			packageManager,
 		);
-		if (plan.length === 0)
-			throw new Error("No registry items were selected for installation.");
+		assertInstallPlan(plan, registry);
 
 		({ context: conditions, plan } = await captureItemLocalConditionsForPlan(
 			registry,
@@ -404,30 +646,34 @@ export async function addCommand(
 			plan,
 			conditions,
 			runtime,
-			packageManager,
+			{ packageManager, allowInfer },
 		));
+		assertInstallPlan(plan, registry);
 
 		console.log();
 
-		let compiledItemDocuments = new Map<string, unknown>();
-		const compiledItemSources = plan.flatMap((node) => node.sources ?? []);
-
-		if (compiledItemSources.length > 0)
+		const sources = plan.flatMap((node) => node.sources ?? []);
+		let compiledItemDocuments = new Map<string, CompiledItem>();
+		if (sources.length > 0)
 			await runWithTasks("Fetching compiled items", async () => {
 				compiledItemDocuments = await loadCompiledItems(
 					indexLocation,
-					compiledItemSources,
+					sources,
 					registry.itemIntegrity,
 				);
 			});
-
 		const preparedItems = prepareInstallItems(
 			plan,
 			registry,
 			compiledItemDocuments,
 		);
 
-		const { items: afterHooks, bindings } = await runPrepareInstallScripts(
+		packageManager ??= await selectPackageManagerForItems(
+			projectDir,
+			preparedItems,
+		);
+
+		const { items: afterHooks, bindings } = await runBeforeWriteScripts(
 			indexLocation,
 			runtime,
 			conditions,
@@ -435,20 +681,33 @@ export async function addCommand(
 			preparedItems,
 		);
 
-		const ranPrepareHooks = afterHooks.some(
-			(item) => (item.node.prepareScripts ?? []).length > 0,
-		);
-		if (ranPrepareHooks && !(await confirmHookMutations(afterHooks))) {
+		const itemHasBeforeWriteScripts = (item: InstallPlanItem) =>
+			(item.node.beforeWriteScripts ?? []).length > 0;
+		if (
+			afterHooks.some(itemHasBeforeWriteScripts) &&
+			!(await confirmHookMutations(
+				preparedItems.filter(itemHasBeforeWriteScripts),
+				afterHooks.filter(itemHasBeforeWriteScripts),
+			))
+		)
 			throw new Error(
 				"Install cancelled: script-proposed changes were declined.",
 			);
-		}
 
-		const interpolationValues = buildInterpolationContext(
-			conditions,
-			{ ...pmBindings, ...bindings },
-			interpolationOptionValues(registry, plan),
+		packageManager ??= await selectPackageManagerForItems(
+			projectDir,
+			afterHooks,
 		);
+
+		const interpolationValues = buildInterpolationContext({
+			conditions,
+			hookBindings: bindings,
+			optionValues: interpolationOptionValues(registry, plan),
+			...(packageManager && {
+				packageManager,
+				ecosystem: RegistryEcosystem.NPM,
+			}),
+		});
 		const installItems = afterHooks.map((item) => ({
 			...item,
 			compiledItem: interpolateCompiledItem(
@@ -457,49 +716,49 @@ export async function addCommand(
 			),
 		}));
 
+		const fileWrites = await planFileWrites(projectDir, installItems);
 		await confirmFileOverwrites(
+			fileWrites.conflicts,
+			options.overwrite === true,
+		);
+
+		await writePreparedItems(fileWrites.items);
+
+		await mergeProjectCommands(
 			projectDir,
 			installItems.map((item) => item.compiledItem),
 			options.overwrite === true,
 		);
 
-		const packageDeclarations = await writePreparedItems(
-			projectDir,
-			installItems,
-		);
+		const pendingInstallCommands =
+			packageManager === undefined
+				? []
+				: await installDeclaredPackages(
+						installItems.flatMap((item) =>
+							item.compiledItem.dependencies
+								? [item.compiledItem.dependencies]
+								: [],
+						),
+						projectDir,
+						packageManager,
+					);
 
-		await mergeProjectCommands(
-			projectDir,
-			installItems.map((item) => item.compiledItem),
-		);
-
-		for (const item of installItems) {
-			for (const scriptUri of item.node.finalizeScripts ?? []) {
-				await runFinalizeInstallHook(indexLocation, scriptUri, runtime, {
-					itemId: item.node.itemId,
-					...(item.node.packIds ? { packIds: item.node.packIds } : {}),
-					conditions,
-					packageManager,
-					bindings,
-					compiledItem: item.compiledItem,
-				});
-			}
-		}
-
-		const pendingInstallCommands = await installDeclaredPackages(
-			packageDeclarations,
-			projectDir,
+		await runAfterInstallScripts(
+			indexLocation,
+			runtime,
+			conditions,
 			packageManager,
+			bindings,
+			installItems,
 		);
 
 		const itemWord = installItems.length === 1 ? "item" : "items";
 		console.log();
 		console.log(defaultText(`Installed ${installItems.length} ${itemWord}.`));
 
-		const secrets =
-			mergeSecretNames(
-				...installItems.map((item) => item.compiledItem.secrets),
-			) ?? [];
+		const secrets = mergeSecretNames(
+			...installItems.map((item) => item.compiledItem.secrets),
+		);
 		printInstallNextSteps(pendingInstallCommands, secrets);
 
 		console.log();

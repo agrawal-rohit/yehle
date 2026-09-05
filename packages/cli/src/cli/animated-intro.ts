@@ -64,6 +64,15 @@ function splitWords(message: string): string[] {
 }
 
 /**
+ * Usable display width for the intro: at least 40 columns, falling back to 80 when unknown.
+ * @param stdout - Output stream.
+ * @returns Column count to fit text within.
+ */
+function visibleColumns(stdout: NodeJS.WriteStream): number {
+	return Math.max(40, stdout.columns || 80);
+}
+
+/**
  * Print the intro once without animation (CI, piped stdout).
  * @param message - Intro message to display.
  * @param title - Intro title.
@@ -74,10 +83,21 @@ function printIntroPlain(
 	title: string,
 	stdout: NodeJS.WriteStream,
 ): void {
-	const columns = Math.max(40, stdout.columns || 80);
+	const columns = visibleColumns(stdout);
 	const titleLine = truncate(formatTitleLine(undefined, title), columns);
 	const finalMsg = truncate(splitWords(message).join(" "), columns);
 	stdout.write(`\n${titleLine}\n${finalMsg}\n`);
+}
+
+/** Fixed-height TTY renderer interface. */
+export interface FixedHeightRenderer {
+	/**
+	 * Paint exactly `height` lines (pads with empty strings when short).
+	 * @param lines - Lines to display; extras beyond `height` are ignored.
+	 */
+	paint: (lines: string[]) => void;
+	/** Advance the cursor past the reserved block after the animation ends. */
+	finish: () => void;
 }
 
 /**
@@ -90,7 +110,7 @@ function printIntroPlain(
 export function createFixedHeightRenderer(
 	out: NodeJS.WriteStream,
 	height: number,
-) {
+): FixedHeightRenderer {
 	let initialized = false;
 	return {
 		/**
@@ -146,7 +166,7 @@ export async function animatedIntro(
 	}
 
 	const words = splitWords(message);
-	const columns = Math.max(40, stdout.columns || 80);
+	const columns = visibleColumns(stdout);
 	const renderer = createFixedHeightRenderer(stdout, 3);
 
 	let aborted = false;

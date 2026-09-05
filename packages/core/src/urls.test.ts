@@ -2,7 +2,9 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
 	assertSafeRemoteUrl,
+	assertSinglePathSegment,
 	isAbsoluteHttpUrl,
+	isEscapingRelativePath,
 	joinIndexSource,
 	joinRelativePathUnderRoot,
 	publishedRegistryUrl,
@@ -20,6 +22,70 @@ describe("isAbsoluteHttpUrl", () => {
 		expect(isAbsoluteHttpUrl("/absolute/path.ts")).toBe(false);
 		expect(isAbsoluteHttpUrl("ftp://example.com/file.ts")).toBe(false);
 		expect(isAbsoluteHttpUrl("prefixhttps://example.com/file.ts")).toBe(false);
+	});
+});
+
+describe("isEscapingRelativePath", () => {
+	it("accepts safe relative paths", () => {
+		expect(isEscapingRelativePath("foo")).toBe(false);
+		expect(isEscapingRelativePath("foo/bar/baz.json")).toBe(false);
+		expect(isEscapingRelativePath("./foo/bar")).toBe(false);
+	});
+
+	it("rejects root-relative and POSIX absolute paths", () => {
+		expect(isEscapingRelativePath("/foo/bar")).toBe(true);
+		expect(isEscapingRelativePath("/")).toBe(true);
+	});
+
+	it("rejects backslash separators and Windows paths", () => {
+		expect(isEscapingRelativePath("foo\\bar")).toBe(true);
+		expect(isEscapingRelativePath("C:\\foo\\bar")).toBe(true);
+		expect(isEscapingRelativePath("C:/foo/bar")).toBe(true);
+		expect(isEscapingRelativePath("C:foo/bar")).toBe(true);
+		expect(isEscapingRelativePath("d:relative")).toBe(true);
+	});
+
+	it("rejects parent directory traversals", () => {
+		expect(isEscapingRelativePath("../foo")).toBe(true);
+		expect(isEscapingRelativePath("foo/../bar")).toBe(true);
+		expect(isEscapingRelativePath("..")).toBe(true);
+	});
+
+	it("rejects absolute URLs", () => {
+		expect(isEscapingRelativePath("https://example.com/item.json")).toBe(true);
+		expect(isEscapingRelativePath("http://example.com/item.json")).toBe(true);
+	});
+});
+
+describe("assertSinglePathSegment", () => {
+	it("accepts valid single path segments", () => {
+		expect(() => assertSinglePathSegment("Test", "valid-name")).not.toThrow();
+		expect(() => assertSinglePathSegment("Test", "feature_123")).not.toThrow();
+		expect(() => assertSinglePathSegment("Test", "config.json")).not.toThrow();
+	});
+
+	it("rejects empty strings", () => {
+		expect(() => assertSinglePathSegment("Option", "")).toThrow(
+			'Option must be a single path segment (no "/", "\\", or "..").',
+		);
+	});
+
+	it("rejects dot and double-dot segments", () => {
+		expect(() => assertSinglePathSegment("Option", ".")).toThrow(
+			'Option must be a single path segment (no "/", "\\", or "..").',
+		);
+		expect(() => assertSinglePathSegment("Option", "..")).toThrow(
+			'Option must be a single path segment (no "/", "\\", or "..").',
+		);
+	});
+
+	it("rejects forward slash and backslash separators", () => {
+		expect(() => assertSinglePathSegment("Option", "foo/bar")).toThrow(
+			'Option must be a single path segment (no "/", "\\", or "..").',
+		);
+		expect(() => assertSinglePathSegment("Option", "foo\\bar")).toThrow(
+			'Option must be a single path segment (no "/", "\\", or "..").',
+		);
 	});
 });
 

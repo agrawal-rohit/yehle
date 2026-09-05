@@ -14,17 +14,23 @@ const mockLoadCompiledItems = vi.fn();
 const mockWriteFileAsync = vi.fn();
 const mockIsFileAsync = vi.fn();
 const mockRunAsync = vi.fn();
+const mockRunArgvAsync = vi.fn();
 const mockRunWithTasks = vi.fn();
-const mockConfirmHookMutations = vi.fn(async () => true);
-const mockPrepareScriptExecution = vi.fn(async () => ({
+const mockConfirmHookMutations = vi.fn(async (..._args: unknown[]) => true);
+const mockPrepareScriptExecution = vi.fn(async (..._args: unknown[]) => ({
 	trust: "bundled",
-	policy: "allow",
-	scriptsAllowed: true,
+	allowInfer: true,
+	allowMutation: true,
 }));
 
-vi.mock("../cli/tasks", () => ({
-	runWithTasks: (...args: unknown[]) => mockRunWithTasks(...args),
-}));
+vi.mock("../cli/tasks", async () => {
+	const actual =
+		await vi.importActual<typeof import("../cli/tasks")>("../cli/tasks");
+	return {
+		...actual,
+		runWithTasks: (...args: unknown[]) => mockRunWithTasks(...args),
+	};
+});
 
 vi.mock("../cli/prompts", () => ({
 	multiselectInput: (...args: unknown[]) => mockMultiselectInput(...args),
@@ -40,12 +46,19 @@ vi.mock("../utils/registry", () => ({
 	bundledRegistryPath: () => "/bundled/registry.json",
 }));
 
-vi.mock("../utils/scripts", () => ({
-	prepareScriptExecution: (...args: unknown[]) =>
-		mockPrepareScriptExecution(...args),
-	confirmHookMutations: (...args: unknown[]) =>
-		mockConfirmHookMutations(...args),
-}));
+vi.mock("../utils/scripts", async () => {
+	const actual =
+		await vi.importActual<typeof import("../utils/scripts")>(
+			"../utils/scripts",
+		);
+	return {
+		...actual,
+		prepareScriptExecution: (...args: unknown[]) =>
+			mockPrepareScriptExecution(...args),
+		confirmHookMutations: (...args: unknown[]) =>
+			mockConfirmHookMutations(...args),
+	};
+});
 
 vi.mock("@tuckshop/core", async () => {
 	const actual =
@@ -56,6 +69,7 @@ vi.mock("@tuckshop/core", async () => {
 		writeFileAsync: (...args: unknown[]) => mockWriteFileAsync(...args),
 		isFileAsync: (...args: unknown[]) => mockIsFileAsync(...args),
 		runAsync: (...args: unknown[]) => mockRunAsync(...args),
+		runArgvAsync: (...args: unknown[]) => mockRunArgvAsync(...args),
 	};
 });
 
@@ -122,12 +136,37 @@ describe("commands/add", () => {
 		mockConfirmHookMutations.mockResolvedValue(true);
 		mockPrepareScriptExecution.mockResolvedValue({
 			trust: "bundled",
-			policy: "allow",
-			scriptsAllowed: true,
+			allowInfer: true,
+			allowMutation: true,
 		});
 		mockRunWithTasks.mockImplementation(
-			async (_goal: string, task?: () => Promise<void>) => {
-				if (task) await task();
+			async (
+				_goal: string,
+				work:
+					| (() => Promise<void>)
+					| Array<{
+							task?: () => Promise<void>;
+							subtasks?: unknown[];
+					  }>,
+			) => {
+				const runSubs = async (
+					nodes?: Array<{
+						task?: () => Promise<void>;
+						subtasks?: unknown[];
+					}>,
+				) => {
+					for (const node of nodes ?? []) {
+						if (node.task) await node.task();
+						await runSubs(
+							node.subtasks as Array<{
+								task?: () => Promise<void>;
+								subtasks?: unknown[];
+							}>,
+						);
+					}
+				};
+				if (typeof work === "function") await work();
+				else await runSubs(work);
 			},
 		);
 	});
@@ -135,6 +174,137 @@ describe("commands/add", () => {
 	afterEach(() => {
 		fs.rmSync(tempDir, { recursive: true, force: true });
 		vi.restoreAllMocks();
+	});
+
+	it("asks script permission for selected items and their dependsOn closure", async () => {
+		const dependentRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			items: {
+				base: {
+					title: "Base",
+					description: "Dependency",
+					type: "configuration",
+					source: "r/base.json",
+					beforeWrite: ["r/base.beforeWrite.0.js"],
+				},
+				"pr-template-configuration": {
+					title: "Pull Request Template",
+					description: "PR template",
+					type: "configuration",
+					source: "r/pr-template-configuration.json",
+					dependsOn: ["base"],
+				},
+			},
+		};
+
+		await addCommand(dependentRegistry, indexLocation, {
+			items: ["pr-template-configuration"],
+			overwrite: true,
+		});
+
+		expect(mockPrepareScriptExecution).toHaveBeenCalledWith(
+			expect.objectContaining({
+				itemIds: ["pr-template-configuration", "base"],
+			}),
+		);
+	});
+
+	it("narrows script permission to pinned pack dependencies", async () => {
+		const packRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			conditions: {
+				language: {
+					kind: RegistryConditionKind.SELECT,
+					label: "Language",
+					values: [
+						{ value: "typescript", label: "TypeScript" },
+						{ value: "python", label: "Python" },
+					],
+				},
+			},
+			items: {
+				"typescript-base": {
+					title: "TypeScript base",
+					description: "TS dependency",
+					type: "configuration",
+					source: "r/typescript-base.json",
+					beforeWrite: ["r/typescript-base.beforeWrite.0.js"],
+				},
+				"python-base": {
+					title: "Python base",
+					description: "Python dependency",
+					type: "configuration",
+					source: "r/python-base.json",
+					beforeWrite: ["r/python-base.beforeWrite.0.js"],
+				},
+				release: {
+					title: "Release",
+					description: "Release workflow",
+					type: "configuration",
+					source: "r/release.json",
+					packs: [
+						{
+							id: "typescript",
+							title: "TypeScript",
+							source: "r/release.typescript.json",
+							when: { language: "typescript" },
+							dependsOn: ["typescript-base"],
+						},
+						{
+							id: "python",
+							title: "Python",
+							source: "r/release.python.json",
+							when: { language: "python" },
+							dependsOn: ["python-base"],
+						},
+					],
+				},
+			},
+		};
+
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "typescript-base",
+				sources: ["r/typescript-base.json"],
+			},
+			{
+				itemId: "release",
+				packIds: ["typescript"],
+				sources: ["r/release.json", "r/release.typescript.json"],
+			},
+		]);
+		mockLoadCompiledItems.mockResolvedValue(
+			new Map([
+				[
+					"r/typescript-base.json",
+					{ files: [{ target: "ts-base.txt", content: "ts" }] },
+				],
+				[
+					"r/release.json",
+					{ files: [{ target: "release.txt", content: "release" }] },
+				],
+				[
+					"r/release.typescript.json",
+					{ files: [{ target: "release-ts.txt", content: "ts pack" }] },
+				],
+			]),
+		);
+
+		await addCommand(packRegistry, indexLocation, {
+			items: ["release@typescript"],
+			overwrite: true,
+		});
+
+		expect(mockPrepareScriptExecution).toHaveBeenCalledWith(
+			expect.objectContaining({
+				itemIds: ["release", "typescript-base"],
+			}),
+		);
+		expect(mockSelectInput).not.toHaveBeenCalledWith(
+			"Language",
+			expect.anything(),
+			expect.anything(),
+		);
 	});
 
 	it("installs a positional item and writes compiled item files", async () => {
@@ -329,7 +499,7 @@ describe("commands/add", () => {
 			["pr-template-configuration", "code-quality-workflow"],
 			groupedRegistry.items,
 			{},
-			"pnpm",
+			undefined,
 		);
 		expect(consoleLogSpy).toHaveBeenCalledWith(
 			expect.stringContaining("Installed 2 items."),
@@ -498,9 +668,10 @@ describe("commands/add", () => {
 			overwrite: true,
 		});
 
-		expect(mockRunAsync).toHaveBeenCalledTimes(1);
-		expect(mockRunAsync).toHaveBeenCalledWith(
-			expect.stringContaining("pnpm add -D vitest@^3 zod"),
+		expect(mockRunArgvAsync).toHaveBeenCalledTimes(1);
+		expect(mockRunArgvAsync).toHaveBeenCalledWith(
+			"pnpm",
+			["add", "--ignore-scripts", "-D", "vitest@^3", "zod"],
 			expect.objectContaining({ cwd: tempDir, stdio: "inherit" }),
 		);
 	});
@@ -571,6 +742,50 @@ describe("commands/add", () => {
 		await expect(addCommand(registry, indexLocation, {})).rejects.toThrow(
 			"Select at least one registry item to add.",
 		);
+	});
+
+	it("omits undeclared-type items from the item prompt (core parse-time validation rejects them first)", async () => {
+		mockGroupedMultiselectInput.mockResolvedValue([]);
+
+		await expect(
+			addCommand(
+				{
+					types: { configuration: { label: "Configurations" } },
+					items: {
+						widget: {
+							title: "Widget",
+							description: "A widget",
+							type: "component",
+							source: "r/widget.json",
+						},
+					},
+				},
+				indexLocation,
+				{},
+			),
+		).rejects.toThrow("Select at least one registry item to add.");
+		expect(mockGroupedMultiselectInput).toHaveBeenCalledWith(
+			"Which registry items should be added?",
+			{},
+		);
+	});
+
+	it("rejects a positional item that is not in the registry", async () => {
+		await expect(
+			addCommand(registry, indexLocation, { items: ["missing"] }),
+		).rejects.toThrow('Registry item not found: "missing"');
+		expect(mockPrepareScriptExecution).not.toHaveBeenCalled();
+	});
+
+	it("rejects a positional pack pin that the item does not declare", async () => {
+		await expect(
+			addCommand(registry, indexLocation, {
+				items: ["pr-template-configuration@typescript"],
+			}),
+		).rejects.toThrow(
+			'Registry item "pr-template-configuration" has no packs.',
+		);
+		expect(mockPrepareScriptExecution).not.toHaveBeenCalled();
 	});
 
 	it("omits empty type groups when prompting for items", async () => {
@@ -922,12 +1137,16 @@ module.exports = {
 		});
 
 		expect(mockRunWithTasks).toHaveBeenCalledWith(
-			expect.stringContaining("untitled-item"),
-			expect.any(Function),
+			"Installing items",
+			expect.arrayContaining([
+				expect.objectContaining({
+					title: expect.stringContaining("untitled-item"),
+				}),
+			]),
 		);
 	});
 
-	it("falls back to the item id when the index entry is missing", async () => {
+	it("rejects an install plan that names an unknown registry item", async () => {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "ghost-item",
@@ -935,14 +1154,13 @@ module.exports = {
 			},
 		]);
 
-		await addCommand(registry, indexLocation, {
-			items: ["pr-template-configuration"],
-			overwrite: true,
-		});
-
-		expect(mockRunWithTasks).toHaveBeenCalledWith(
-			expect.stringContaining("ghost-item"),
-			expect.any(Function),
+		await expect(
+			addCommand(registry, indexLocation, {
+				items: ["pr-template-configuration"],
+				overwrite: true,
+			}),
+		).rejects.toThrow(
+			'Install plan references unknown registry item "ghost-item".',
 		);
 	});
 
@@ -959,7 +1177,7 @@ module.exports = {
 	it("cancels when script-proposed mutations are declined", async () => {
 		const core = await import("@tuckshop/core");
 		const clearExecutor = vi.spyOn(core, "setScriptExecutor");
-		vi.spyOn(core, "runPrepareInstallHook").mockResolvedValue({
+		vi.spyOn(core, "runBeforeWriteHook").mockResolvedValue({
 			files: [{ target: "HOOK.md", content: "hooked" }],
 			bindings: {},
 		});
@@ -967,7 +1185,7 @@ module.exports = {
 			{
 				itemId: "pr-template-configuration",
 				sources: ["r/pr-template-configuration.json"],
-				prepareScripts: ["r/item.prepare.0.js"],
+				beforeWriteScripts: ["r/item.beforeWrite.0.js"],
 			},
 		]);
 		mockConfirmHookMutations.mockResolvedValue(false);
@@ -984,16 +1202,16 @@ module.exports = {
 		expect(mockWriteFileAsync).not.toHaveBeenCalled();
 	});
 
-	it("passes packIds into prepare scripts when present", async () => {
+	it("passes packIds into beforeWrite scripts when present", async () => {
 		const handlerDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-variant-"));
 		const catalogPath = path.join(handlerDir, "registry.json");
-		const scriptPath = path.join(handlerDir, "r/hello.prepare.0.js");
+		const scriptPath = path.join(handlerDir, "r/hello.beforeWrite.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(catalogPath, "{}\n");
 		fs.writeFileSync(
 			scriptPath,
 			`
-module.exports = async function prepare(ctx) {
+module.exports = async function beforeWrite(ctx) {
   return {
     files: [{ target: "VARIANT.md", content: (ctx.packIds || []).join(",") || "none" }],
   };
@@ -1005,7 +1223,7 @@ module.exports = async function prepare(ctx) {
 			{
 				itemId: "hello",
 				packIds: ["typescript"],
-				prepareScripts: ["r/hello.prepare.0.js"],
+				beforeWriteScripts: ["r/hello.beforeWrite.0.js"],
 			},
 		]);
 
@@ -1016,7 +1234,7 @@ module.exports = async function prepare(ctx) {
 					title: "Hello",
 					description: "Install script demo",
 					type: "configuration",
-					prepare: ["r/hello.prepare.0.js"],
+					beforeWrite: ["r/hello.beforeWrite.0.js"],
 				},
 			},
 		};
@@ -1036,20 +1254,20 @@ module.exports = async function prepare(ctx) {
 		}
 	});
 
-	it("passes packIds into finalize scripts when present", async () => {
+	it("passes packIds into afterInstall scripts when present", async () => {
 		const handlerDir = fs.mkdtempSync(
 			path.join(os.tmpdir(), "add-after-variant-"),
 		);
 		const catalogPath = path.join(handlerDir, "registry.json");
 		const logPath = path.join(tempDir, "after-variant.log");
-		const scriptPath = path.join(handlerDir, "r/hello.finalize.0.js");
+		const scriptPath = path.join(handlerDir, "r/hello.afterInstall.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(catalogPath, "{}\n");
 		fs.writeFileSync(
 			scriptPath,
 			`
 const fs = require("node:fs");
-module.exports = async function finalize(ctx) {
+module.exports = async function afterInstall(ctx) {
   fs.appendFileSync(${JSON.stringify(logPath)}, (ctx.packIds || []).join(",") || "none");
 };
 `,
@@ -1060,7 +1278,7 @@ module.exports = async function finalize(ctx) {
 				itemId: "hello",
 				packIds: ["typescript"],
 				sources: ["r/hello.json"],
-				finalizeScripts: ["r/hello.finalize.0.js"],
+				afterInstallScripts: ["r/hello.afterInstall.0.js"],
 			},
 		]);
 		mockLoadCompiledItems.mockResolvedValue(
@@ -1082,7 +1300,7 @@ module.exports = async function finalize(ctx) {
 					description: "After-install script demo",
 					type: "configuration",
 					source: "r/hello.json",
-					finalize: ["r/hello.finalize.0.js"],
+					afterInstall: ["r/hello.afterInstall.0.js"],
 				},
 			},
 		};
@@ -1099,9 +1317,11 @@ module.exports = async function finalize(ctx) {
 		}
 	});
 
-	it("rejects an invalid compiled item with the item label", async () => {
-		mockLoadCompiledItems.mockResolvedValue(
-			new Map([["r/pr-template-configuration.json", { files: 1 }]]),
+	it("rejects an invalid compiled item from fetch", async () => {
+		mockLoadCompiledItems.mockRejectedValue(
+			new Error(
+				'Compiled item "r/pr-template-configuration.json" has an unknown key: extra.',
+			),
 		);
 
 		await expect(
@@ -1109,7 +1329,7 @@ module.exports = async function finalize(ctx) {
 				items: ["pr-template-configuration"],
 				overwrite: true,
 			}),
-		).rejects.toThrow('Compiled item for "pr-template-configuration"');
+		).rejects.toThrow('Compiled item "r/pr-template-configuration.json"');
 	});
 
 	it("rejects path traversal in compiled item targets", async () => {
@@ -1130,7 +1350,52 @@ module.exports = async function finalize(ctx) {
 				overwrite: true,
 			}),
 		).rejects.toThrow(
-			'Compiled item file target "../escape.txt" must be a relative path under the project directory.',
+			'Compiled item file target "../escape.txt" must be a relative path (no absolute paths, URLs, or "..").',
+		);
+	});
+
+	it("skips package-manager selection when the catalog and payload do not use npm", async () => {
+		fs.rmSync(path.join(tempDir, "pnpm-lock.yaml"));
+
+		await addCommand(registry, indexLocation, {
+			items: ["pr-template-configuration"],
+			overwrite: true,
+		});
+
+		expect(mockSelectInput).not.toHaveBeenCalledWith(
+			"Which package manager should be used for the project?",
+			expect.anything(),
+			expect.anything(),
+		);
+	});
+
+	it("selects a package manager when compiled files interpolate packageManager", async () => {
+		fs.rmSync(path.join(tempDir, "pnpm-lock.yaml"));
+		fs.writeFileSync(path.join(tempDir, "package-lock.json"), "{}\n");
+		mockLoadCompiledItems.mockResolvedValue(
+			new Map([
+				[
+					"r/pr-template-configuration.json",
+					{
+						files: [
+							{
+								target: ".github/dependabot.yml",
+								content: "package-ecosystem: {{packageManager}}",
+							},
+						],
+					},
+				],
+			]),
+		);
+
+		await addCommand(registry, indexLocation, {
+			items: ["pr-template-configuration"],
+			overwrite: true,
+		});
+
+		expect(mockWriteFileAsync).toHaveBeenCalledWith(
+			path.join(tempDir, ".github/dependabot.yml"),
+			"package-ecosystem: npm",
 		);
 	});
 
@@ -1166,7 +1431,7 @@ module.exports = async function finalize(ctx) {
 		});
 
 		expect(mockConfirmInput).toHaveBeenCalledWith(
-			"Would you like to install the required dependencies?",
+			"Would you like to install the required dependencies? (lifecycle scripts are disabled)",
 			{},
 			true,
 		);
@@ -1175,8 +1440,9 @@ module.exports = async function finalize(ctx) {
 			expect.anything(),
 			expect.anything(),
 		);
-		expect(mockRunAsync).toHaveBeenCalledWith(
-			expect.stringContaining("npm install -D vitest@^3"),
+		expect(mockRunArgvAsync).toHaveBeenCalledWith(
+			"npm",
+			["install", "--ignore-scripts", "-D", "vitest@^3"],
 			expect.objectContaining({ cwd: tempDir, stdio: "inherit" }),
 		);
 	});
@@ -1196,6 +1462,7 @@ module.exports = async function finalize(ctx) {
 						],
 						dependencies: {
 							npm: {
+								runtime: ["zod"],
 								dev: ["vitest@^3"],
 							},
 						},
@@ -1210,12 +1477,21 @@ module.exports = async function finalize(ctx) {
 			overwrite: true,
 		});
 
-		expect(mockRunAsync).not.toHaveBeenCalled();
+		expect(mockRunArgvAsync).not.toHaveBeenCalled();
 		expect(consoleLogSpy).toHaveBeenCalledWith(
 			expect.stringContaining("Next steps"),
 		);
 		expect(consoleLogSpy).toHaveBeenCalledWith(
-			expect.stringContaining("pnpm add -D vitest@^3"),
+			expect.stringContaining("Install dependencies:"),
+		);
+		expect(consoleLogSpy).not.toHaveBeenCalledWith(
+			expect.stringContaining("Install dependencies with"),
+		);
+		expect(consoleLogSpy).toHaveBeenCalledWith(
+			expect.stringContaining("pnpm add --ignore-scripts zod"),
+		);
+		expect(consoleLogSpy).toHaveBeenCalledWith(
+			expect.stringContaining("pnpm add --ignore-scripts -D vitest@^3"),
 		);
 	});
 
@@ -1260,24 +1536,25 @@ module.exports = async function finalize(ctx) {
 			}),
 			"npm",
 		);
-		expect(mockRunAsync).toHaveBeenCalledWith(
-			expect.stringContaining("npm install -D vitest@^3"),
+		expect(mockRunArgvAsync).toHaveBeenCalledWith(
+			"npm",
+			["install", "--ignore-scripts", "-D", "vitest@^3"],
 			expect.objectContaining({ cwd: tempDir, stdio: "inherit" }),
 		);
 	});
 
-	it("runs a local prepare script before writing files", async () => {
+	it("runs a local beforeWrite script before writing files", async () => {
 		const fs = await import("node:fs");
 		const os = await import("node:os");
 		const handlerDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-handler-"));
 		const catalogPath = path.join(handlerDir, "registry.json");
-		const scriptPath = path.join(handlerDir, "r/hello.prepare.0.js");
+		const scriptPath = path.join(handlerDir, "r/hello.beforeWrite.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(catalogPath, "{}\n");
 		fs.writeFileSync(
 			scriptPath,
 			`
-module.exports = async function prepare(ctx) {
+module.exports = async function beforeWrite(ctx) {
   const name = ctx.conditions.authorName || "world";
   return {
     bindings: { name },
@@ -1291,7 +1568,7 @@ module.exports = async function prepare(ctx) {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "hello",
-				prepareScripts: ["r/hello.prepare.0.js"],
+				beforeWriteScripts: ["r/hello.beforeWrite.0.js"],
 			},
 		]);
 
@@ -1309,7 +1586,7 @@ module.exports = async function prepare(ctx) {
 					description: "Install script demo",
 					type: "configuration",
 					requires: ["authorName"],
-					prepare: ["r/hello.prepare.0.js"],
+					beforeWrite: ["r/hello.beforeWrite.0.js"],
 				},
 			},
 		};
@@ -1335,21 +1612,21 @@ module.exports = async function prepare(ctx) {
 		}
 	});
 
-	it("runs prepare before writes and finalize after writes", async () => {
+	it("runs beforeWrite before writes and afterInstall after package install", async () => {
 		const fs = await import("node:fs");
 		const os = await import("node:os");
 		const handlerDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-lifecycle-"));
 		const catalogPath = path.join(handlerDir, "registry.json");
 		const logPath = path.join(tempDir, "lifecycle-order.log");
-		const beforePath = path.join(handlerDir, "r/lifecycle.prepare.0.js");
-		const afterPath = path.join(handlerDir, "r/lifecycle.finalize.0.js");
+		const beforePath = path.join(handlerDir, "r/lifecycle.beforeWrite.0.js");
+		const afterPath = path.join(handlerDir, "r/lifecycle.afterInstall.0.js");
 		fs.mkdirSync(path.dirname(beforePath), { recursive: true });
 		fs.writeFileSync(catalogPath, "{}\n");
 		fs.writeFileSync(
 			beforePath,
 			`
 const fs = require("node:fs");
-module.exports = async function prepare() {
+module.exports = async function beforeWrite() {
   fs.appendFileSync(${JSON.stringify(logPath)}, "before\\n");
 };
 `,
@@ -1358,7 +1635,7 @@ module.exports = async function prepare() {
 			afterPath,
 			`
 const fs = require("node:fs");
-module.exports = async function finalize() {
+module.exports = async function afterInstall() {
   fs.appendFileSync(${JSON.stringify(logPath)}, "after\\n");
 };
 `,
@@ -1368,8 +1645,8 @@ module.exports = async function finalize() {
 			{
 				itemId: "lifecycle",
 				sources: ["r/lifecycle.json"],
-				prepareScripts: ["r/lifecycle.prepare.0.js"],
-				finalizeScripts: ["r/lifecycle.finalize.0.js"],
+				beforeWriteScripts: ["r/lifecycle.beforeWrite.0.js"],
+				afterInstallScripts: ["r/lifecycle.afterInstall.0.js"],
 			},
 		]);
 		mockLoadCompiledItems.mockResolvedValue(
@@ -1378,10 +1655,19 @@ module.exports = async function finalize() {
 					"r/lifecycle.json",
 					{
 						files: [{ target: "DONE.txt", content: "ok" }],
+						dependencies: {
+							npm: {
+								dev: ["vitest@^3"],
+							},
+						},
 					},
 				],
 			]),
 		);
+		mockConfirmInput.mockResolvedValue(true);
+		mockRunArgvAsync.mockImplementation(async () => {
+			fs.appendFileSync(logPath, "install\n");
+		});
 
 		const lifecycleRegistry: Registry = {
 			types: { configuration: { label: "Configurations" } },
@@ -1391,8 +1677,8 @@ module.exports = async function finalize() {
 					description: "Lifecycle scripts",
 					type: "configuration",
 					source: "r/lifecycle.json",
-					prepare: ["r/lifecycle.prepare.0.js"],
-					finalize: ["r/lifecycle.finalize.0.js"],
+					beforeWrite: ["r/lifecycle.beforeWrite.0.js"],
+					afterInstall: ["r/lifecycle.afterInstall.0.js"],
 				},
 			},
 		};
@@ -1403,11 +1689,90 @@ module.exports = async function finalize() {
 				overwrite: true,
 			});
 
-			expect(fs.readFileSync(logPath, "utf8")).toBe("before\nafter\n");
+			expect(fs.readFileSync(logPath, "utf8")).toBe("before\ninstall\nafter\n");
 			expect(mockWriteFileAsync).toHaveBeenCalledWith(
 				path.join(tempDir, "DONE.txt"),
 				"ok",
 			);
+			expect(mockRunWithTasks).toHaveBeenCalledWith(
+				"Running `afterInstall` hooks",
+				expect.arrayContaining([
+					expect.objectContaining({
+						title: expect.stringContaining("Lifecycle"),
+					}),
+				]),
+			);
+		} finally {
+			fs.rmSync(handlerDir, { recursive: true, force: true });
+		}
+	});
+
+	it("runs afterInstall when the user declines package install", async () => {
+		const fs = await import("node:fs");
+		const os = await import("node:os");
+		const handlerDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "add-after-install-"),
+		);
+		const catalogPath = path.join(handlerDir, "registry.json");
+		const logPath = path.join(tempDir, "after-install-declined.log");
+		const afterPath = path.join(handlerDir, "r/lifecycle.afterInstall.0.js");
+		fs.mkdirSync(path.dirname(afterPath), { recursive: true });
+		fs.writeFileSync(catalogPath, "{}\n");
+		fs.writeFileSync(
+			afterPath,
+			`
+const fs = require("node:fs");
+module.exports = async function afterInstall() {
+  fs.appendFileSync(${JSON.stringify(logPath)}, "after\\n");
+};
+`,
+		);
+
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "lifecycle",
+				sources: ["r/lifecycle.json"],
+				afterInstallScripts: ["r/lifecycle.afterInstall.0.js"],
+			},
+		]);
+		mockLoadCompiledItems.mockResolvedValue(
+			new Map([
+				[
+					"r/lifecycle.json",
+					{
+						files: [{ target: "DONE.txt", content: "ok" }],
+						dependencies: {
+							npm: {
+								dev: ["vitest@^3"],
+							},
+						},
+					},
+				],
+			]),
+		);
+		mockConfirmInput.mockResolvedValue(false);
+
+		const lifecycleRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			items: {
+				lifecycle: {
+					title: "Lifecycle",
+					description: "Lifecycle scripts",
+					type: "configuration",
+					source: "r/lifecycle.json",
+					afterInstall: ["r/lifecycle.afterInstall.0.js"],
+				},
+			},
+		};
+
+		try {
+			await addCommand(lifecycleRegistry, catalogPath, {
+				items: ["lifecycle"],
+				overwrite: true,
+			});
+
+			expect(fs.readFileSync(logPath, "utf8")).toBe("after\n");
+			expect(mockRunArgvAsync).not.toHaveBeenCalled();
 		} finally {
 			fs.rmSync(handlerDir, { recursive: true, force: true });
 		}
@@ -1551,10 +1916,10 @@ module.exports = async function finalize() {
 		);
 	});
 
-	it("folds prepare hook dependencies into the working compiled item", async () => {
+	it("folds beforeWrite hook dependencies into the working compiled item", async () => {
 		const handlerDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-deps-"));
 		const catalogPath = path.join(handlerDir, "registry.json");
-		const scriptPath = path.join(handlerDir, "r/hello.prepare.0.js");
+		const scriptPath = path.join(handlerDir, "r/hello.beforeWrite.0.js");
 		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
 		fs.writeFileSync(catalogPath, "{}\n");
 		fs.writeFileSync(
@@ -1565,7 +1930,7 @@ module.exports = async function finalize() {
 		fs.writeFileSync(
 			scriptPath,
 			`
-module.exports = async function prepare() {
+module.exports = async function beforeWrite() {
   return {
     files: [{ target: "HELLO.md", content: "hi" }],
     dependencies: { npm: { runtime: ["left-pad"] } },
@@ -1579,7 +1944,7 @@ module.exports = async function prepare() {
 		mockBuildInstallPlan.mockReturnValue([
 			{
 				itemId: "hello",
-				prepareScripts: ["r/hello.prepare.0.js"],
+				beforeWriteScripts: ["r/hello.beforeWrite.0.js"],
 			},
 		]);
 
@@ -1590,7 +1955,7 @@ module.exports = async function prepare() {
 					title: "Hello",
 					description: "Hook deps",
 					type: "configuration",
-					prepare: ["r/hello.prepare.0.js"],
+					beforeWrite: ["r/hello.beforeWrite.0.js"],
 				},
 			},
 		};
@@ -1619,10 +1984,6 @@ module.exports = async function prepare() {
 				itemId: "hello",
 				sources: ["r/hello.json"],
 			},
-			{
-				itemId: "ghost",
-				sources: [],
-			},
 		]);
 		mockLoadCompiledItems.mockResolvedValue(
 			new Map([
@@ -1632,7 +1993,7 @@ module.exports = async function prepare() {
 						files: [
 							{
 								target: "HELLO.md",
-								content: "Hello {{authorName}} {{language}} {{pmRun}}",
+								content: "Hello {{authorName}} {{language}}",
 							},
 						],
 					},
@@ -1670,7 +2031,61 @@ module.exports = async function prepare() {
 
 		expect(mockWriteFileAsync).toHaveBeenCalledWith(
 			path.join(tempDir, "HELLO.md"),
-			"Hello Ada typescript pnpm",
+			"Hello Ada typescript",
+		);
+	});
+
+	it("rejects conflicting interpolation option values on the same condition key", async () => {
+		mockBuildInstallPlan.mockReturnValue([
+			{ itemId: "left", sources: ["r/left.json"] },
+			{ itemId: "right", sources: ["r/right.json"] },
+		]);
+		mockLoadCompiledItems.mockResolvedValue(
+			new Map([
+				["r/left.json", { files: [{ target: "LEFT.md", content: "left" }] }],
+				["r/right.json", { files: [{ target: "RIGHT.md", content: "right" }] }],
+			]),
+		);
+
+		const conflictRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			items: {
+				left: {
+					title: "Left",
+					description: "Left item",
+					type: "configuration",
+					source: "r/left.json",
+					conditions: {
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [{ value: "typescript", label: "TypeScript" }],
+						},
+					},
+				},
+				right: {
+					title: "Right",
+					description: "Right item",
+					type: "configuration",
+					source: "r/right.json",
+					conditions: {
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [{ value: "javascript", label: "JavaScript" }],
+						},
+					},
+				},
+			},
+		};
+
+		await expect(
+			addCommand(conflictRegistry, indexLocation, {
+				items: ["left", "right"],
+				overwrite: true,
+			}),
+		).rejects.toThrow(
+			'Condition "language" declares conflicting interpolation option values ("left" and "right").',
 		);
 	});
 });

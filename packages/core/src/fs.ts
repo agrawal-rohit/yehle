@@ -1,24 +1,29 @@
-import fs from "node:fs";
+import type { Dirent, Stats } from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 
 /** Result of classifying a filesystem path. */
-export enum PathKind {
-	FILE = "file",
-	DIRECTORY = "directory",
-	ABSENT = "absent",
-}
+export const PathKind = {
+	FILE: "file",
+	DIRECTORY: "directory",
+	ABSENT: "absent",
+} as const;
+
+export type PathKind = (typeof PathKind)[keyof typeof PathKind];
 
 /**
- * Check whether a filesystem error means the path does not exist.
+ * Check whether a filesystem error indicates the path does not exist.
  * @param error - Value caught from a filesystem call.
  * @returns True when the error carries an ENOENT code.
  */
-export function isMissingPathError(error: unknown): boolean {
+export function isMissingPathError(
+	error: unknown,
+): error is NodeJS.ErrnoException {
 	return (
 		typeof error === "object" &&
 		error !== null &&
 		"code" in error &&
-		(error as { code: unknown }).code === "ENOENT"
+		(error as { code?: unknown }).code === "ENOENT"
 	);
 }
 
@@ -30,7 +35,7 @@ export function isMissingPathError(error: unknown): boolean {
  */
 export async function pathKindAsync(filePath: string): Promise<PathKind> {
 	try {
-		const stat = await fs.promises.stat(filePath);
+		const stat = await fs.stat(filePath);
 		if (stat.isDirectory()) return PathKind.DIRECTORY;
 		if (stat.isFile()) return PathKind.FILE;
 		throw new Error(
@@ -43,12 +48,32 @@ export async function pathKindAsync(filePath: string): Promise<PathKind> {
 }
 
 /**
+ * lstat a path without following symlinks, or `undefined` when it does not exist.
+ * @param filePath - Absolute or relative path to inspect.
+ * @returns File stats, or `undefined` when the path is missing.
+ * @throws Error on unexpected filesystem failures (anything other than missing).
+ */
+export async function lstatAsync(filePath: string): Promise<Stats | undefined> {
+	try {
+		return await fs.lstat(filePath);
+	} catch (error) {
+		if (isMissingPathError(error)) return undefined;
+		throw error;
+	}
+}
+
+/**
  * Check whether a path exists and refers to a file (not a directory).
  * @param filePath - Absolute or relative path to check.
  * @returns Promise resolving to true when the path is a file, false otherwise.
  */
 export async function isFileAsync(filePath: string): Promise<boolean> {
-	return (await pathKindAsync(filePath)) === PathKind.FILE;
+	try {
+		return (await fs.stat(filePath)).isFile();
+	} catch (error) {
+		if (isMissingPathError(error)) return false;
+		throw error;
+	}
 }
 
 /**
@@ -58,7 +83,7 @@ export async function isFileAsync(filePath: string): Promise<boolean> {
  * @throws Error when the file is missing or unreadable.
  */
 export async function readFileAsync(filePath: string): Promise<string> {
-	return fs.promises.readFile(filePath, "utf8");
+	return fs.readFile(filePath, "utf8");
 }
 
 /** Thrown when a file cannot be parsed as JSON. */
@@ -78,13 +103,13 @@ export class InvalidJsonError extends Error {
  * @throws {InvalidJsonError} when the file content is not valid JSON.
  * @throws Error when the file is missing or unreadable.
  */
-export async function readJsonFileAsync(
+export async function readJsonFileAsync<T = unknown>(
 	filePath: string,
 	label: string,
-): Promise<unknown> {
+): Promise<T> {
 	const text = await readFileAsync(filePath);
 	try {
-		return JSON.parse(text);
+		return JSON.parse(text) as T;
 	} catch (error) {
 		throw new InvalidJsonError(label, error);
 	}
@@ -96,10 +121,8 @@ export async function readJsonFileAsync(
  * @returns Directory entries.
  * @throws Error when the directory is missing or unreadable.
  */
-export async function readDirectoryAsync(
-	dirPath: string,
-): Promise<fs.Dirent[]> {
-	return fs.promises.readdir(dirPath, { withFileTypes: true });
+export async function readDirectoryAsync(dirPath: string): Promise<Dirent[]> {
+	return fs.readdir(dirPath, { withFileTypes: true });
 }
 
 /**
@@ -107,7 +130,7 @@ export async function readDirectoryAsync(
  * @param targetPath - File or directory to remove.
  */
 export async function removeAsync(targetPath: string): Promise<void> {
-	await fs.promises.rm(targetPath, {
+	await fs.rm(targetPath, {
 		recursive: true,
 		force: true,
 		maxRetries: 5,
@@ -125,6 +148,6 @@ export async function writeFileAsync(
 	filePath: string,
 	data: string,
 ): Promise<void> {
-	await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-	await fs.promises.writeFile(filePath, data, "utf8");
+	await fs.mkdir(path.dirname(filePath), { recursive: true });
+	await fs.writeFile(filePath, data, "utf8");
 }

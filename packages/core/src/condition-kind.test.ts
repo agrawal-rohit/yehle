@@ -56,18 +56,18 @@ describe("core/condition-kind", () => {
 			).not.toThrow();
 		});
 
-		it("normalizes a declared inferred string", () => {
-			expect(policy.normalizeInferred("typescript", selectValues)).toBe(
+		it("accepts a declared inferred string", () => {
+			expect(policy.inferredContextValue("typescript", selectValues)).toBe(
 				"typescript",
 			);
 		});
 
 		it("rejects non-string or undeclared inferred values", () => {
-			expect(policy.normalizeInferred(true, selectValues)).toBeUndefined();
+			expect(policy.inferredContextValue(true, selectValues)).toBeUndefined();
 			expect(
-				policy.normalizeInferred(["typescript"], selectValues),
+				policy.inferredContextValue(["typescript"], selectValues),
 			).toBeUndefined();
-			expect(policy.normalizeInferred("ruby", selectValues)).toBeUndefined();
+			expect(policy.inferredContextValue("ruby", selectValues)).toBeUndefined();
 		});
 	});
 
@@ -108,20 +108,20 @@ describe("core/condition-kind", () => {
 			expect(context.platforms).toEqual(["ios", "web"]);
 		});
 
-		it("normalizes string and string[] inferences", () => {
-			expect(policy.normalizeInferred("ios", values)).toEqual(["ios"]);
-			expect(policy.normalizeInferred(["ios", "web"], values)).toEqual([
+		it("converts string inferences to arrays", () => {
+			expect(policy.inferredContextValue("ios", values)).toEqual(["ios"]);
+			expect(policy.inferredContextValue(["ios", "web"], values)).toEqual([
 				"ios",
 				"web",
 			]);
 		});
 
 		it("rejects invalid inferred multiselect values", () => {
-			expect(policy.normalizeInferred(true, values)).toBeUndefined();
+			expect(policy.inferredContextValue(true, values)).toBeUndefined();
 			expect(
-				policy.normalizeInferred(["ios", "android"], values),
+				policy.inferredContextValue(["ios", "android"], values),
 			).toBeUndefined();
-			expect(policy.normalizeInferred([], values)).toEqual([]);
+			expect(policy.inferredContextValue([], values)).toEqual([]);
 		});
 	});
 
@@ -152,13 +152,13 @@ describe("core/condition-kind", () => {
 			expect(context.enableCi).toBeUndefined();
 		});
 
-		it("normalizes boolean and string inferences", () => {
-			expect(policy.normalizeInferred(true, [])).toBe(true);
-			expect(policy.normalizeInferred(false, [])).toBe(false);
-			expect(policy.normalizeInferred("true", [])).toBe(true);
-			expect(policy.normalizeInferred("false", [])).toBe(false);
-			expect(policy.normalizeInferred("yes", [])).toBeUndefined();
-			expect(policy.normalizeInferred(["true"], [])).toBeUndefined();
+		it("converts boolean strings to booleans", () => {
+			expect(policy.inferredContextValue(true, [])).toBe(true);
+			expect(policy.inferredContextValue(false, [])).toBe(false);
+			expect(policy.inferredContextValue("true", [])).toBe(true);
+			expect(policy.inferredContextValue("false", [])).toBe(false);
+			expect(policy.inferredContextValue("yes", [])).toBeUndefined();
+			expect(policy.inferredContextValue(["true"], [])).toBeUndefined();
 		});
 
 		it("rejects non-boolean when values", () => {
@@ -188,11 +188,11 @@ describe("core/condition-kind", () => {
 			expect(context.author).toBeUndefined();
 		});
 
-		it("normalizes non-empty string inferences only", () => {
-			expect(policy.normalizeInferred("Ada", [])).toBe("Ada");
-			expect(policy.normalizeInferred("", [])).toBeUndefined();
-			expect(policy.normalizeInferred(true, [])).toBeUndefined();
-			expect(policy.normalizeInferred(["Ada"], [])).toBeUndefined();
+		it("accepts only non-empty string inferences", () => {
+			expect(policy.inferredContextValue("Ada", [])).toBe("Ada");
+			expect(policy.inferredContextValue("", [])).toBeUndefined();
+			expect(policy.inferredContextValue(true, [])).toBeUndefined();
+			expect(policy.inferredContextValue(["Ada"], [])).toBeUndefined();
 		});
 
 		it("rejects use in when", () => {

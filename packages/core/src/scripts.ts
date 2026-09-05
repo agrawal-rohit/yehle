@@ -2,24 +2,51 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { unwrapModuleExport } from "./cjs-export";
 import type { IndexItem, Registry } from "./schema";
-import { isAbsoluteHttpUrl } from "./urls";
+import { assertSinglePathSegment, isAbsoluteHttpUrl } from "./urls";
 
 /** How much the CLI trusts a registry index location for script execution. */
 export enum RegistryTrust {
 	/** Packaged default registry shipped with the CLI. */
-	Bundled = "bundled",
+	BUNDLED = "bundled",
 	/** Local filesystem registry that is not the bundled default. */
-	Local = "local",
+	LOCAL = "local",
 	/** Remote HTTPS registry (scripts never execute). */
-	Remote = "remote",
+	REMOTE = "remote",
+}
+
+/** Catalog scripts that may run for a candidate install set, split by effect. */
+export interface DeclaredScriptUris {
+	/** Condition handlers used only to infer prompt defaults. */
+	infer: string[];
+	/** beforeWrite and afterInstall hooks that may execute. */
+	mutation: string[];
+}
+
+/** Whether catalog scripts may load after trust checks. */
+export interface ScriptExecutionPolicy {
+	/** Condition infer handlers may load. */
+	allowInfer: boolean;
+	/** beforeWrite and afterInstall hooks may load. */
+	allowMutation: boolean;
 }
 
 /** Prefix used for Subresource Integrity-style sha256 digests. */
 export const INTEGRITY_PREFIX = "sha256-";
+
+/**
+ * Deduplicate and sort strings without loading package/schema dependencies.
+ * The sandbox child imports this module under a restricted filesystem.
+ * @param values - Values that may contain duplicates.
+ * @returns Sorted unique copy.
+ */
+function uniqueSorted(values: readonly string[]): string[] {
+	return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
 
 /**
  * Compute an SRI-style sha256 digest for raw bytes.
@@ -70,44 +97,59 @@ export function classifyRegistryTrust(
 	indexLocation: string,
 	bundledRegistryPath: string,
 ): RegistryTrust {
-	if (isAbsoluteHttpUrl(indexLocation)) return RegistryTrust.Remote;
+	if (isAbsoluteHttpUrl(indexLocation)) return RegistryTrust.REMOTE;
+	if (!path.isAbsolute(indexLocation))
+		throw new Error(
+			"Registry index location must be an absolute path or HTTPS URL.",
+		);
+	if (!path.isAbsolute(bundledRegistryPath))
+		throw new Error("Bundled registry path must be an absolute path.");
 
 	const resolvedIndex = path.resolve(indexLocation);
 	const resolvedBundled = path.resolve(bundledRegistryPath);
-	if (resolvedIndex === resolvedBundled) return RegistryTrust.Bundled;
-	return RegistryTrust.Local;
+	if (resolvedIndex === resolvedBundled) return RegistryTrust.BUNDLED;
+	return RegistryTrust.LOCAL;
 }
 
 /**
  * Decide whether scripts may run for this registry.
  * Bundled registries run without prompting; other local registries require confirmation;
- * remote HTTPS registries never execute scripts.
+ * remote HTTPS registries refuse mutation hooks and skip infer handlers.
  * @param trust - Registry trust classification.
- * @param scriptUris - Script URIs that would run for this install.
+ * @param scripts - Infer and mutation URIs that would run for this install.
  * @param confirm - Prompt used for non-bundled local registries.
- * @returns True when scripts may run; false when none are declared.
- * @throws Error when scripts are required from a remote registry, or the user declines.
+ * @returns Which script kinds may load.
+ * @throws Error when mutation hooks are required from a remote registry, or the user declines.
  */
 export async function assertScriptsAllowed(
 	trust: RegistryTrust,
-	scriptUris: readonly string[],
+	scripts: DeclaredScriptUris,
 	confirm?: (message: string) => Promise<boolean>,
-): Promise<boolean> {
-	if (scriptUris.length === 0) return false;
+): Promise<ScriptExecutionPolicy> {
+	const denied: ScriptExecutionPolicy = {
+		allowInfer: false,
+		allowMutation: false,
+	};
+	const executable = uniqueSorted([...scripts.infer, ...scripts.mutation]);
+	if (executable.length === 0) return denied;
+
+	const policyForAllowed = (): ScriptExecutionPolicy => ({
+		allowInfer: scripts.infer.length > 0,
+		allowMutation: scripts.mutation.length > 0,
+	});
 
 	switch (trust) {
-		case RegistryTrust.Remote:
-			throw new Error(
-				"Registry scripts require a local registry. Remote HTTPS registries cannot execute custom scripts.",
-			);
-		case RegistryTrust.Bundled:
-			return true;
-		case RegistryTrust.Local: {
-			const unique = [...new Set(scriptUris)].sort((a, b) =>
-				a.localeCompare(b),
-			);
-			const listing = unique.map((uri) => `  - ${uri}`).join("\n");
-			const message = `This local registry wants to run ${unique.length} script(s):\n${listing}\nAllow script execution?`;
+		case RegistryTrust.REMOTE:
+			if (scripts.mutation.length > 0)
+				throw new Error(
+					"Registry scripts require a local registry. Remote HTTPS registries cannot execute custom scripts.",
+				);
+			return denied;
+		case RegistryTrust.BUNDLED:
+			return policyForAllowed();
+		case RegistryTrust.LOCAL: {
+			const listing = executable.map((uri) => `  - ${uri}`).join("\n");
+			const message = `This local registry wants to run ${executable.length} script(s):\n${listing}\nAllow script execution?`;
 			if (!confirm)
 				throw new Error(
 					`${message}\nConfirmation is required before running scripts from a non-bundled local registry.`,
@@ -117,13 +159,28 @@ export async function assertScriptsAllowed(
 				throw new Error(
 					"Script execution was declined. Confirm when prompted, or omit items that declare scripts.",
 				);
-			return true;
+			return policyForAllowed();
 		}
 		default: {
-			const _exhaustive: never = trust;
-			throw new Error(`Unhandled registry trust: ${_exhaustive}`);
+			const exhaustive: never = trust;
+			throw new Error(`Unhandled registry trust: ${String(exhaustive)}`);
 		}
 	}
+}
+
+/**
+ * Read an own integrity digest, ignoring Object.prototype.
+ * @param integrityMap - Optional digest map from the registry document.
+ * @param key - Script URI or item source URI.
+ * @returns The own digest, or undefined when the key is missing.
+ */
+function ownIntegrityDigest(
+	integrityMap: Record<string, string> | undefined,
+	key: string,
+): string | undefined {
+	return integrityMap !== undefined && Object.hasOwn(integrityMap, key)
+		? integrityMap[key]
+		: undefined;
 }
 
 /**
@@ -138,7 +195,11 @@ export function verifyScriptIntegrity(
 	scriptUri: string,
 	bytes: Buffer | string,
 ): void {
-	assertIntegrityMatch(bytes, integrityMap?.[scriptUri], `script ${scriptUri}`);
+	assertIntegrityMatch(
+		bytes,
+		ownIntegrityDigest(integrityMap, scriptUri),
+		`script ${scriptUri}`,
+	);
 }
 
 /**
@@ -153,7 +214,11 @@ export function verifyItemIntegrity(
 	sourceUri: string,
 	bytes: Buffer | string,
 ): void {
-	assertIntegrityMatch(bytes, integrityMap?.[sourceUri], `item ${sourceUri}`);
+	assertIntegrityMatch(
+		bytes,
+		ownIntegrityDigest(integrityMap, sourceUri),
+		`item ${sourceUri}`,
+	);
 }
 
 /** Loads and invokes a compiled registry script module. */
@@ -177,12 +242,15 @@ export interface ScriptExecutor {
 /** Options for constructing a script executor. */
 export interface CreateScriptExecutorOptions {
 	/**
-	 * Resolve a catalog script URI to an absolute local path.
+	 * Locate a catalog script URI to an absolute local path.
 	 * @param indexLocation - Absolute path to registry.json.
 	 * @param scriptUri - Catalog script URI.
 	 */
-	resolveScriptPath: (indexLocation: string, scriptUri: string) => string;
-	/** Optional integrity map from the registry document. */
+	locateScriptPath: (indexLocation: string, scriptUri: string) => string;
+	/**
+	 * Integrity map from the registry document.
+	 * A missing map or digest is a missing digest (fail closed).
+	 */
 	scriptIntegrity?: Record<string, string>;
 	/**
 	 * Execution backend. Defaults to in-process `require` until the sandboxed
@@ -196,8 +264,8 @@ export interface CreateScriptExecutorOptions {
 }
 
 /**
- * Create a script executor that optionally verifies integrity before load.
- * @param options - Path resolver, integrity map, and execution mode.
+ * Create a script executor that verifies integrity before load.
+ * @param options - Path locator, integrity map, and execution mode.
  * @returns Script executor.
  * @throws Error when sandbox mode is requested without required paths.
  */
@@ -205,19 +273,81 @@ export function createScriptExecutor(
 	options: CreateScriptExecutorOptions,
 ): ScriptExecutor {
 	const mode = options.mode ?? "in-process";
-	if (mode === "sandbox") {
-		if (!options.projectDir || !options.runnerPath)
-			throw new Error(
-				"Sandbox script execution requires projectDir and runnerPath.",
-			);
-		return createSandboxedScriptExecutor(options);
-	}
+	if (mode === "sandbox") return createSandboxedScriptExecutor(options);
 	return createInProcessScriptExecutor(options);
 }
 
 /**
+ * Executor that refuses every script load (CLI fail-closed when scripts are not allowed).
+ * @returns Script executor that always throws.
+ */
+export function createRejectedScriptExecutor(): ScriptExecutor {
+	return {
+		async loadModule<T>(
+			_indexLocation: string,
+			scriptUri: string,
+			_isValid: (value: unknown) => value is T,
+			_errorMessage: string,
+		): Promise<T> {
+			throw new Error(
+				`Registry script "${scriptUri}" cannot run: scripts are not allowed for this install.`,
+			);
+		},
+	};
+}
+
+/**
+ * Locate a script path and verify its digest before load.
+ * @param options - Path locator and integrity map.
+ * @param indexLocation - Absolute path to registry.json.
+ * @param scriptUri - Catalog script URI.
+ * @returns Absolute filesystem path of the script.
+ * @throws Error when the digest is missing or mismatched.
+ */
+function verifiedScriptPath(
+	options: CreateScriptExecutorOptions,
+	indexLocation: string,
+	scriptUri: string,
+): string {
+	const absolutePath = options.locateScriptPath(indexLocation, scriptUri);
+	if (!path.isAbsolute(absolutePath))
+		throw new Error(`Script path for "${scriptUri}" must be an absolute path.`);
+	verifyScriptIntegrity(
+		options.scriptIntegrity,
+		scriptUri,
+		fs.readFileSync(absolutePath),
+	);
+	return absolutePath;
+}
+
+/**
+ * Locate, verify integrity, unwrap, and validate an exported script module.
+ * @param options - Path locator and integrity map options.
+ * @param indexLocation - Absolute path to registry.json.
+ * @param scriptUri - Catalog script URI.
+ * @param isValid - Predicate that accepts a usable export.
+ * @param errorMessage - Error message thrown when the export shape is invalid.
+ * @param invoke - Async callback that loads or sandboxes the verified module file.
+ * @returns Validated script export.
+ * @throws Error when the digest is mismatched or the export fails validation.
+ */
+async function executeModuleLoader<T>(
+	options: CreateScriptExecutorOptions,
+	indexLocation: string,
+	scriptUri: string,
+	isValid: (value: unknown) => value is T,
+	errorMessage: string,
+	invoke: (absolutePath: string) => Promise<unknown>,
+): Promise<T> {
+	const absolutePath = verifiedScriptPath(options, indexLocation, scriptUri);
+	const script = unwrapModuleExport(await invoke(absolutePath));
+	if (!isValid(script)) throw new Error(errorMessage);
+	return script;
+}
+
+/**
  * In-process `require` executor (used for tests and as the pre-sandbox path).
- * @param options - Path resolver and optional integrity map.
+ * @param options - Path locator and integrity map.
  * @returns Script executor.
  */
 function createInProcessScriptExecutor(
@@ -231,33 +361,39 @@ function createInProcessScriptExecutor(
 			isValid: (value: unknown) => value is T,
 			errorMessage: string,
 		): Promise<T> {
-			const absolutePath = options.resolveScriptPath(indexLocation, scriptUri);
-			if (options.scriptIntegrity) {
-				const { readFileSync } = await import("node:fs");
-				verifyScriptIntegrity(
-					options.scriptIntegrity,
-					scriptUri,
-					readFileSync(absolutePath),
-				);
-			}
-			Reflect.deleteProperty(requireScript.cache, absolutePath);
-			const script = unwrapModuleExport(requireScript(absolutePath));
-			if (!isValid(script)) throw new Error(errorMessage);
-			return script;
+			return executeModuleLoader(
+				options,
+				indexLocation,
+				scriptUri,
+				isValid,
+				errorMessage,
+				async (absolutePath) => {
+					Reflect.deleteProperty(requireScript.cache, absolutePath);
+					return requireScript(absolutePath);
+				},
+			);
 		},
 	};
 }
 
 /**
- * Sandboxed executor placeholder wired in step 4.
+ * Sandboxed executor that loads modules in a permissioned child process.
  * @param options - Sandbox executor options.
  * @returns Script executor that loads modules in a permissioned child process.
  */
 function createSandboxedScriptExecutor(
 	options: CreateScriptExecutorOptions,
 ): ScriptExecutor {
-	const projectDir = options.projectDir as string;
-	const runnerPath = options.runnerPath as string;
+	const projectDir = options.projectDir;
+	const runnerPath = options.runnerPath;
+	if (!projectDir || !runnerPath)
+		throw new Error(
+			"Sandbox script execution requires projectDir and runnerPath.",
+		);
+	if (!path.isAbsolute(projectDir))
+		throw new Error("Project directory must be an absolute path.");
+	if (!path.isAbsolute(runnerPath))
+		throw new Error("Sandbox runner path must be an absolute path.");
 	return {
 		async loadModule<T>(
 			indexLocation: string,
@@ -265,22 +401,15 @@ function createSandboxedScriptExecutor(
 			isValid: (value: unknown) => value is T,
 			errorMessage: string,
 		): Promise<T> {
-			const absolutePath = options.resolveScriptPath(indexLocation, scriptUri);
-			if (options.scriptIntegrity) {
-				const { readFileSync } = await import("node:fs");
-				verifyScriptIntegrity(
-					options.scriptIntegrity,
-					scriptUri,
-					readFileSync(absolutePath),
-				);
-			}
-			const script = await loadSandboxedModule(
-				absolutePath,
-				projectDir,
-				runnerPath,
+			return executeModuleLoader(
+				options,
+				indexLocation,
+				scriptUri,
+				isValid,
+				errorMessage,
+				(absolutePath) =>
+					loadSandboxedModule(absolutePath, projectDir, runnerPath),
 			);
-			if (!isValid(script)) throw new Error(errorMessage);
-			return script;
 		},
 	};
 }
@@ -292,45 +421,16 @@ function createSandboxedScriptExecutor(
  */
 function collectItemScriptUris(item: IndexItem): string[] {
 	return [
-		...(item.prepare ?? []),
-		...(item.finalize ?? []),
+		...(item.beforeWrite ?? []),
+		...(item.afterInstall ?? []),
 		...Object.values(item.conditions ?? {})
 			.map((condition) => condition.handler)
 			.filter((uri): uri is string => uri !== undefined),
 		...(item.packs ?? []).flatMap((pack) => [
-			...(pack.prepare ?? []),
-			...(pack.finalize ?? []),
+			...(pack.beforeWrite ?? []),
+			...(pack.afterInstall ?? []),
 		]),
 	];
-}
-
-/**
- * Collect catalog script URIs declared by selected items (shared conditions + install hooks).
- * @param registry - Loaded registry document.
- * @param itemIds - Selected item ids (`id` or `id@pack` prefixes are stripped to `id`).
- * @returns Deduplicated script URIs.
- */
-export function collectDeclaredScriptUris(
-	registry: Registry,
-	itemIds: readonly string[],
-): string[] {
-	const uris = new Set<string>();
-	const selectedIds = [
-		...new Set(itemIds.map((item) => item.split("@")[0] ?? item)),
-	];
-
-	for (const itemId of selectedIds) {
-		const item = registry.items[itemId];
-		if (!item) continue;
-
-		for (const key of item.requires ?? []) {
-			const handler = registry.conditions?.[key]?.handler;
-			if (handler) uris.add(handler);
-		}
-		for (const uri of collectItemScriptUris(item)) uris.add(uri);
-	}
-
-	return [...uris].sort((a, b) => a.localeCompare(b));
 }
 
 /**
@@ -356,40 +456,42 @@ export function collectRegistryArtifactUris(registry: Registry): {
 	scriptUris: string[];
 	itemUris: string[];
 } {
-	const scriptUris = new Set<string>();
-	const itemUris = new Set<string>();
+	const scriptUris: string[] = [];
+	const itemUris: string[] = [];
 
 	for (const handler of Object.values(registry.conditions ?? {})
 		.map((condition) => condition.handler)
 		.filter((uri): uri is string => uri !== undefined)) {
-		scriptUris.add(handler);
+		scriptUris.push(handler);
 	}
 
 	for (const item of Object.values(registry.items)) {
-		for (const uri of collectItemScriptUris(item)) scriptUris.add(uri);
-		for (const uri of collectItemSourceUris(item)) itemUris.add(uri);
+		scriptUris.push(...collectItemScriptUris(item));
+		itemUris.push(...collectItemSourceUris(item));
 	}
 
-	const byUri = (left: string, right: string) => left.localeCompare(right);
 	return {
-		scriptUris: [...scriptUris].sort(byUri),
-		itemUris: [...itemUris].sort(byUri),
+		scriptUris: uniqueSorted(scriptUris),
+		itemUris: uniqueSorted(itemUris),
 	};
 }
 
 /** Maximum time a sandboxed script may run before the child is killed. */
 const SCRIPT_TIMEOUT_MS = 60_000;
 
+type ScriptExportShape = "function" | "condition-handler" | "unknown";
+type HostMethod = "isFile" | "readFile" | "run";
+
 /** IPC request from the sandboxed child to the parent. */
 type ChildRequest =
 	| {
 			type: "probe-result";
-			shape: "function" | "condition-handler" | "unknown";
+			shape: ScriptExportShape;
 	  }
 	| {
 			type: "host";
 			id: number;
-			method: "isFile" | "readFile" | "run";
+			method: HostMethod;
 			args: string[];
 	  }
 	| {
@@ -432,6 +534,138 @@ interface SerializedHandlerContext {
 }
 
 /**
+ * Check whether a value is a non-array object suitable for record access.
+ * @param value - Value received across the IPC boundary.
+ * @returns True when the value is a record.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Check whether a value is an array of strings.
+ * @param value - Value received across the IPC boundary.
+ * @returns True when every array entry is a string.
+ */
+function isStringArray(value: unknown): value is string[] {
+	return (
+		Array.isArray(value) && value.every((entry) => typeof entry === "string")
+	);
+}
+
+/**
+ * Check whether a value is one of the supported host helper method names.
+ * @param value - Candidate method name.
+ * @returns True when value is isFile, readFile, or run.
+ */
+function isHostMethod(value: unknown): value is HostMethod {
+	return value === "isFile" || value === "readFile" || value === "run";
+}
+
+/**
+ * Check whether a value matches a script probe result shape.
+ * @param value - Candidate script export shape name.
+ * @returns True when value is function, condition-handler, or unknown.
+ */
+function isScriptExportShape(value: unknown): value is ScriptExportShape {
+	return (
+		value === "function" || value === "condition-handler" || value === "unknown"
+	);
+}
+
+/**
+ * Validate that a child message is a valid host helper execution request.
+ * @param message - Candidate host request message.
+ * @returns True when message has valid id, method, and string arguments.
+ */
+function isHostRequest(message: Record<string, unknown>): boolean {
+	return (
+		Number.isSafeInteger(message.id) &&
+		isHostMethod(message.method) &&
+		isStringArray(message.args)
+	);
+}
+
+/**
+ * Validate that a child message is a valid execution result response.
+ * @param message - Candidate result message.
+ * @returns True when ok is boolean and error is string on failure.
+ */
+function isResultRequest(message: Record<string, unknown>): boolean {
+	return (
+		message.ok === true ||
+		(message.ok === false && typeof message.error === "string")
+	);
+}
+
+/**
+ * Validate a message sent from the sandbox child.
+ * @param message - Unknown value received over IPC.
+ * @returns True when the value matches the child-to-parent protocol.
+ */
+function isChildRequest(message: unknown): message is ChildRequest {
+	if (!isRecord(message) || typeof message.type !== "string") return false;
+
+	switch (message.type) {
+		case "probe-result":
+			return isScriptExportShape(message.shape);
+		case "host":
+			return isHostRequest(message);
+		case "result":
+			return isResultRequest(message);
+		default:
+			return false;
+	}
+}
+
+/**
+ * Validate that a parent command payload is a valid function invocation request.
+ * @param message - Candidate call command.
+ * @returns True when scriptPath, exportPath, and context are properly shaped.
+ */
+function isCallCommand(message: Record<string, unknown>): boolean {
+	return (
+		typeof message.scriptPath === "string" &&
+		isStringArray(message.exportPath) &&
+		isRecord(message.context) &&
+		typeof message.context.projectDir === "string"
+	);
+}
+
+/**
+ * Validate that a parent command payload is a valid host helper result.
+ * @param message - Candidate host-result command.
+ * @returns True when id and result status/payload match protocol expectations.
+ */
+function isHostResultCommand(message: Record<string, unknown>): boolean {
+	return (
+		Number.isSafeInteger(message.id) &&
+		(message.ok === true ||
+			(message.ok === false && typeof message.error === "string"))
+	);
+}
+
+/**
+ * Validate a message sent from the parent process.
+ * @param message - Unknown value received over IPC.
+ * @returns True when the value matches the parent-to-child protocol.
+ */
+function isParentCommand(message: unknown): message is ParentCommand {
+	if (!isRecord(message) || typeof message.type !== "string") return false;
+
+	switch (message.type) {
+		case "probe":
+			return typeof message.scriptPath === "string";
+		case "call":
+			return isCallCommand(message);
+		case "host-result":
+			return isHostResultCommand(message);
+		default:
+			return false;
+	}
+}
+
+/**
  * Environment variables safe to expose to `ctx.run` in the parent.
  * Omits cloud tokens and generic `*KEY*` / `*TOKEN*` / `*SECRET*` secrets.
  */
@@ -470,6 +704,8 @@ function sanitizedRunEnv(): NodeJS.ProcessEnv {
  * @returns Canonical absolute path when available.
  */
 function permissionPath(absolutePath: string): string {
+	if (!path.isAbsolute(absolutePath))
+		throw new Error("Sandbox permission path must be an absolute path.");
 	try {
 		return fs.realpathSync(absolutePath);
 	} catch {
@@ -482,12 +718,14 @@ function permissionPath(absolutePath: string): string {
  * @param scriptPath - Absolute path to the script file to execute.
  * @param runnerPath - Absolute path to this runner module.
  * @param projectDir - Absolute project root (read-only for the child).
+ * @param sandboxTempDir - Private temporary directory available to the child.
  * @returns CLI args enabling the permission model with minimal read access.
  */
 function permissionArgs(
 	scriptPath: string,
 	runnerPath: string,
 	projectDir: string,
+	sandboxTempDir: string,
 ): string[] {
 	const major = Number(process.versions.node.split(".")[0] ?? "0");
 	const permissionFlag =
@@ -498,10 +736,12 @@ function permissionArgs(
 		permissionPath(scriptPath),
 		permissionPath(path.dirname(scriptPath)),
 		permissionPath(projectDir),
+		permissionPath(sandboxTempDir),
 	]);
 	const args = [
 		permissionFlag,
 		...[...allowed].map((entry) => `--allow-fs-read=${entry}`),
+		`--allow-fs-write=${permissionPath(sandboxTempDir)}`,
 	];
 	// Node 20 cannot deny network via the permission model; stripped env still
 	// reduces credential exfiltration. Node 22+ omits --allow-net by default.
@@ -522,6 +762,8 @@ function serializeContext(
 	for (const [key, value] of Object.entries(ctx)) {
 		if (typeof value === "function") continue;
 		if (key === "projectDir") continue;
+		if (key.length === 0 || key === "__proto__")
+			throw new Error(`Handler context key "${key}" is not allowed.`);
 		serialized[key] = value;
 	}
 	return serialized;
@@ -629,17 +871,38 @@ export async function loadSandboxedModule(
 }
 
 /**
+ * Read the non-empty string argument for a parent-mediated host helper.
+ * @param args - IPC argument list from the child.
+ * @param method - Host method name for error messages.
+ * @returns First argument.
+ * @throws Error when the argument is missing or not a non-empty string.
+ */
+function hostMethodArgument(args: unknown, method: HostMethod): string {
+	if (
+		!Array.isArray(args) ||
+		typeof args[0] !== "string" ||
+		args[0].length === 0
+	)
+		throw new Error(
+			`Host method "${method}" requires a non-empty string argument.`,
+		);
+	return args[0];
+}
+
+/**
  * Invoke a parent-mediated host helper for the sandboxed script.
  * @param projectDir - Absolute project root.
  * @param method - Host method name.
- * @param args - Positional string arguments.
+ * @param args - Positional arguments from IPC.
  * @returns Host method result.
  */
 async function invokeHostMethod(
 	projectDir: string,
-	method: "isFile" | "readFile" | "run",
-	args: string[],
+	method: HostMethod,
+	args: unknown,
 ): Promise<unknown> {
+	const argument = hostMethodArgument(args, method);
+	// Keep host dependencies lazy: the sandbox child cannot read package dependencies before IPC mediation.
 	const { createHandlerRuntime } = await import("./handlers");
 	const { isFileAsync, readFileAsync } = await import("./fs");
 	const { runAsync } = await import("./shell");
@@ -657,17 +920,16 @@ async function invokeHostMethod(
 
 	switch (method) {
 		case "isFile":
-			return runtime.isFile(String(args[0] ?? ""));
+			return runtime.isFile(argument);
 		case "readFile":
-			return runtime.readFile(String(args[0] ?? ""));
+			return runtime.readFile(argument);
 		case "run": {
-			const command = String(args[0] ?? "");
-			console.error(`[tuckshop:script] run: ${command}`);
-			return runtime.run(command);
+			console.error(`[tuckshop:script] run: ${argument}`);
+			return runtime.run(argument);
 		}
 		default: {
-			const _exhaustive: never = method;
-			throw new Error(`Unhandled host method: ${_exhaustive}`);
+			const exhaustive: never = method;
+			throw new Error(`Unhandled host method: ${String(exhaustive)}`);
 		}
 	}
 }
@@ -691,10 +953,13 @@ async function withSandboxChild<T>(
 		) => Promise<M>,
 	) => Promise<T>,
 ): Promise<T> {
+	const sandboxTempDir = fs.mkdtempSync(
+		path.join(os.tmpdir(), "tuckshop-sandbox-"),
+	);
 	const child = spawn(
 		process.execPath,
 		[
-			...permissionArgs(scriptPath, runnerPath, projectDir),
+			...permissionArgs(scriptPath, runnerPath, projectDir, sandboxTempDir),
 			runnerPath,
 			"--child",
 		],
@@ -704,7 +969,7 @@ async function withSandboxChild<T>(
 				PATH: process.env.PATH,
 				HOME: process.env.HOME,
 				LANG: process.env.LANG,
-				TMPDIR: process.env.TMPDIR,
+				TMPDIR: sandboxTempDir,
 			},
 		},
 	);
@@ -716,8 +981,20 @@ async function withSandboxChild<T>(
 		reject: (error: Error) => void;
 	}> = [];
 
+	let childFailure: Error | undefined;
+	const failChild = (error: Error): void => {
+		childFailure ??= error;
+		for (const waiter of waiters.splice(0)) waiter.reject(childFailure);
+	};
+
 	const onMessage = (message: unknown) => {
-		const typed = message as ChildRequest;
+		if (!isChildRequest(message)) {
+			failChild(
+				new Error("Sandboxed script child sent an invalid IPC message."),
+			);
+			return;
+		}
+		const typed = message;
 		const waiterIndex = waiters.findIndex((waiter) => waiter.predicate(typed));
 		if (waiterIndex >= 0) {
 			const [waiter] = waiters.splice(waiterIndex, 1);
@@ -728,6 +1005,22 @@ async function withSandboxChild<T>(
 	};
 
 	child.on("message", onMessage);
+	child.on("error", (error) =>
+		failChild(
+			new Error(`Sandboxed script child failed: ${error.message}`, {
+				cause: error,
+			}),
+		),
+	);
+	child.on("exit", (code, signal) => {
+		let status: string;
+		if (signal) status = `signal ${signal}`;
+		else if (code === null) status = "without an exit code";
+		else status = `exit ${code}`;
+		failChild(
+			new Error(`Sandboxed script child exited unexpectedly (${status}).`),
+		);
+	});
 
 	const timeout = setTimeout(() => {
 		child.kill("SIGKILL");
@@ -748,6 +1041,7 @@ async function withSandboxChild<T>(
 				const [message] = queue.splice(queuedIndex, 1);
 				return Promise.resolve(message as M);
 			}
+			if (childFailure) return Promise.reject(childFailure);
 			return new Promise<M>((resolve, reject) => {
 				waiters.push({
 					predicate: predicate as (message: ChildRequest) => boolean,
@@ -762,6 +1056,7 @@ async function withSandboxChild<T>(
 		clearTimeout(timeout);
 		child.off("message", onMessage);
 		await closeChild(child);
+		await fs.promises.rm(sandboxTempDir, { recursive: true, force: true });
 	}
 }
 
@@ -772,7 +1067,7 @@ async function withSandboxChild<T>(
 async function closeChild(child: ChildProcess): Promise<void> {
 	if (!child.killed) child.kill("SIGTERM");
 	await new Promise<void>((resolve) => {
-		if (child.exitCode !== null) {
+		if (child.exitCode !== null || child.signalCode !== null) {
 			resolve();
 			return;
 		}
@@ -805,29 +1100,31 @@ function installChildIpc(send: (message: ChildRequest) => void): {
 
 	// Permanent listener: host-result must still arrive after the call command is received.
 	process.on("message", (message: unknown) => {
-		const typed = message as ParentCommand | ChildRequest;
-		if (
-			typed &&
-			typeof typed === "object" &&
-			"type" in typed &&
-			typed.type === "host-result"
-		) {
-			const pending = pendingHost.get(typed.id);
-			if (!pending) return;
-			pendingHost.delete(typed.id);
-			if (typed.ok) pending.resolve(typed.value);
-			else pending.reject(new Error(typed.error));
+		if (!isParentCommand(message)) {
+			send({
+				type: "result",
+				ok: false,
+				error: "Sandboxed script parent sent an invalid IPC command.",
+			});
 			return;
 		}
 
-		const command = message as ParentCommand;
+		if (message.type === "host-result") {
+			const pending = pendingHost.get(message.id);
+			if (!pending) return;
+			pendingHost.delete(message.id);
+			if (message.ok) pending.resolve(message.value);
+			else pending.reject(new Error(message.error));
+			return;
+		}
+
 		const waiter = commandWaiters.shift();
-		if (waiter) waiter(command);
-		else pendingCommands.push(command);
+		if (waiter) waiter(message);
+		else pendingCommands.push(message);
 	});
 
 	const hostCall = async (
-		method: "isFile" | "readFile" | "run",
+		method: HostMethod,
 		args: string[],
 	): Promise<unknown> => {
 		const id = nextHostId++;
@@ -862,9 +1159,7 @@ function installChildIpc(send: (message: ChildRequest) => void): {
  * @param loaded - Unwrapped module export.
  * @returns Probe shape sent to the parent.
  */
-function probeExportShape(
-	loaded: unknown,
-): "function" | "condition-handler" | "unknown" {
+function probeExportShape(loaded: unknown): ScriptExportShape {
 	if (typeof loaded === "function") return "function";
 	if (
 		typeof loaded === "object" &&
@@ -876,6 +1171,17 @@ function probeExportShape(
 }
 
 /**
+ * Fail when an IPC export path segment is empty or `__proto__`.
+ * @param segment - Candidate property name.
+ * @throws Error when the segment is not a safe string key.
+ */
+function assertExportPathSegment(segment: unknown): asserts segment is string {
+	if (typeof segment !== "string")
+		throw new Error(`Cannot resolve export path "${String(segment)}".`);
+	assertSinglePathSegment("Export path segment", segment);
+}
+
+/**
  * Resolve and invoke a sandboxed export path with the restored context.
  * @param loaded - Unwrapped module export.
  * @param exportPath - Property path from the module root (`[]` = default function).
@@ -884,11 +1190,14 @@ function probeExportShape(
  */
 async function invokeSandboxedExport(
 	loaded: unknown,
-	exportPath: string[],
+	exportPath: unknown,
 	context: Record<string, unknown>,
 ): Promise<unknown> {
+	if (!Array.isArray(exportPath))
+		throw new Error("Sandboxed export path did not resolve to a function.");
 	let target: unknown = loaded;
 	for (const segment of exportPath) {
+		assertExportPathSegment(segment);
 		if (typeof target !== "object" || target === null)
 			throw new Error(`Cannot resolve export path "${segment}".`);
 		target = (target as Record<string, unknown>)[segment];
@@ -903,7 +1212,6 @@ async function invokeSandboxedExport(
  * Invoked when this module is executed with `--child`.
  */
 async function runChild(): Promise<void> {
-	const { createRequire } = await import("node:module");
 	const requireScript = createRequire(__filename);
 
 	const send = (message: ChildRequest) => {
@@ -956,10 +1264,10 @@ if (process.argv.includes("--child")) {
 }
 
 /**
- * Resolve the on-disk path to this sandbox runner for child spawns.
+ * Absolute on-disk path to this sandbox runner for child spawns.
  * @returns Absolute path to the compiled or source runner entry.
  */
-export function resolveSandboxRunnerPath(): string {
+export function sandboxRunnerPath(): string {
 	// Prefer the compiled JS next to this module; fall back to this file under tsx/vitest.
 	const compiled = path.join(__dirname, "scripts.js");
 	if (fs.existsSync(compiled)) return permissionPath(compiled);

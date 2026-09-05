@@ -465,7 +465,7 @@ describe("buildRegistry", () => {
 		);
 
 		await expect(runBuild()).rejects.toThrow(
-			"must be a relative path under the item folder",
+			'Registry item.files[0].source must be a relative path (no absolute paths, URLs, or "..").',
 		);
 	});
 
@@ -761,12 +761,12 @@ describe("buildRegistry", () => {
 				title: "Bad core",
 				description: "Imports core at runtime",
 				type: "configuration",
-				prepare: "handler.ts",
+				beforeWrite: "handler.ts",
 			},
 			{
 				"handler.ts": `
 import { parseWithSchema } from "@tuckshop/core";
-export default async function prepare() {
+export default async function beforeWrite() {
   void parseWithSchema;
   return { files: [{ target: "X", content: "x" }] };
 }
@@ -792,12 +792,12 @@ export default async function prepare() {
 				title: "Banned",
 				description: "Imports a configured external",
 				type: "configuration",
-				prepare: "handler.ts",
+				beforeWrite: "handler.ts",
 			},
 			{
 				"handler.ts": `
-import value from "acme-registry-runtime";
-export default async function prepare() {
+const value = require.resolve("acme-registry-runtime/subpath");
+export default async function beforeWrite() {
   void value;
   return { files: [{ target: "X", content: "x" }] };
 }
@@ -809,7 +809,10 @@ export default async function prepare() {
 			buildRegistry({
 				sourceDir: path.join(tempDir, "registry"),
 				outDir: tempDir,
-				bundleExternalPackages: ["acme-registry-runtime"],
+				bundleExternalPackages: [
+					" acme-registry-runtime ",
+					"acme-registry-runtime",
+				],
 			}),
 		).rejects.toThrow("acme-registry-runtime");
 	});
@@ -898,11 +901,11 @@ export default async function prepare() {
 				title: "License",
 				description: "SPDX license",
 				type: "configuration",
-				prepare: "handler.ts",
+				beforeWrite: "handler.ts",
 			},
 			{
 				"handler.ts": `
-export default async function prepare() {
+export default async function beforeWrite() {
   return { files: [{ target: "LICENSE", content: "MIT" }] };
 }
 `,
@@ -936,20 +939,20 @@ export default {
 			title: "License",
 			description: "SPDX license",
 			type: "configuration",
-			prepare: ["r/license.prepare.0.js"],
+			beforeWrite: ["r/license.beforeWrite.0.js"],
 		});
 		expect(document.items.license).not.toHaveProperty("source");
 		expect(document.conditions?.language.handler).toBe(
 			"r/_handlers/language.handler.js",
 		);
-		expect(fs.existsSync(path.join(tempDir, "r/license.prepare.0.js"))).toBe(
-			true,
-		);
+		expect(
+			fs.existsSync(path.join(tempDir, "r/license.beforeWrite.0.js")),
+		).toBe(true);
 		expect(
 			fs.existsSync(path.join(tempDir, "r/_handlers/language.handler.js")),
 		).toBe(true);
 		expect(fs.existsSync(path.join(tempDir, "r/license.json"))).toBe(false);
-		expect(document.scriptIntegrity?.["r/license.prepare.0.js"]).toMatch(
+		expect(document.scriptIntegrity?.["r/license.beforeWrite.0.js"]).toMatch(
 			/^sha256-/,
 		);
 		expect(
@@ -966,7 +969,7 @@ export default {
 				title: "With packages",
 				description: "Install script plus packages",
 				type: "configuration",
-				prepare: "handler.ts",
+				beforeWrite: "handler.ts",
 				dependencies: {
 					npm: {
 						runtime: ["left-pad"],
@@ -975,7 +978,7 @@ export default {
 			},
 			{
 				"handler.ts": `
-export default async function prepare() {
+export default async function beforeWrite() {
   return { files: [{ target: "X", content: "x" }] };
 }
 `,
@@ -988,7 +991,7 @@ export default async function prepare() {
 			description: "Install script plus packages",
 			type: "configuration",
 			source: "r/with-pkgs.json",
-			prepare: ["r/with-pkgs.prepare.0.js"],
+			beforeWrite: ["r/with-pkgs.beforeWrite.0.js"],
 		});
 
 		const payload = JSON.parse(
@@ -1002,9 +1005,9 @@ export default async function prepare() {
 				},
 			},
 		});
-		expect(fs.existsSync(path.join(tempDir, "r/with-pkgs.prepare.0.js"))).toBe(
-			true,
-		);
+		expect(
+			fs.existsSync(path.join(tempDir, "r/with-pkgs.beforeWrite.0.js")),
+		).toBe(true);
 	});
 
 	it("rejects install scripts that runtime-import @tuckshop/core", async () => {
@@ -1016,12 +1019,12 @@ export default async function prepare() {
 				title: "Bad",
 				description: "Imports core at runtime",
 				type: "configuration",
-				prepare: "handler.ts",
+				beforeWrite: "handler.ts",
 			},
 			{
 				"handler.ts": `
 import { parseWithSchema } from "@tuckshop/core";
-export default async function prepare() {
+export default async function beforeWrite() {
   void parseWithSchema;
   return { files: [{ target: "X", content: "x" }] };
 }
@@ -1041,7 +1044,7 @@ export default async function prepare() {
 				title: "Missing script",
 				description: "Points at a missing script",
 				type: "configuration",
-				prepare: "handler.ts",
+				beforeWrite: "handler.ts",
 				files: [{ source: "a.txt", target: "a.txt" }],
 			},
 			{
@@ -1061,11 +1064,11 @@ export default async function prepare() {
 				title: "Syntax error",
 				description: "Invalid TypeScript install script",
 				type: "configuration",
-				prepare: "handler.ts",
+				beforeWrite: "handler.ts",
 			},
 			{
 				"handler.ts":
-					"export default async function prepare() { return [[[; };\n",
+					"export default async function beforeWrite() { return [[[; };\n",
 			},
 		);
 
@@ -1173,7 +1176,7 @@ export default async function prepare() {
 		).toBe(true);
 	});
 
-	it("compiles item-level and pack-level finalize scripts", async () => {
+	it("compiles item-level and pack-level afterInstall scripts", async () => {
 		writeItem(
 			tempDir,
 			"configuration/lifecycle",
@@ -1182,38 +1185,38 @@ export default async function prepare() {
 				title: "Lifecycle",
 				description: "Install lifecycle scripts",
 				type: "configuration",
-				finalize: "after.ts",
+				afterInstall: "after.ts",
 				packs: [
 					{
 						id: "pro",
 						title: "Pro",
-						finalize: "pro-after.ts",
+						afterInstall: "pro-after.ts",
 						files: [{ source: "pro.txt", target: "pro.txt" }],
 					},
 				],
 			},
 			{
-				"after.ts": `export default async function finalize() {}\n`,
-				"pro-after.ts": `export default async function finalize() {}\n`,
+				"after.ts": `export default async function afterInstall() {}\n`,
+				"pro-after.ts": `export default async function afterInstall() {}\n`,
 				"pro.txt": "pro\n",
 			},
 		);
 
 		const document = await runBuild();
-		expect(document.items.lifecycle.finalize).toEqual([
-			"r/lifecycle.finalize.0.js",
+		expect(document.items.lifecycle.afterInstall).toEqual([
+			"r/lifecycle.afterInstall.0.js",
 		]);
 		expect(document.items.lifecycle.packs).toEqual([
 			expect.objectContaining({
 				id: "pro",
-				finalize: ["r/lifecycle/pro.finalize.0.js"],
+				afterInstall: ["r/lifecycle/pro.afterInstall.0.js"],
 			}),
 		]);
-		expect(fs.existsSync(path.join(tempDir, "r/lifecycle.finalize.0.js"))).toBe(
-			true,
-		);
 		expect(
-			fs.existsSync(path.join(tempDir, "r/lifecycle/pro.finalize.0.js")),
+			fs.existsSync(path.join(tempDir, "r/lifecycle.afterInstall.0.js")),
+		).toBe(true);
+		expect(
+			fs.existsSync(path.join(tempDir, "r/lifecycle/pro.afterInstall.0.js")),
 		).toBe(true);
 	});
 
@@ -1226,52 +1229,54 @@ export default async function prepare() {
 				title: "Button",
 				description: "Button component",
 				type: "component",
-				prepare: "shared.ts",
+				beforeWrite: "shared.ts",
 				packs: [
 					{
 						id: "react",
 						title: "React",
-						prepare: "react.ts",
+						beforeWrite: "react.ts",
 						files: [{ source: "react.tsx", target: "button.tsx" }],
 					},
 					{
 						id: "vue",
 						title: "Vue",
-						prepare: "vue.ts",
+						beforeWrite: "vue.ts",
 						files: [{ source: "vue.vue", target: "button.vue" }],
 					},
 				],
 			},
 			{
-				"shared.ts": `export default async function prepare() { return { files: [] }; }\n`,
-				"react.ts": `export default async function prepare() { return { files: [] }; }\n`,
-				"vue.ts": `export default async function prepare() { return { files: [] }; }\n`,
+				"shared.ts": `export default async function beforeWrite() { return { files: [] }; }\n`,
+				"react.ts": `export default async function beforeWrite() { return { files: [] }; }\n`,
+				"vue.ts": `export default async function beforeWrite() { return { files: [] }; }\n`,
 				"react.tsx": "export {}\n",
 				"vue.vue": "<template></template>\n",
 			},
 		);
 
 		const document = await runBuild();
-		expect(document.items.button.prepare).toEqual(["r/button.prepare.0.js"]);
+		expect(document.items.button.beforeWrite).toEqual([
+			"r/button.beforeWrite.0.js",
+		]);
 		expect(document.items.button.packs).toEqual([
 			expect.objectContaining({
 				id: "react",
-				prepare: ["r/button/react.prepare.0.js"],
+				beforeWrite: ["r/button/react.beforeWrite.0.js"],
 			}),
 			expect.objectContaining({
 				id: "vue",
-				prepare: ["r/button/vue.prepare.0.js"],
+				beforeWrite: ["r/button/vue.beforeWrite.0.js"],
 			}),
 		]);
-		expect(fs.existsSync(path.join(tempDir, "r/button.prepare.0.js"))).toBe(
+		expect(fs.existsSync(path.join(tempDir, "r/button.beforeWrite.0.js"))).toBe(
 			true,
 		);
 		expect(
-			fs.existsSync(path.join(tempDir, "r/button/react.prepare.0.js")),
+			fs.existsSync(path.join(tempDir, "r/button/react.beforeWrite.0.js")),
 		).toBe(true);
-		expect(fs.existsSync(path.join(tempDir, "r/button/vue.prepare.0.js"))).toBe(
-			true,
-		);
+		expect(
+			fs.existsSync(path.join(tempDir, "r/button/vue.beforeWrite.0.js")),
+		).toBe(true);
 	});
 
 	it("copies dependsOn into the index without treating them as scripts", async () => {
@@ -1293,8 +1298,8 @@ export default async function prepare() {
 		expect(document.items["react-app"]).toMatchObject({
 			dependsOn: ["license-configuration", "git-init"],
 		});
-		expect(document.items["react-app"]).not.toHaveProperty("prepare");
-		expect(document.items["react-app"]).not.toHaveProperty("finalize");
+		expect(document.items["react-app"]).not.toHaveProperty("beforeWrite");
+		expect(document.items["react-app"]).not.toHaveProperty("afterInstall");
 	});
 
 	it("writes a base payload when an item declares commands without files", async () => {
@@ -1306,11 +1311,11 @@ export default async function prepare() {
 				title: "Scripts only",
 				description: "Commands without files",
 				type: "configuration",
-				finalize: "after.ts",
+				afterInstall: "after.ts",
 				commands: { npm: { test: "vitest run" } },
 			},
 			{
-				"after.ts": `export default async function finalize() {}\n`,
+				"after.ts": `export default async function afterInstall() {}\n`,
 			},
 		);
 
@@ -1334,11 +1339,11 @@ export default async function prepare() {
 				title: "Secrets only",
 				description: "Secrets without files",
 				type: "configuration",
-				finalize: "after.ts",
+				afterInstall: "after.ts",
 				secrets: ["GH_ADMIN_TOKEN"],
 			},
 			{
-				"after.ts": `export default async function finalize() {}\n`,
+				"after.ts": `export default async function afterInstall() {}\n`,
 			},
 		);
 
@@ -1382,7 +1387,7 @@ export default async function prepare() {
 		});
 	});
 
-	it("allows declaring packageManager as a shared condition", async () => {
+	it("rejects declaring packageManager as a shared condition", async () => {
 		writeItem(
 			tempDir,
 			"component/button",
@@ -1391,7 +1396,6 @@ export default async function prepare() {
 				title: "Button",
 				description: "A button",
 				type: "component",
-				requires: ["packageManager"],
 				files: [{ source: "a.txt", target: "a.txt" }],
 			},
 			{ "a.txt": "ok\n" },
@@ -1404,13 +1408,9 @@ export default async function prepare() {
 			},
 		});
 
-		const document = await runBuild();
-		expect(document.conditions?.packageManager).toEqual({
-			kind: "select",
-			label: "Package manager",
-			values: [{ value: "pnpm", label: "pnpm" }],
-		});
-		expect(document.items.button.requires).toEqual(["packageManager"]);
+		await expect(runBuild()).rejects.toThrow(
+			'Registry conditions cannot declare reserved condition "packageManager" (built-in install context).',
+		);
 	});
 
 	it("rethrows non-ENOENT errors while walking the registry source tree", async () => {

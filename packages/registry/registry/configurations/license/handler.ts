@@ -1,4 +1,4 @@
-import type { PrepareInstallHook } from "@tuckshop/core";
+import type { BeforeWriteHook } from "@tuckshop/core";
 import * as spdxLicenseList from "spdx-license-list/full";
 
 const licenses = spdxLicenseList as unknown as Record<
@@ -15,7 +15,7 @@ const COPYRIGHT_PLACEHOLDER =
  * @param ctx - Install hook context with license conditions captured.
  * @returns LICENSE file to update in the working compiled item.
  */
-const prepare: PrepareInstallHook = async (ctx) => {
+const beforeWrite: BeforeWriteHook = async (ctx) => {
 	const licenseId = ctx.conditions.licenseId;
 	if (typeof licenseId !== "string" || licenseId.length === 0)
 		throw new Error('Condition "licenseId" is required to generate LICENSE.');
@@ -48,4 +48,4 @@ const prepare: PrepareInstallHook = async (ctx) => {
 	};
 };
 
-export default prepare;
+export default beforeWrite;

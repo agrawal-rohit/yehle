@@ -1,38 +1,55 @@
+import fs from "node:fs";
+import path from "node:path";
 import {
 	type CompiledItem,
+	isMissingPathError,
 	joinRelativePathUnderRoot,
-	PathKind,
-	pathKindAsync,
+	readFileAsync,
 	writeFileAsync,
 } from "@tuckshop/core";
 import { primaryText } from "../cli/labels";
 import { confirmInput } from "../cli/prompts";
 
-/** One compiled item file target with its absolute destination. */
-interface ResolvedCompiledItemTarget {
+/** One file that should be created or replaced on disk. */
+export interface PlannedFileWrite {
 	/** Relative target path from the payload. */
 	target: string;
 	/** Absolute destination under the project root. */
 	destination: string;
+	/** Interpolated file contents. */
+	content: string;
+	/** Absolute project root used to jail ancestor paths at write time. */
+	projectDir: string;
 }
 
-/**
- * Build an absolute path for a compiled item target under the project root.
- * @param projectDir - Absolute project root.
- * @param target - Destination path from the payload.
- * @returns Absolute destination path.
- * @throws Error when the target escapes the project directory.
- */
-export function absoluteProjectTarget(
-	projectDir: string,
-	target: string,
-): string {
-	return joinRelativePathUnderRoot(
-		projectDir,
-		target,
-		"Compiled item file target",
-		"project directory",
-	);
+/** Files to write for one install item. */
+export interface PlannedItemWrites {
+	/** Display label for progress. */
+	label: string;
+	/** Files that are missing or differ from the payload. */
+	files: PlannedFileWrite[];
+}
+
+/** Jail-checked write set after dropping identical existing files. */
+export interface FileWritePlan {
+	/** Items that still have files to write, in plan order. */
+	items: PlannedItemWrites[];
+	/** Relative targets that exist and differ from the payload. */
+	conflicts: string[];
+}
+
+/** One compiled item file target with its absolute destination. */
+interface ResolvedCompiledItemTarget {
+	/** Index of the source item in the install list. */
+	itemIndex: number;
+	/** Display label for progress. */
+	label: string;
+	/** Relative target path from the payload. */
+	target: string;
+	/** Absolute destination under the project root. */
+	destination: string;
+	/** Interpolated file contents. */
+	content: string;
 }
 
 /**
@@ -55,24 +72,103 @@ function claimDestination(
 }
 
 /**
- * Collect compiled item file targets, rejecting duplicate destinations.
+ * Reject symbolic links on the destination's ancestor path under the project root.
  * @param projectDir - Absolute project root.
- * @param payloads - Parsed compiled items.
- * @returns Ordered list of unique targets.
- * @throws Error when two payloads share a destination.
+ * @param destination - Absolute destination path.
+ * @param target - Relative target for error messages.
+ * @throws Error when an ancestor directory is a symbolic link.
  */
-function collectCompiledItemTargets(
+async function assertAncestorPathHasNoSymlinks(
 	projectDir: string,
-	compiledItems: CompiledItem[],
+	destination: string,
+	target: string,
+): Promise<void> {
+	const root = path.resolve(projectDir);
+	let current = path.dirname(path.resolve(destination));
+
+	while (true) {
+		try {
+			const stat = await fs.promises.lstat(current);
+			if (stat.isSymbolicLink())
+				throw new Error(
+					`Compiled item file target "${primaryText(target)}" path includes a symbolic link.`,
+				);
+		} catch (error) {
+			if (!isMissingPathError(error)) throw error;
+		}
+
+		if (current === root) return;
+		const parent = path.dirname(current);
+		if (parent === current) return;
+		current = parent;
+	}
+}
+
+/**
+ * Classify a destination that already exists as a file.
+ * Uses `lstat` so a symlink is not treated as a regular file.
+ * @param target - Relative compiled item target (for error messages).
+ * @param destination - Absolute path under the project root.
+ * @returns True when a file exists; false when missing.
+ * @throws Error when the destination exists as a directory, symlink, or special node.
+ */
+async function destinationIsExistingFile(
+	target: string,
+	destination: string,
+): Promise<boolean> {
+	let stat: fs.Stats;
+	try {
+		stat = await fs.promises.lstat(destination);
+	} catch (error) {
+		if (isMissingPathError(error)) return false;
+		throw error;
+	}
+
+	if (stat.isSymbolicLink())
+		throw new Error(
+			`Compiled item file target "${primaryText(target)}" exists and is a symbolic link.`,
+		);
+	if (stat.isDirectory())
+		throw new Error(
+			`Compiled item file target "${primaryText(target)}" exists and is a directory.`,
+		);
+	if (stat.isFile()) return true;
+	throw new Error(
+		`Compiled item file target "${primaryText(target)}" exists but is neither a file nor a directory.`,
+	);
+}
+
+/**
+ * Collect unique jailed destinations from labeled install items.
+ * @param projectDir - Absolute project root.
+ * @param items - Prepared items with display labels.
+ * @returns Ordered destinations with payload content.
+ * @throws Error when two files share a destination.
+ */
+function collectItemFileTargets(
+	projectDir: string,
+	items: Array<{ label: string; compiledItem: CompiledItem }>,
 ): ResolvedCompiledItemTarget[] {
 	const seenTargets = new Set<string>();
 	const targets: ResolvedCompiledItemTarget[] = [];
 
-	for (const compiledItem of compiledItems) {
+	for (const [itemIndex, { label, compiledItem }] of items.entries()) {
 		for (const file of compiledItem.files) {
-			const destination = absoluteProjectTarget(projectDir, file.target);
+			// Jail the payload target under the project root before touching disk.
+			const destination = joinRelativePathUnderRoot(
+				projectDir,
+				file.target,
+				"Compiled item file target",
+				"project directory",
+			);
 			claimDestination(destination, file.target, seenTargets);
-			targets.push({ target: file.target, destination });
+			targets.push({
+				itemIndex,
+				label,
+				target: file.target,
+				destination,
+				content: file.content,
+			});
 		}
 	}
 
@@ -80,47 +176,67 @@ function collectCompiledItemTargets(
 }
 
 /**
- * Return the relative target when the destination is an existing file.
- * @param target - Relative compiled item target (for error messages).
- * @param destination - Absolute path under the project root.
- * @returns The relative target when a file exists; undefined when missing.
- * @throws Error when the destination exists as a directory, or on unexpected fs errors.
+ * Plan file writes: jail targets, reject duplicates, directories, and symlinks, skip identical files.
+ * @param projectDir - Absolute project root.
+ * @param items - Prepared items with display labels.
+ * @returns Items that still need writes, plus existing files that differ.
  */
-async function existingFileTarget(
-	target: string,
-	destination: string,
-): Promise<string | undefined> {
-	const kind = await pathKindAsync(destination);
-	switch (kind) {
-		case PathKind.DIRECTORY:
-			throw new Error(
-				`Compiled item file target "${primaryText(target)}" exists and is a directory.`,
-			);
-		case PathKind.FILE:
-			return target;
-		case PathKind.ABSENT:
-			return undefined;
-		/* v8 ignore start */
-		// Stryker disable all: unreachable exhaustive default
-		default: {
-			const _exhaustive: never = kind;
-			throw new Error(`Unhandled path kind: ${String(_exhaustive)}`);
+export async function planFileWrites(
+	projectDir: string,
+	items: Array<{ label: string; compiledItem: CompiledItem }>,
+): Promise<FileWritePlan> {
+	const plannedItems: PlannedItemWrites[] = [];
+	const conflicts: string[] = [];
+	const itemWrites = new Map<number, PlannedItemWrites>();
+
+	for (const target of collectItemFileTargets(projectDir, items)) {
+		await assertAncestorPathHasNoSymlinks(
+			projectDir,
+			target.destination,
+			target.target,
+		);
+		const exists = await destinationIsExistingFile(
+			target.target,
+			target.destination,
+		);
+		if (exists) {
+			const existing = await readFileAsync(target.destination);
+			if (existing === target.content) continue;
+			conflicts.push(target.target);
 		}
-		// Stryker restore all
-		/* v8 ignore stop */
+
+		let item = itemWrites.get(target.itemIndex);
+		if (!item) {
+			item = { label: target.label, files: [] };
+			itemWrites.set(target.itemIndex, item);
+			plannedItems.push(item);
+		}
+		item.files.push({
+			target: target.target,
+			destination: target.destination,
+			content: target.content,
+			projectDir,
+		});
 	}
+
+	return { items: plannedItems, conflicts };
 }
 
 /**
- * Prompt the user to confirm overwriting each existing file target.
- * @param existingTargets - Relative targets that already exist as files.
- * @throws Error when the user declines any overwrite.
+ * Prompt once before replacing existing files that differ from the payload.
+ * @param conflictingTargets - Relative targets that already exist with different content.
+ * @param overwrite - Skip the prompt when true.
+ * @throws Error when the user declines.
  */
-async function promptOverwriteConfirmations(
-	existingTargets: string[],
+export async function confirmFileOverwrites(
+	conflictingTargets: string[],
+	overwrite: boolean,
 ): Promise<void> {
+	if (overwrite || conflictingTargets.length === 0) return;
+
 	console.log();
-	for (const target of existingTargets) {
+	if (conflictingTargets.length === 1) {
+		const target = conflictingTargets[0];
 		const shouldOverwrite = await confirmInput(
 			`Overwrite existing file ${primaryText(target)}?`,
 			{},
@@ -130,50 +246,35 @@ async function promptOverwriteConfirmations(
 			throw new Error(
 				`Installation canceled before overwriting ${primaryText(target)}.`,
 			);
+		console.log();
+		return;
 	}
+
+	console.log("The following files already exist:");
+	for (const target of conflictingTargets)
+		console.log(`  - ${primaryText(target)}`);
+	const shouldOverwrite = await confirmInput(
+		"Overwrite these files?",
+		{},
+		false,
+	);
+	if (!shouldOverwrite)
+		throw new Error("Installation canceled before overwriting existing files.");
 	console.log();
 }
 
 /**
- * Prompt before overwriting compiled item targets that already exist on disk.
- * @param projectDir - Absolute project root.
- * @param payloads - Parsed compiled items whose files may collide with existing paths.
- * @param overwrite - Skip overwrite prompts when true.
- * @throws Error when a target is a directory, the user declines an overwrite, or two payloads share a target.
+ * Write one planned file to disk.
+ * Re-checks the destination so a path that became a directory or symlink after planning cannot be overwritten.
+ * @param file - Jailed destination and contents.
+ * @throws Error when the destination is a directory, symlink, or has a symlink ancestor.
  */
-export async function confirmFileOverwrites(
-	projectDir: string,
-	compiledItems: CompiledItem[],
-	overwrite: boolean,
-): Promise<void> {
-	const targets = collectCompiledItemTargets(projectDir, compiledItems);
-	const existingTargets: string[] = [];
-
-	for (const { target, destination } of targets) {
-		const existing = await existingFileTarget(target, destination);
-		if (existing) existingTargets.push(existing);
-	}
-
-	if (overwrite || existingTargets.length === 0) return;
-
-	await promptOverwriteConfirmations(existingTargets);
-}
-
-/**
- * Write compiled item files to disk. Callers must confirm overwrite conflicts first.
- * @param projectDir - Absolute project root.
- * @param payload - Parsed compiled item.
- * @param writtenTargets - Absolute destinations already written during this install.
- * @throws Error when two payloads in this run share a destination.
- */
-export async function writeCompiledItemFiles(
-	projectDir: string,
-	compiledItem: CompiledItem,
-	writtenTargets: Set<string>,
-): Promise<void> {
-	for (const file of compiledItem.files) {
-		const destination = absoluteProjectTarget(projectDir, file.target);
-		claimDestination(destination, file.target, writtenTargets);
-		await writeFileAsync(destination, file.content);
-	}
+export async function writePlannedFile(file: PlannedFileWrite): Promise<void> {
+	await assertAncestorPathHasNoSymlinks(
+		file.projectDir,
+		file.destination,
+		file.target,
+	);
+	await destinationIsExistingFile(file.target, file.destination);
+	await writeFileAsync(file.destination, file.content);
 }

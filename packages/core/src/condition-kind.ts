@@ -49,12 +49,12 @@ export interface ConditionKindPolicy {
 		value: RegistryWhenValue,
 	) => void;
 	/**
-	 * Normalize a handler-inferred default to a typed context value.
+	 * Typed context value for a handler-inferred default.
 	 * @param inferred - Raw value returned by a condition handler.
 	 * @param values - Prompt options for select/multiselect kinds.
-	 * @returns Typed default when valid, otherwise undefined.
+	 * @returns Typed context value when valid, otherwise undefined.
 	 */
-	normalizeInferred: (
+	inferredContextValue: (
 		inferred: string | string[] | boolean,
 		values: ConditionValueOption[],
 	) => RegistryContextValue | undefined;
@@ -90,7 +90,7 @@ export const conditionKindPolicy: Record<
 		seedContext: (context, key, value) => {
 			if (typeof value === "string") context[key] = value;
 		},
-		normalizeInferred: (inferred, values) => {
+		inferredContextValue: (inferred, values) => {
 			if (typeof inferred !== "string") return undefined;
 			if (!values.some((entry) => entry.value === inferred)) return undefined;
 			return inferred;
@@ -116,7 +116,7 @@ export const conditionKindPolicy: Record<
 			for (const entry of seeded)
 				if (!existing.includes(entry)) existing.push(entry);
 		},
-		normalizeInferred: (inferred, values) => {
+		inferredContextValue: (inferred, values) => {
 			let candidates: string[] | null = null;
 			if (Array.isArray(inferred)) candidates = inferred;
 			else if (typeof inferred === "string") candidates = [inferred];
@@ -140,7 +140,7 @@ export const conditionKindPolicy: Record<
 		seedContext: (context, key, value) => {
 			if (typeof value === "boolean") context[key] = value;
 		},
-		normalizeInferred: (inferred) => {
+		inferredContextValue: (inferred) => {
 			if (typeof inferred === "boolean") return inferred;
 			if (inferred === "true") return true;
 			if (inferred === "false") return false;
@@ -156,7 +156,7 @@ export const conditionKindPolicy: Record<
 		seedContext: (context, key, value) => {
 			if (typeof value === "string") context[key] = value;
 		},
-		normalizeInferred: (inferred) => {
+		inferredContextValue: (inferred) => {
 			if (typeof inferred !== "string") return undefined;
 			if (inferred === "") return undefined;
 			return inferred;

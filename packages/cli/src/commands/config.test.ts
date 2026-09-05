@@ -172,6 +172,85 @@ describe("commands/config", () => {
 			await expect(configGetCommand({ ...env })).resolves.toBeUndefined();
 		});
 
+		it("rejects a local path that is a symbolic link", async () => {
+			const root = await makeTempRoot();
+			const env = { XDG_CONFIG_HOME: root };
+			const realFile = path.join(root, "registry.json");
+			const link = path.join(root, "registry-link.json");
+			await fs.promises.writeFile(realFile, "{}\n");
+			await fs.promises.symlink(realFile, link);
+			vi.spyOn(console, "log").mockImplementation(() => {});
+
+			await expect(configSetCommand(link, env)).rejects.toThrow(
+				/is a symbolic link/,
+			);
+		});
+
+		it("rejects a local path that is neither a file nor a directory", async () => {
+			const root = await makeTempRoot();
+			const env = { XDG_CONFIG_HOME: root };
+			vi.spyOn(console, "log").mockImplementation(() => {});
+			vi.spyOn(fs.promises, "lstat").mockResolvedValueOnce({
+				isSymbolicLink: () => false,
+				isDirectory: () => false,
+				isFile: () => false,
+			} as fs.Stats);
+
+			await expect(configSetCommand("/tmp/special-node", env)).rejects.toThrow(
+				"neither a file nor a directory",
+			);
+		});
+
+		it("rethrows unexpected lstat errors", async () => {
+			const root = await makeTempRoot();
+			const env = { XDG_CONFIG_HOME: root };
+			const error = Object.assign(new Error("permission denied"), {
+				code: "EACCES",
+			});
+			vi.spyOn(fs.promises, "lstat").mockRejectedValueOnce(error);
+
+			await expect(configSetCommand("./registry.json", env)).rejects.toBe(
+				error,
+			);
+		});
+
+		it.each([
+			"file:///tmp/registry.json",
+			"ftp://example.com/registry.json",
+		])("rejects non-HTTPS URL scheme %s", async (source) => {
+			const root = await makeTempRoot();
+			const env = { XDG_CONFIG_HOME: root };
+
+			await expect(configSetCommand(source, env)).rejects.toThrow(
+				"Registry source must be an HTTPS URL or a local file path.",
+			);
+		});
+
+		it("rejects a malformed HTTPS URL", async () => {
+			const root = await makeTempRoot();
+			const env = { XDG_CONFIG_HOME: root };
+
+			await expect(configSetCommand("https://[", env)).rejects.toThrow(
+				'Registry URL "https://[" is not a valid URL.',
+			);
+		});
+
+		it("persists a canonical HTTPS registry URL", async () => {
+			const root = await makeTempRoot();
+			const env = { XDG_CONFIG_HOME: root };
+			vi.spyOn(console, "log").mockImplementation(() => {});
+
+			await configSetCommand("HTTPS://EXAMPLE.COM/registry.json", env);
+
+			const saved = JSON.parse(
+				await fs.promises.readFile(
+					path.join(root, "tuckshop", "config.json"),
+					"utf8",
+				),
+			) as { registry: string };
+			expect(saved.registry).toBe("https://example.com/registry.json");
+		});
+
 		it("prints the default registry URL when none is saved", async () => {
 			const root = await makeTempRoot();
 			const env = { XDG_CONFIG_HOME: root };

@@ -299,6 +299,77 @@ describe("commands/index", () => {
 		expect(mockConfigGetCommand).not.toHaveBeenCalled();
 	});
 
+	it("rejects a non-string config action", async () => {
+		const { app, actions } = createMockApp();
+		registerCommandsCli(app, mockLoadRegistry);
+
+		await expectCommandError(
+			actions.get("config <action> [source]")?.(1),
+			'Unknown config action "1"',
+		);
+	});
+
+	it("rejects config get with a source argument", async () => {
+		const { app, actions } = createMockApp();
+		registerCommandsCli(app, mockLoadRegistry);
+
+		await expectCommandError(
+			actions.get("config <action> [source]")?.(
+				"get",
+				"https://example.com/registry.json",
+			),
+			"config get does not take a registry source.",
+		);
+		expect(mockConfigGetCommand).not.toHaveBeenCalled();
+	});
+
+	it("rejects config unset with a source argument", async () => {
+		const { app, actions } = createMockApp();
+		registerCommandsCli(app, mockLoadRegistry);
+
+		await expectCommandError(
+			actions.get("config <action> [source]")?.(
+				"unset",
+				"https://example.com/registry.json",
+			),
+			"config unset does not take a registry source.",
+		);
+		expect(mockConfigUnsetCommand).not.toHaveBeenCalled();
+	});
+
+	it("rejects a non-string add item list", async () => {
+		const { app, actions } = createMockApp();
+		registerCommandsCli(app, mockLoadRegistry);
+
+		await expectCommandError(
+			actions.get("add [...items]")?.("license", {}),
+			"add expected a list of item ids.",
+		);
+		expect(mockAddCommand).not.toHaveBeenCalled();
+	});
+
+	it("rejects a non-boolean --overwrite value", async () => {
+		const { app, actions } = createMockApp();
+		registerCommandsCli(app, mockLoadRegistry);
+
+		await expectCommandError(
+			actions.get("add [...items]")?.([], { overwrite: "yes" }),
+			"Option --overwrite must be a boolean flag.",
+		);
+		expect(mockAddCommand).not.toHaveBeenCalled();
+	});
+
+	it("rejects a non-string --type value", async () => {
+		const { app, actions } = createMockApp();
+		registerCommandsCli(app, mockLoadRegistry);
+
+		await expectCommandError(
+			actions.get("list")?.({ type: true }),
+			"--type must be a string or a list of strings.",
+		);
+		expect(mockListCommand).not.toHaveBeenCalled();
+	});
+
 	it("matches config get/set/unset against real CAC argv", async () => {
 		const app = cac("tuckshop");
 		registerCommandsCli(app, mockLoadRegistry);
@@ -327,6 +398,27 @@ describe("commands/index", () => {
 		app.parse(["node", "tuckshop", "config", "unset"], { run: false });
 		await app.runMatchedCommand();
 		expect(mockConfigUnsetCommand).toHaveBeenCalled();
+	});
+
+	it("rejects config get with a source against real CAC argv", async () => {
+		const app = cac("tuckshop");
+		registerCommandsCli(app, mockLoadRegistry);
+
+		app.parse(
+			[
+				"node",
+				"tuckshop",
+				"config",
+				"get",
+				"https://example.com/registry.json",
+			],
+			{ run: false },
+		);
+		await expectCommandError(
+			app.runMatchedCommand(),
+			"config get does not take a registry source.",
+		);
+		expect(mockConfigGetCommand).not.toHaveBeenCalled();
 	});
 
 	it("lets CAC reject bare config when the required action is missing", async () => {

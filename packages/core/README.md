@@ -26,19 +26,19 @@ await buildRegistry({
 
 That writes compiled output under `outDir` (defaults match the paths below; override via options above):
 
-- `registry.json` (or `registryFileName`) — index (identity is the `items` map key; each item may declare `source`, `packs`, and/or `prepare` / `finalize`)
+- `registry.json` (or `registryFileName`) — index (identity is the `items` map key; each item may declare `source`, `packs`, and/or `beforeWrite` / `afterInstall`)
 - `r/{itemId}.json` or `r/{itemId}/{packId}.json` — compiled items with `target`, inlined template `content`, and `dependencies` keyed by ecosystem
-- `r/{itemId}.prepare.{index}.js` / `r/{itemId}.finalize.{index}.js` — bundled install scripts (local registries only at install time)
+- `r/{itemId}.beforeWrite.{index}.js` / `r/{itemId}.afterInstall.{index}.js` — bundled install scripts (local registries only at install time)
 - `r/_handlers/{key}.handler.js` — bundled condition handlers
 
-Consumers join index `source` values against the index location with `joinIndexSource`. Install scripts are loaded by `runPrepareInstallHook` / `runFinalizeInstallHook`. The npm package manager is selected by core at install time (lockfile detection, otherwise a prompt) and passed into planning, interpolation (`packageManager`, `pmRun`, `pmExec`, `pmInstall`, `pmPublish`), hooks, and installs. Pack `when.packageManager` matches that selection; registries may also declare a normal `packageManager` condition if they want.
+Consumers join index `source` values against the index location with `joinIndexSource`. Install scripts are loaded by `runBeforeWriteHook` / `runAfterInstallHook`. The package manager for the npm ecosystem is selected by core at install time (lockfile detection, otherwise a prompt) and passed into planning, interpolation (`packageManager`, `pmRun`, `pmExec`, `pmInstall`, `pmPublish`), hooks, and installs. Pack `when.packageManager` matches that selection.
 
 ## Validate compiled output
 
 - `parseRegistryDocument` — validate the compiled index (`registry.json`)
 - `parseWithSchema(compiledItemSchema, …)` — validate a compiled item
-- `import type { PrepareInstallHook }` / `import type { ConditionHandler }` — typed hook contracts (prefer `import type` so bundles stay self-contained)
+- `import type { BeforeWriteHook }` / `import type { ConditionHandler }` — typed hook contracts (prefer `import type` so bundles stay self-contained)
 
 ## Install lifecycle
 
-Each item has two optional phases: `prepare` (prompts, file generation, setup before writes) and `finalize` (side effects after writes). Each phase accepts colocated script paths. Other registry items belong in `registryDependencies`. The CLI runs `prepare` scripts, confirms overwrites, writes compiled items, then runs `finalize` scripts in plan order.
+Each item has two optional phases: `beforeWrite` (generate or upsert files before writes) and `afterInstall` (side effects after package install). Each phase accepts colocated script paths. Other registry items belong in `dependsOn`. The CLI runs `beforeWrite` scripts, confirms overwrites, writes compiled items, merges `package.json` scripts, installs packages, then runs `afterInstall` scripts in plan order. `afterInstall` still runs if the user declines package install, and must not return a value.

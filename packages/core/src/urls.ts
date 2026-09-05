@@ -11,7 +11,89 @@ export function isAbsoluteHttpUrl(value: string): boolean {
 }
 
 /**
- * Reject remote registry URLs that are not HTTPS hostnames.
+ * True when a relative path would escape its root or is an absolute/URL form.
+ * The checks are platform-independent so registry documents validate identically on every OS.
+ * @param value - Candidate relative path.
+ * @returns Whether the path is unsafe as a registry or project-relative path.
+ */
+export function isEscapingRelativePath(value: string): boolean {
+	return (
+		value.startsWith("/") ||
+		value.includes("\\") ||
+		value.split("/").includes("..") ||
+		isAbsoluteHttpUrl(value) ||
+		/^[a-zA-Z]:/.test(value)
+	);
+}
+
+/**
+ * Reject absolute http(s) compiled `source` values that leave the index origin.
+ * Local indexes reject absolute URLs entirely; remote indexes require the same origin
+ * (in addition to {@link assertSafeRemoteUrl} on the resolved fetch URL).
+ * @param indexLocation - Absolute path or http(s) URL of registry.json.
+ * @param source - Candidate source URI.
+ * @throws Error when the source is a disallowed cross-origin absolute URL.
+ */
+export function assertSameOriginIndexSource(
+	indexLocation: string,
+	source: string,
+): void {
+	const trimmedSource = source.trim();
+	if (!isAbsoluteHttpUrl(trimmedSource)) return;
+
+	if (!isAbsoluteHttpUrl(indexLocation))
+		throw new Error(
+			`Registry file source "${source}" must be a relative path under a local registry (absolute URLs are not allowed).`,
+		);
+
+	const indexUrl = new URL(indexLocation);
+	const sourceUrl = new URL(trimmedSource);
+	if (indexUrl.origin !== sourceUrl.origin)
+		throw new Error(
+			`Registry file source "${source}" must stay on the same origin as the registry index (${indexUrl.origin}).`,
+		);
+}
+
+/**
+ * Join an index item or variant `source` against the index location.
+ * @param indexLocation - Absolute path or http(s) URL of `registry.json`.
+ * @param source - Opaque URI from a compiled index item or variant `source`.
+ * @returns Absolute http(s) URL or absolute local filesystem path.
+ * @throws Error when a local relative source escapes the registry directory,
+ *   or an absolute source is cross-origin / disallowed for local indexes.
+ */
+export function joinIndexSource(indexLocation: string, source: string): string {
+	const trimmedSource = source.trim();
+	if (!trimmedSource)
+		throw new Error("Registry file source must not be empty.");
+
+	assertSameOriginIndexSource(indexLocation, trimmedSource);
+	if (isAbsoluteHttpUrl(trimmedSource)) return trimmedSource;
+
+	const trimmedIndexLocation = indexLocation.trim();
+	if (!trimmedIndexLocation)
+		throw new Error("Registry index location must not be empty.");
+
+	// Remote registries: WHATWG URL path joining (…/registry.json + r/x.json → …/r/x.json).
+	if (isAbsoluteHttpUrl(trimmedIndexLocation))
+		return new URL(trimmedSource, trimmedIndexLocation).href;
+
+	const indexDir = path.dirname(path.resolve(trimmedIndexLocation));
+	return joinRelativePathUnderRoot(
+		indexDir,
+		trimmedSource,
+		"Registry file source",
+		"registry directory",
+	);
+}
+
+/**
+ * Reject remote registry URLs whose host looks internal or unsafe to fetch blindly.
+ *
+ * Validates the URL string only (no DNS lookup): HTTPS, no embedded credentials,
+ * no `localhost` / `*.localhost`, and no IP literals (IPv4 or IPv6). Hostnames
+ * that resolve to private, link-local, or metadata addresses are not checked.
+ *
  * @param url - Parsed remote URL.
  * @throws Error when the URL uses a disallowed protocol, credentials, localhost, or IP host.
  */
@@ -46,6 +128,25 @@ export function publishedRegistryUrl(version: string): string {
 }
 
 /**
+ * Fail when a value is empty, `.`, `..`, or contains a path separator.
+ * @param label - Noun phrase for the error (option name or `"Kind \"id\""` style label).
+ * @param value - Candidate single path segment.
+ * @throws Error when the value is not a single path segment.
+ */
+export function assertSinglePathSegment(label: string, value: string): void {
+	if (
+		!value ||
+		value === "." ||
+		value === ".." ||
+		value.includes("/") ||
+		value.includes("\\")
+	)
+		throw new Error(
+			String.raw`${label} must be a single path segment (no "/", "\", or "..").`,
+		);
+}
+
+/**
  * Join a relative path under a root directory, rejecting escapes and absolute inputs.
  * @param rootDir - Absolute directory the result must stay under.
  * @param relativePath - Candidate relative path (may include surrounding whitespace).
@@ -63,11 +164,7 @@ export function joinRelativePathUnderRoot(
 	const trimmed = relativePath.trim();
 	if (!trimmed) throw new Error(`${label} must not be empty.`);
 
-	if (
-		path.isAbsolute(trimmed) ||
-		trimmed.includes("\\") ||
-		trimmed.split("/").includes("..")
-	)
+	if (isEscapingRelativePath(trimmed))
 		throw new Error(
 			`${label} "${relativePath}" must be a relative path under the ${rootLabel}.`,
 		);
@@ -78,66 +175,4 @@ export function joinRelativePathUnderRoot(
 		throw new Error(`${label} "${relativePath}" escapes the ${rootLabel}.`);
 
 	return absolutePath;
-}
-
-/**
- * Reject absolute http(s) compiled `source` values that leave the index origin.
- * Local indexes reject absolute URLs entirely; remote indexes require the same origin.
- * @param indexLocation - Absolute path or http(s) URL of registry.json.
- * @param source - Candidate source URI.
- * @throws Error when the source is an unsafe cross-origin absolute URL.
- */
-export function assertSameOriginIndexSource(
-	indexLocation: string,
-	source: string,
-): void {
-	const trimmedSource = source.trim();
-	if (!isAbsoluteHttpUrl(trimmedSource)) return;
-
-	if (!isAbsoluteHttpUrl(indexLocation))
-		throw new Error(
-			`Registry file source "${source}" must be a relative path under a local registry (absolute URLs are not allowed).`,
-		);
-
-	const indexUrl = new URL(indexLocation);
-	const sourceUrl = new URL(trimmedSource);
-	if (indexUrl.origin !== sourceUrl.origin)
-		throw new Error(
-			`Registry file source "${source}" must stay on the same origin as the registry index (${indexUrl.origin}).`,
-		);
-}
-
-/**
- * Join a index item or variant `source` against the index location.
- * @param indexLocation - Absolute path or http(s) URL of `registry.json`.
- * @param source - Opaque URI from a compiled index item or variant `source`.
- * @returns Absolute http(s) URL or absolute local filesystem path.
- * @throws Error when a local relative source escapes the registry directory,
- *   or an absolute source is cross-origin / disallowed for local indexes.
- */
-export function joinIndexSource(indexLocation: string, source: string): string {
-	const trimmedSource = source.trim();
-	if (!trimmedSource)
-		throw new Error("Registry file source must not be empty.");
-
-	assertSameOriginIndexSource(indexLocation, trimmedSource);
-
-	// Absolute same-origin URLs are already fetchable; skip index-relative joining.
-	if (isAbsoluteHttpUrl(trimmedSource)) return trimmedSource;
-
-	const trimmedCatalog = indexLocation.trim();
-	if (!trimmedCatalog)
-		throw new Error("Registry index location must not be empty.");
-
-	// Remote registries: WHATWG URL path joining (…/registry.json + r/x.json → …/r/x.json).
-	if (isAbsoluteHttpUrl(trimmedCatalog))
-		return new URL(trimmedSource, trimmedCatalog).href;
-
-	const indexDir = path.dirname(path.resolve(trimmedCatalog));
-	return joinRelativePathUnderRoot(
-		indexDir,
-		trimmedSource,
-		"Registry file source",
-		"registry directory",
-	);
 }
