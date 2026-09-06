@@ -17,7 +17,7 @@ vi.mock("./registry", () => ({
 	bundledRegistryPath: () => mockBundledRegistryPath(),
 }));
 
-import { confirmHookMutations, prepareScriptExecution } from "./scripts";
+import { prepareScriptExecution } from "./scripts";
 
 afterEach(() => {
 	setScriptExecutor(undefined);
@@ -58,7 +58,7 @@ describe("prepareScriptExecution", () => {
 		expect(mockConfirmInput).not.toHaveBeenCalled();
 	});
 
-	it("prompts for non-bundled local registries", async () => {
+	it("allows non-bundled local registry scripts without prompting", async () => {
 		const result = await prepareScriptExecution({
 			indexLocation: "/other/registry.json",
 			registry,
@@ -68,7 +68,7 @@ describe("prepareScriptExecution", () => {
 
 		expect(result.trust).toBe(RegistryTrust.LOCAL);
 		expect(result.allowMutation).toBe(true);
-		expect(mockConfirmInput).toHaveBeenCalled();
+		expect(mockConfirmInput).not.toHaveBeenCalled();
 	});
 
 	it("refuses remote HTTPS mutation hooks", async () => {
@@ -121,126 +121,5 @@ describe("prepareScriptExecution", () => {
 				"unused",
 			),
 		).rejects.toThrow("cannot run");
-	});
-});
-
-describe("confirmHookMutations", () => {
-	it("skips the prompt when hooks proposed no mutations", async () => {
-		await expect(
-			confirmHookMutations(
-				[{ compiledItem: { files: [] } }],
-				[{ compiledItem: { files: [] } }],
-			),
-		).resolves.toBe(true);
-		expect(mockConfirmInput).not.toHaveBeenCalled();
-	});
-
-	it("skips the prompt when static files are unchanged", async () => {
-		const payload = {
-			compiledItem: {
-				files: [{ target: "README.md", content: "hi" }],
-			},
-		};
-		await expect(confirmHookMutations([payload], [payload])).resolves.toBe(
-			true,
-		);
-		expect(mockConfirmInput).not.toHaveBeenCalled();
-	});
-
-	it("prompts when hooks added files, packages, or secrets", async () => {
-		mockConfirmInput.mockResolvedValueOnce(false);
-		await expect(
-			confirmHookMutations(
-				[{ compiledItem: { files: [] } }],
-				[
-					{
-						compiledItem: {
-							files: [{ target: "LICENSE", content: "MIT" }],
-							dependencies: { npm: { runtime: ["zod"] } },
-							secrets: ["HELLO_TOKEN"],
-						},
-					},
-				],
-			),
-		).resolves.toBe(false);
-		expect(mockConfirmInput).toHaveBeenCalled();
-	});
-
-	it("prompts when hooks removed files", async () => {
-		mockConfirmInput.mockResolvedValueOnce(true);
-		await expect(
-			confirmHookMutations(
-				[
-					{
-						compiledItem: {
-							files: [{ target: "OLD.md", content: "gone" }],
-						},
-					},
-				],
-				[{ compiledItem: { files: [] } }],
-			),
-		).resolves.toBe(true);
-		expect(mockConfirmInput).toHaveBeenCalled();
-	});
-
-	it("prompts when hooks rewrote an existing file", async () => {
-		const log = vi.spyOn(console, "log").mockImplementation(() => {});
-		mockConfirmInput.mockResolvedValueOnce(true);
-
-		await expect(
-			confirmHookMutations(
-				[
-					{
-						compiledItem: {
-							files: [{ target: "README.md", content: "catalog" }],
-						},
-					},
-				],
-				[
-					{
-						compiledItem: {
-							files: [{ target: "README.md", content: "hooked" }],
-						},
-					},
-				],
-			),
-		).resolves.toBe(true);
-
-		expect(mockConfirmInput).toHaveBeenCalled();
-		expect(log.mock.calls.flat().join("\n")).toContain("Files changed");
-		log.mockRestore();
-	});
-
-	it("prompts when hooks rewrote an existing package.json script", async () => {
-		mockConfirmInput.mockResolvedValueOnce(true);
-
-		await expect(
-			confirmHookMutations(
-				[
-					{
-						compiledItem: {
-							files: [],
-							commands: { npm: { test: "vitest" } },
-						},
-					},
-				],
-				[
-					{
-						compiledItem: {
-							files: [],
-							commands: { npm: { test: "rm -rf /" } },
-						},
-					},
-				],
-			),
-		).resolves.toBe(true);
-
-		expect(mockConfirmInput).toHaveBeenCalled();
-	});
-
-	it("rejects mismatched before and after lists", async () => {
-		await expect(
-			confirmHookMutations([{ compiledItem: { files: [] } }], []),
-		).rejects.toThrow("mismatched item lists");
 	});
 });

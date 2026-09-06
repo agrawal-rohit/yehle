@@ -4,7 +4,6 @@ import {
 	type CompiledItem,
 	isMissingPathError,
 	joinRelativePathUnderRoot,
-	readFileAsync,
 	writeFileAsync,
 } from "@tuckshop/core";
 import { primaryText } from "../cli/labels";
@@ -26,15 +25,15 @@ export interface PlannedFileWrite {
 export interface PlannedItemWrites {
 	/** Display label for progress. */
 	label: string;
-	/** Files that are missing or differ from the payload. */
+	/** Files that will be written (new or replacing existing). */
 	files: PlannedFileWrite[];
 }
 
-/** Jail-checked write set after dropping identical existing files. */
+/** Jailed write set for every payload file. */
 export interface FileWritePlan {
-	/** Items that still have files to write, in plan order. */
+	/** Items that have files to write, in plan order. */
 	items: PlannedItemWrites[];
-	/** Relative targets that exist and differ from the payload. */
+	/** Relative targets that already exist and will be replaced. */
 	conflicts: string[];
 }
 
@@ -176,10 +175,10 @@ function collectItemFileTargets(
 }
 
 /**
- * Plan file writes: jail targets, reject duplicates, directories, and symlinks, skip identical files.
+ * Plan file writes: jail targets, reject duplicates, directories, and symlinks.
  * @param projectDir - Absolute project root.
  * @param items - Prepared items with display labels.
- * @returns Items that still need writes, plus existing files that differ.
+ * @returns Items that need writes, plus existing file targets.
  */
 export async function planFileWrites(
 	projectDir: string,
@@ -199,11 +198,7 @@ export async function planFileWrites(
 			target.target,
 			target.destination,
 		);
-		if (exists) {
-			const existing = await readFileAsync(target.destination);
-			if (existing === target.content) continue;
-			conflicts.push(target.target);
-		}
+		if (exists) conflicts.push(target.target);
 
 		let item = itemWrites.get(target.itemIndex);
 		if (!item) {

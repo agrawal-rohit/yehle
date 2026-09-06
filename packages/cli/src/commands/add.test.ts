@@ -16,7 +16,6 @@ const mockIsFileAsync = vi.fn();
 const mockRunAsync = vi.fn();
 const mockRunArgvAsync = vi.fn();
 const mockRunWithTasks = vi.fn();
-const mockConfirmHookMutations = vi.fn(async (..._args: unknown[]) => true);
 const mockPrepareScriptExecution = vi.fn(async (..._args: unknown[]) => ({
 	trust: "bundled",
 	allowInfer: true,
@@ -55,8 +54,6 @@ vi.mock("../utils/scripts", async () => {
 		...actual,
 		prepareScriptExecution: (...args: unknown[]) =>
 			mockPrepareScriptExecution(...args),
-		confirmHookMutations: (...args: unknown[]) =>
-			mockConfirmHookMutations(...args),
 	};
 });
 
@@ -133,7 +130,6 @@ describe("commands/add", () => {
 		mockIsFileAsync.mockResolvedValue(false);
 		mockWriteFileAsync.mockResolvedValue(undefined);
 		mockConfirmInput.mockResolvedValue(false);
-		mockConfirmHookMutations.mockResolvedValue(true);
 		mockPrepareScriptExecution.mockResolvedValue({
 			trust: "bundled",
 			allowInfer: true,
@@ -315,7 +311,6 @@ describe("commands/add", () => {
 		).resolves.toBeUndefined();
 
 		expect(mockMultiselectInput).not.toHaveBeenCalled();
-		expect(mockConfirmHookMutations).not.toHaveBeenCalled();
 		expect(mockLoadCompiledItems).toHaveBeenCalledWith(
 			indexLocation,
 			["r/pr-template-configuration.json"],
@@ -1172,34 +1167,6 @@ module.exports = {
 				items: ["pr-template-configuration"],
 			}),
 		).rejects.toThrow("No registry items were selected for installation.");
-	});
-
-	it("cancels when script-proposed mutations are declined", async () => {
-		const core = await import("@tuckshop/core");
-		const clearExecutor = vi.spyOn(core, "setScriptExecutor");
-		vi.spyOn(core, "runBeforeWriteHook").mockResolvedValue({
-			files: [{ target: "HOOK.md", content: "hooked" }],
-			bindings: {},
-		});
-		mockBuildInstallPlan.mockReturnValue([
-			{
-				itemId: "pr-template-configuration",
-				sources: ["r/pr-template-configuration.json"],
-				beforeWriteScripts: ["r/item.beforeWrite.0.js"],
-			},
-		]);
-		mockConfirmHookMutations.mockResolvedValue(false);
-
-		await expect(
-			addCommand(registry, indexLocation, {
-				items: ["pr-template-configuration"],
-			}),
-		).rejects.toThrow(
-			"Install cancelled: script-proposed changes were declined.",
-		);
-
-		expect(clearExecutor).toHaveBeenCalledWith(undefined);
-		expect(mockWriteFileAsync).not.toHaveBeenCalled();
 	});
 
 	it("passes packIds into beforeWrite scripts when present", async () => {

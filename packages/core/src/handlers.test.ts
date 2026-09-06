@@ -260,9 +260,11 @@ describe("core/handlers", () => {
 
 	it("createHandlerRuntime joins relative paths to projectDir", async () => {
 		const isFile = vi.fn(async () => true);
+		const isDirectory = vi.fn(async () => true);
 		const readFile = vi.fn(async () => "contents");
 		const runtime = createHandlerRuntime("/project", {
 			isFile,
+			isDirectory,
 			readFile,
 			run: vi.fn(async () => ""),
 		});
@@ -270,15 +272,20 @@ describe("core/handlers", () => {
 		await runtime.isFile("tsconfig.json");
 		expect(isFile).toHaveBeenCalledWith("/project/tsconfig.json");
 
+		await runtime.isDirectory(".cursor/rules");
+		expect(isDirectory).toHaveBeenCalledWith("/project/.cursor/rules");
+
 		await runtime.readFile("src/a.ts");
 		expect(readFile).toHaveBeenCalledWith("/project/src/a.ts");
 	});
 
 	it("createHandlerRuntime confines absolute paths to the project directory", async () => {
 		const isFile = vi.fn(async () => true);
+		const isDirectory = vi.fn(async () => true);
 		const readFile = vi.fn(async () => "contents");
 		const runtime = createHandlerRuntime("/project", {
 			isFile,
+			isDirectory,
 			readFile,
 			run: vi.fn(async () => ""),
 		});
@@ -286,15 +293,31 @@ describe("core/handlers", () => {
 		await runtime.isFile("/project/src/file.ts");
 		expect(isFile).toHaveBeenCalledWith("/project/src/file.ts");
 
+		await runtime.isDirectory("/project/src");
+		expect(isDirectory).toHaveBeenCalledWith("/project/src");
+
 		await runtime.readFile("/project/src/file.ts");
 		expect(readFile).toHaveBeenCalledWith("/project/src/file.ts");
 
 		await expect(runtime.isFile("/abs/file.ts")).rejects.toThrow(
 			'Handler path "/abs/file.ts" escapes the project directory.',
 		);
+		await expect(runtime.isDirectory("/abs/dir")).rejects.toThrow(
+			'Handler path "/abs/dir" escapes the project directory.',
+		);
 		await expect(runtime.readFile("../.ssh/id_rsa")).rejects.toThrow(
 			"must be a relative path under the project directory",
 		);
+	});
+
+	it("createHandlerRuntime fails closed when isDirectory helper is omitted", async () => {
+		const runtime = createHandlerRuntime("/project", {
+			isFile: vi.fn(async () => true),
+			readFile: vi.fn(async () => "contents"),
+			run: vi.fn(async () => ""),
+		});
+
+		await expect(runtime.isDirectory("some/dir")).resolves.toBe(false);
 	});
 
 	it("inferConditionDefault returns schema default when no handler is declared", async () => {

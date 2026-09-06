@@ -60,7 +60,7 @@ describe("utils/files", () => {
 		);
 	});
 
-	it("omits identical existing files from writes and conflicts", async () => {
+	it("plans existing files for overwrite regardless of content", async () => {
 		fs.writeFileSync(path.join(tempDir, "HELLO.md"), "same");
 
 		await expect(
@@ -70,7 +70,22 @@ describe("utils/files", () => {
 					compiledItem: { files: [{ target: "HELLO.md", content: "same" }] },
 				},
 			]),
-		).resolves.toEqual({ items: [], conflicts: [] });
+		).resolves.toEqual({
+			items: [
+				{
+					label: "Hello",
+					files: [
+						{
+							target: "HELLO.md",
+							destination: path.join(tempDir, "HELLO.md"),
+							content: "same",
+							projectDir: tempDir,
+						},
+					],
+				},
+			],
+			conflicts: ["HELLO.md"],
+		});
 	});
 
 	it("lists existing files that differ as conflicts", async () => {

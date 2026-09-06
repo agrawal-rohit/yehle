@@ -46,11 +46,7 @@ import {
 	mergeProjectCommands,
 } from "../utils/packages";
 import { loadCompiledItems } from "../utils/registry";
-import {
-	confirmHookMutations,
-	prepareScriptExecution,
-	projectScriptHelpers,
-} from "../utils/scripts";
+import { prepareScriptExecution, projectScriptHelpers } from "../utils/scripts";
 
 /** Options accepted by the add command. */
 interface AddCommandOptions {
@@ -423,6 +419,23 @@ function printNextStepList(
 }
 
 /**
+ * Print the files written for each installed item.
+ * Gives the user a visible record of what landed and where.
+ * @param plannedItems - Items with the file targets that were written.
+ */
+function printWrittenFiles(plannedItems: PlannedItemWrites[]): void {
+	if (plannedItems.length === 0) return;
+
+	console.log();
+	console.log(chalk.bold("Files added"));
+	for (const item of plannedItems) {
+		console.log(item.label);
+		for (const file of item.files)
+			console.log(`  - ${primaryText(file.target)}`);
+	}
+}
+
+/**
  * Print numbered Next steps for pending installs and repository secrets.
  * @param pendingInstallCommands - Package install commands still left for the user.
  * @param secrets - Repository secret names to configure manually, if any.
@@ -681,19 +694,6 @@ export async function addCommand(
 			preparedItems,
 		);
 
-		const itemHasBeforeWriteScripts = (item: InstallPlanItem) =>
-			(item.node.beforeWriteScripts ?? []).length > 0;
-		if (
-			afterHooks.some(itemHasBeforeWriteScripts) &&
-			!(await confirmHookMutations(
-				preparedItems.filter(itemHasBeforeWriteScripts),
-				afterHooks.filter(itemHasBeforeWriteScripts),
-			))
-		)
-			throw new Error(
-				"Install cancelled: script-proposed changes were declined.",
-			);
-
 		packageManager ??= await selectPackageManagerForItems(
 			projectDir,
 			afterHooks,
@@ -723,6 +723,8 @@ export async function addCommand(
 		);
 
 		await writePreparedItems(fileWrites.items);
+
+		printWrittenFiles(fileWrites.items);
 
 		await mergeProjectCommands(
 			projectDir,

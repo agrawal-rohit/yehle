@@ -116,7 +116,7 @@ export interface PromptHost {
 /**
  * Shared filesystem and process helpers available to install and infer scripts.
  *
- * `isFile` / `readFile` only accept paths under {@link HandlerRuntime.projectDir}.
+ * `isFile` / `readFile` only accept paths under {@linkcode HandlerRuntime.projectDir}.
  * Scripts should use these helpers instead of Node builtins; sandboxed execution
  * denies direct filesystem, network, and child_process access outside `ctx`.
  */
@@ -128,6 +128,11 @@ export interface HandlerRuntime {
 	 * @param filePath - Project-relative path, or absolute path under `projectDir`.
 	 */
 	isFile: (filePath: string) => Promise<boolean>;
+	/**
+	 * Check whether a path is an existing directory under the project root.
+	 * @param filePath - Project-relative path, or absolute path under `projectDir`.
+	 */
+	isDirectory: (filePath: string) => Promise<boolean>;
 	/**
 	 * Read a UTF-8 text file under the project root.
 	 * @param filePath - Project-relative path, or absolute path under `projectDir`.
@@ -698,6 +703,8 @@ export function createHandlerRuntime(
 	projectDir: string,
 	helpers: {
 		isFile: (filePath: string) => Promise<boolean>;
+		/** Directory check. Optional so test stubs can omit it; production callers inject the stat-based check. */
+		isDirectory?: (filePath: string) => Promise<boolean>;
 		readFile: (filePath: string) => Promise<string>;
 		run: (command: string) => Promise<string>;
 	},
@@ -774,6 +781,13 @@ export function createHandlerRuntime(
 		isFile: async (filePath) => {
 			const confined = confinedPath(filePath);
 			return helpers.isFile(await confinePath(confined, filePath));
+		},
+		isDirectory: async (filePath) => {
+			const confined = confinedPath(filePath);
+			return helpers.isDirectory
+				? helpers.isDirectory(await confinePath(confined, filePath))
+				: // Fail closed like a missing directory when no checker is provided.
+					false;
 		},
 		readFile: async (filePath) => {
 			const confined = confinedPath(filePath);

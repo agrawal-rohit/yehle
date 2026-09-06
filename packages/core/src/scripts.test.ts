@@ -72,13 +72,12 @@ describe("scripts (trust and integrity)", () => {
 		).resolves.toEqual({ allowInfer: false, allowMutation: true });
 	});
 
-	it("prompts for local scripts and fails remote mutation hooks", async () => {
+	it("allows local scripts and fails remote mutation hooks", async () => {
 		await expect(
-			assertScriptsAllowed(
-				RegistryTrust.LOCAL,
-				{ infer: [], mutation: ["r/item.beforeWrite.0.js"] },
-				async () => true,
-			),
+			assertScriptsAllowed(RegistryTrust.LOCAL, {
+				infer: [],
+				mutation: ["r/item.beforeWrite.0.js"],
+			}),
 		).resolves.toEqual({ allowInfer: false, allowMutation: true });
 
 		await expect(

@@ -9,6 +9,7 @@ export {
 } from "./condition-kind";
 export {
 	InvalidJsonError,
+	isDirectoryAsync,
 	isFileAsync,
 	isMissingPathError,
 	lstatAsync,

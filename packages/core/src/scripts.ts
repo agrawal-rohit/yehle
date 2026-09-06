@@ -113,54 +113,31 @@ export function classifyRegistryTrust(
 
 /**
  * Decide whether scripts may run for this registry.
- * Bundled registries run without prompting; other local registries require confirmation;
- * remote HTTPS registries refuse mutation hooks and skip infer handlers.
+ * Local and bundled registries run scripts in the sandbox; remote HTTPS registries
+ * refuse mutation hooks and skip infer handlers.
  * @param trust - Registry trust classification.
  * @param scripts - Infer and mutation URIs that would run for this install.
- * @param confirm - Prompt used for non-bundled local registries.
  * @returns Which script kinds may load.
- * @throws Error when mutation hooks are required from a remote registry, or the user declines.
+ * @throws Error when mutation hooks are required from a remote registry.
  */
 export async function assertScriptsAllowed(
 	trust: RegistryTrust,
 	scripts: DeclaredScriptUris,
-	confirm?: (message: string) => Promise<boolean>,
 ): Promise<ScriptExecutionPolicy> {
-	const denied: ScriptExecutionPolicy = {
-		allowInfer: false,
-		allowMutation: false,
-	};
-	const executable = uniqueSorted([...scripts.infer, ...scripts.mutation]);
-	if (executable.length === 0) return denied;
-
-	const policyForAllowed = (): ScriptExecutionPolicy => ({
-		allowInfer: scripts.infer.length > 0,
-		allowMutation: scripts.mutation.length > 0,
-	});
-
 	switch (trust) {
 		case RegistryTrust.REMOTE:
+			// Infer handlers are skipped on remote registries; mutation hooks are refused.
 			if (scripts.mutation.length > 0)
 				throw new Error(
 					"Registry scripts require a local registry. Remote HTTPS registries cannot execute custom scripts.",
 				);
-			return denied;
+			return { allowInfer: false, allowMutation: false };
 		case RegistryTrust.BUNDLED:
-			return policyForAllowed();
-		case RegistryTrust.LOCAL: {
-			const listing = executable.map((uri) => `  - ${uri}`).join("\n");
-			const message = `This local registry wants to run ${executable.length} script(s):\n${listing}\nAllow script execution?`;
-			if (!confirm)
-				throw new Error(
-					`${message}\nConfirmation is required before running scripts from a non-bundled local registry.`,
-				);
-			const allowed = await confirm(message);
-			if (!allowed)
-				throw new Error(
-					"Script execution was declined. Confirm when prompted, or omit items that declare scripts.",
-				);
-			return policyForAllowed();
-		}
+		case RegistryTrust.LOCAL:
+			return {
+				allowInfer: scripts.infer.length > 0,
+				allowMutation: scripts.mutation.length > 0,
+			};
 		default: {
 			const exhaustive: never = trust;
 			throw new Error(`Unhandled registry trust: ${String(exhaustive)}`);
@@ -480,7 +457,7 @@ export function collectRegistryArtifactUris(registry: Registry): {
 const SCRIPT_TIMEOUT_MS = 60_000;
 
 type ScriptExportShape = "function" | "condition-handler" | "unknown";
-type HostMethod = "isFile" | "readFile" | "run";
+type HostMethod = "isFile" | "isDirectory" | "readFile" | "run";
 
 /** IPC request from the sandboxed child to the parent. */
 type ChildRequest =
@@ -556,10 +533,15 @@ function isStringArray(value: unknown): value is string[] {
 /**
  * Check whether a value is one of the supported host helper method names.
  * @param value - Candidate method name.
- * @returns True when value is isFile, readFile, or run.
+ * @returns True when value is isFile, isDirectory, readFile, or run.
  */
 function isHostMethod(value: unknown): value is HostMethod {
-	return value === "isFile" || value === "readFile" || value === "run";
+	return (
+		value === "isFile" ||
+		value === "isDirectory" ||
+		value === "readFile" ||
+		value === "run"
+	);
 }
 
 /**
@@ -905,11 +887,12 @@ async function invokeHostMethod(
 
 	// Keep host dependencies lazy: the sandbox child cannot read package dependencies before IPC mediation.
 	const { createHandlerRuntime } = await import("./handlers");
-	const { isFileAsync, readFileAsync } = await import("./fs");
+	const { isFileAsync, isDirectoryAsync, readFileAsync } = await import("./fs");
 	const { runAsync } = await import("./shell");
 
 	const runtime = createHandlerRuntime(projectDir, {
 		isFile: isFileAsync,
+		isDirectory: isDirectoryAsync,
 		readFile: readFileAsync,
 		run: (command) =>
 			runAsync(command, {
@@ -922,6 +905,8 @@ async function invokeHostMethod(
 	switch (method) {
 		case "isFile":
 			return runtime.isFile(argument);
+		case "isDirectory":
+			return runtime.isDirectory(argument);
 		case "readFile":
 			return runtime.readFile(argument);
 		case "run": {
@@ -1087,6 +1072,7 @@ function installChildIpc(send: (message: ChildRequest) => void): {
 		serialized: SerializedHandlerContext,
 	) => SerializedHandlerContext & {
 		isFile: (filePath: string) => Promise<boolean>;
+		isDirectory: (filePath: string) => Promise<boolean>;
 		readFile: (filePath: string) => Promise<string>;
 		run: (command: string) => Promise<string>;
 	};
@@ -1148,6 +1134,8 @@ function installChildIpc(send: (message: ChildRequest) => void): {
 			...serialized,
 			isFile: async (filePath: string) =>
 				Boolean(await hostCall("isFile", [filePath])),
+			isDirectory: async (filePath: string) =>
+				Boolean(await hostCall("isDirectory", [filePath])),
 			readFile: async (filePath: string) =>
 				String(await hostCall("readFile", [filePath])),
 			run: async (command: string) => String(await hostCall("run", [command])),

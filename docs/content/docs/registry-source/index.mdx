@@ -193,7 +193,7 @@ Remote HTTPS registries cannot execute custom scripts or condition `infer` handl
 Install hooks and condition `infer` handlers are treated as executable code:
 
 - **Bundled registry** (shipped with the CLI): scripts run by default.
-- **Other local registries** (`--registry`, cwd `registry.json`, saved config): scripts require confirmation.
+- **Other local registries** (`--registry`, cwd `registry.json`, saved config): scripts run by default.
 - **Remote HTTPS registries**: scripts never run.
 
 Compiled registries include `scriptIntegrity` and `itemIntegrity` maps (`sha256-<base64>`). The CLI verifies digests before loading scripts or compiled items. Hooks run in a permissioned child process (Node's permission model denies filesystem writes and child_process; network denial depends on the Node version). `ctx.isFile` / `ctx.readFile` are confined to the project directory, and `ctx.run` is parent-mediated with a sanitized environment.

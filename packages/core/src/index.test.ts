@@ -4,6 +4,7 @@ import * as core from "./index";
 describe("package entry", () => {
 	it("re-exports the public core API", () => {
 		expect(typeof core.isFileAsync).toBe("function");
+		expect(typeof core.isDirectoryAsync).toBe("function");
 		expect(typeof core.isMissingPathError).toBe("function");
 		expect(typeof core.pathKindAsync).toBe("function");
 		expect(core.PathKind).toBeDefined();

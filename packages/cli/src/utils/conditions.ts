@@ -17,6 +17,7 @@ import {
 	type RegistryPackageManager,
 	type RequiredCondition,
 } from "@tuckshop/core";
+import { primaryText } from "../cli/labels";
 import {
 	confirmInput,
 	multiselectInput,
@@ -96,7 +97,66 @@ async function promptMultiselectCondition(
 }
 
 /**
+ * Reject a reserved skip value on an optional select condition.
+ * @param condition - Select condition to validate.
+ * @param skipValue - Reserved skip value.
+ * @throws Error when the condition offers the reserved skip value.
+ */
+function assertNoReservedSkipValue(
+	condition: RequiredCondition,
+	skipValue: string,
+): void {
+	if (
+		condition.optional === true &&
+		condition.values.some((entry) => entry.value === skipValue)
+	)
+		throw new Error(
+			`Condition "${condition.key}" value "${skipValue}" is reserved for skipping optional selects.`,
+		);
+}
+
+/**
+ * Confirm an inferred select value with the user.
+ * @param condition - Select condition being captured.
+ * @param inferred - Value suggested by a condition handler.
+ * @returns True when the user accepts the inferred value.
+ */
+async function confirmInferredSelectValue(
+	condition: RequiredCondition,
+	inferred: string,
+): Promise<boolean> {
+	const matchedOption = condition.values.find(
+		(entry) => entry.value === inferred,
+	);
+	if (!matchedOption) return false;
+
+	const label = matchedOption.label || matchedOption.value;
+	return confirmInput(
+		`Detected ${primaryText(label)} for ${primaryText(condition.label)}. Use this?`,
+		{},
+		true,
+	);
+}
+
+/**
+ * Build select options, appending the skip choice for optional conditions.
+ * @param condition - Select condition to offer.
+ * @param skipValue - Reserved skip value appended when optional.
+ * @returns Options for the select prompt.
+ */
+function selectOptionsWithSkip(
+	condition: RequiredCondition,
+	skipValue: string,
+): Array<{ label: string; value: string }> {
+	const options = conditionSelectOptions(condition);
+	return condition.optional === true
+		? [...options, { label: skipValue, value: skipValue }]
+		: options;
+}
+
+/**
  * Capture a select condition via sole-option auto-select or a select prompt.
+ * When a value was inferred by a condition handler, prompts for confirmation first and falls back to manual selection if the user declines.
  * @param condition - Select condition to capture.
  * @param promptMessage - Message shown to the user.
  * @param inferred - Optional default from a condition handler.
@@ -109,29 +169,24 @@ async function promptSelectCondition(
 ): Promise<string | undefined> {
 	assertSelectableValues(condition);
 	const skipValue = "None";
-	const optional = condition.optional === true;
-	if (optional && condition.values.some((entry) => entry.value === skipValue))
-		throw new Error(
-			`Condition "${condition.key}" value "${skipValue}" is reserved for skipping optional selects.`,
-		);
+	assertNoReservedSkipValue(condition, skipValue);
 
-	const sole = soleOptionValue(condition, optional);
+	const sole = soleOptionValue(condition, condition.optional === true);
 	if (sole !== undefined) return sole;
 
-	const options = optional
-		? [
-				...conditionSelectOptions(condition),
-				{ label: skipValue, value: skipValue },
-			]
-		: conditionSelectOptions(condition);
+	if (
+		typeof inferred === "string" &&
+		(await confirmInferredSelectValue(condition, inferred))
+	)
+		return inferred;
 
 	const selected = await selectInput<string>(
 		promptMessage,
-		{ options },
+		{ options: selectOptionsWithSkip(condition, skipValue) },
 		typeof inferred === "string" ? inferred : undefined,
 	);
 
-	if (optional && selected === skipValue) return undefined;
+	if (condition.optional === true && selected === skipValue) return undefined;
 	return selected;
 }
 

@@ -344,6 +344,7 @@ describe("utils/conditions", () => {
 			{
 				projectDir: "/tmp/project",
 				isFile: async () => false,
+				isDirectory: async () => false,
 				readFile: async () => "",
 				run: async () => "",
 			},
@@ -446,6 +447,7 @@ describe("utils/conditions", () => {
 			{
 				projectDir: "/tmp/project",
 				isFile: async () => false,
+				isDirectory: async () => false,
 				readFile: async () => "",
 				run: async () => "",
 			},
@@ -482,6 +484,7 @@ describe("utils/conditions", () => {
 				{
 					projectDir: "/tmp/project",
 					isFile: async () => false,
+					isDirectory: async () => false,
 					readFile: async () => "",
 					run: async () => "",
 				},
@@ -525,6 +528,100 @@ describe("utils/conditions", () => {
 			),
 		).rejects.toThrow(
 			'Condition "language" value "None" is reserved for skipping optional selects.',
+		);
+	});
+
+	it("prompts to confirm an inferred select value when detected", async () => {
+		mockConfirmInput.mockResolvedValue(true);
+		const registry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			conditions: {
+				codingAgentIDE: {
+					kind: RegistryConditionKind.SELECT,
+					label: "Coding agent",
+					default: "cursor",
+					values: [
+						{ value: "cursor", label: "Cursor" },
+						{ value: "claude-code", label: "Claude Code" },
+					],
+				},
+			},
+			items: {
+				demo: {
+					title: "Demo",
+					description: "Demo",
+					type: "configuration",
+					source: "r/demo.json",
+					requires: ["codingAgentIDE"],
+				},
+			},
+		};
+
+		const context = await captureRequiredConditions(
+			registry,
+			"/tmp/registry.json",
+			"/tmp/project",
+			["demo"],
+		);
+
+		expect(context).toEqual({ codingAgentIDE: "cursor" });
+		expect(mockConfirmInput).toHaveBeenCalledWith(
+			expect.stringContaining("Detected"),
+			{},
+			true,
+		);
+		expect(mockSelectInput).not.toHaveBeenCalled();
+	});
+
+	it("falls back to full select prompt when user declines inferred select value", async () => {
+		mockConfirmInput.mockResolvedValue(false);
+		mockSelectInput.mockResolvedValue("claude-code");
+		const registry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			conditions: {
+				codingAgentIDE: {
+					kind: RegistryConditionKind.SELECT,
+					label: "Coding agent",
+					default: "cursor",
+					values: [
+						{ value: "cursor", label: "Cursor" },
+						{ value: "claude-code", label: "Claude Code" },
+					],
+				},
+			},
+			items: {
+				demo: {
+					title: "Demo",
+					description: "Demo",
+					type: "configuration",
+					source: "r/demo.json",
+					requires: ["codingAgentIDE"],
+				},
+			},
+		};
+
+		const context = await captureRequiredConditions(
+			registry,
+			"/tmp/registry.json",
+			"/tmp/project",
+			["demo"],
+		);
+
+		expect(context).toEqual({ codingAgentIDE: "claude-code" });
+		expect(mockConfirmInput).toHaveBeenCalledWith(
+			expect.stringContaining("Detected"),
+			{},
+			true,
+		);
+		expect(mockSelectInput).toHaveBeenCalledWith(
+			"Coding agent",
+			{
+				options: [
+					{ label: "Cursor", value: "cursor" },
+					{ label: "Claude Code", value: "claude-code" },
+				],
+			},
+			"cursor",
 		);
 	});
 });

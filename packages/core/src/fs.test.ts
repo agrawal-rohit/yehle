@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
 	InvalidJsonError,
+	isDirectoryAsync,
 	isFileAsync,
 	isMissingPathError,
 	lstatAsync,
@@ -121,6 +122,39 @@ describe("core/fs", () => {
 			);
 
 			await expect(isFileAsync("/tmp/forbidden")).rejects.toThrow(
+				"permission denied",
+			);
+		});
+	});
+
+	describe("isDirectoryAsync", () => {
+		it("returns true when path is a directory", async () => {
+			const root = makeTempDir();
+
+			await expect(isDirectoryAsync(root)).resolves.toBe(true);
+		});
+
+		it("returns false when path does not exist", async () => {
+			const root = makeTempDir();
+			const missing = path.join(root, "missing-dir");
+
+			await expect(isDirectoryAsync(missing)).resolves.toBe(false);
+		});
+
+		it("returns false when path is a file", async () => {
+			const root = makeTempDir();
+			const file = path.join(root, "file.txt");
+			fs.writeFileSync(file, "content", "utf8");
+
+			await expect(isDirectoryAsync(file)).resolves.toBe(false);
+		});
+
+		it("rethrows filesystem errors other than missing paths", async () => {
+			vi.spyOn(fs.promises, "stat").mockRejectedValueOnce(
+				Object.assign(new Error("permission denied"), { code: "EACCES" }),
+			);
+
+			await expect(isDirectoryAsync("/tmp/forbidden")).rejects.toThrow(
 				"permission denied",
 			);
 		});

@@ -77,6 +77,20 @@ export async function isFileAsync(filePath: string): Promise<boolean> {
 }
 
 /**
+ * Check whether a path exists and refers to a directory (not a file).
+ * @param filePath - Absolute or relative path to check.
+ * @returns Promise resolving to true when the path is a directory, false otherwise.
+ */
+export async function isDirectoryAsync(filePath: string): Promise<boolean> {
+	try {
+		return (await fs.stat(filePath)).isDirectory();
+	} catch (error) {
+		if (isMissingPathError(error)) return false;
+		throw error;
+	}
+}
+
+/**
  * Read a UTF-8 text file.
  * @param filePath - Absolute or relative path to the file.
  * @returns File contents.
