@@ -932,12 +932,11 @@ describe("core/schema", () => {
 			});
 		});
 
-		it("rejects absolute, URL, and parent-escape install script paths", () => {
+		it("rejects absolute, URL, and backslash install script paths", () => {
 			const { packs: _packs, ...withoutPacks } = validItem();
 			for (const script of [
 				"/abs/handler.ts",
 				"https://evil.example/h.js",
-				"../evil.ts",
 				"r\\x.ts",
 			]) {
 				expect(
@@ -947,6 +946,22 @@ describe("core/schema", () => {
 					}),
 				).toBe(`invalid_script:${script}`);
 			}
+		});
+
+		it("accepts parent-relative install script paths", () => {
+			const { packs: _packs, ...withoutPacks } = validItem();
+			expect(
+				registryItemSchema.parse({
+					...withoutPacks,
+					beforeWrite: "../transform-agent-rule.before-write.ts",
+				}),
+			).toEqual({
+				id: "button",
+				title: "Button",
+				description: "A button",
+				type: "component",
+				beforeWrite: ["../transform-agent-rule.before-write.ts"],
+			});
 		});
 
 		it("keeps requires and item-level conditions maps", () => {

@@ -211,10 +211,11 @@ async function compileInstallPhaseList(
 	const compiled: string[] = [];
 	for (const [scriptIndex, entry] of entries.entries()) {
 		const entryPath = joinRelativePathUnderRoot(
-			itemDir,
+			config.sourceDir,
 			entry,
 			`Registry item "${itemId}" ${phase} script`,
-			"item folder",
+			"registry source",
+			itemDir,
 		);
 		const uri =
 			packId === undefined
@@ -489,7 +490,6 @@ async function compileConditionHandlers(
 		handlerUri: (key: string) => string;
 		entryLabel: (key: string) => string;
 		bundleLabel: (key: string) => string;
-		rootLabel: string;
 	},
 ): Promise<Record<string, RegistryCondition> | undefined> {
 	if (!conditions || Object.keys(conditions).length === 0) return undefined;
@@ -505,10 +505,11 @@ async function compileConditionHandlers(
 
 		const uri = options.handlerUri(key);
 		const entryPath = joinRelativePathUnderRoot(
-			rootDir,
+			config.sourceDir,
 			condition.handler,
 			options.entryLabel(key),
-			options.rootLabel,
+			"registry source",
+			rootDir,
 		);
 		writes.push(
 			bundleScript(
@@ -606,7 +607,6 @@ async function compileItemIndexArtifacts(
 			entryLabel: (key) =>
 				`Registry item "${item.id}" condition "${key}" handler`,
 			bundleLabel: (key) => `Registry item "${item.id}" condition "${key}"`,
-			rootLabel: "item folder",
 		}),
 	]);
 
@@ -817,7 +817,6 @@ export async function buildRegistry(
 				`${config.compiledDirName}/_handlers/${key}.handler.js`,
 			entryLabel: (key) => `Registry condition "${key}" handler`,
 			bundleLabel: (key) => `Registry condition "${key}"`,
-			rootLabel: "registry source",
 		},
 	);
 	const document = parseRegistryDocument({

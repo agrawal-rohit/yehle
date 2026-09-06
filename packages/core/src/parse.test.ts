@@ -1151,7 +1151,7 @@ describe("registry/parse", () => {
 					"Registry item",
 				),
 			).toThrow(
-				'Registry item.beforeWrite must be a relative path under the registry (no absolute paths, URLs, or "..").',
+				"Registry item.beforeWrite must be a relative path under the registry (no absolute paths or URLs).",
 			);
 		});
 

@@ -154,6 +154,7 @@ export {
 	assertSameOriginIndexSource,
 	isAbsoluteHttpUrl,
 	isEscapingRelativePath,
+	isNonRelativePath,
 	joinIndexSource,
 	joinRelativePathUnderRoot,
 	publishedRegistryUrl,

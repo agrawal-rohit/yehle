@@ -902,6 +902,7 @@ async function invokeHostMethod(
 	args: unknown,
 ): Promise<unknown> {
 	const argument = hostMethodArgument(args, method);
+
 	// Keep host dependencies lazy: the sandbox child cannot read package dependencies before IPC mediation.
 	const { createHandlerRuntime } = await import("./handlers");
 	const { isFileAsync, readFileAsync } = await import("./fs");

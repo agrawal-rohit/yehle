@@ -11,19 +11,29 @@ export function isAbsoluteHttpUrl(value: string): boolean {
 }
 
 /**
+ * True when a path is absolute, uses backslashes, or is an HTTP(S) URL.
+ * Parent segments (`..`) are allowed; callers that need a containment root must
+ * resolve the path and check it with {@link joinRelativePathUnderRoot}.
+ * @param value - Candidate path.
+ * @returns Whether the path is not a relative POSIX path.
+ */
+export function isNonRelativePath(value: string): boolean {
+	return (
+		value.startsWith("/") ||
+		value.includes("\\") ||
+		isAbsoluteHttpUrl(value) ||
+		/^[a-zA-Z]:/.test(value)
+	);
+}
+
+/**
  * True when a relative path would escape its root or is an absolute/URL form.
  * The checks are platform-independent so registry documents validate identically on every OS.
  * @param value - Candidate relative path.
  * @returns Whether the path is unsafe as a registry or project-relative path.
  */
 export function isEscapingRelativePath(value: string): boolean {
-	return (
-		value.startsWith("/") ||
-		value.includes("\\") ||
-		value.split("/").includes("..") ||
-		isAbsoluteHttpUrl(value) ||
-		/^[a-zA-Z]:/.test(value)
-	);
+	return isNonRelativePath(value) || value.split("/").includes("..");
 }
 
 /**
@@ -148,28 +158,40 @@ export function assertSinglePathSegment(label: string, value: string): void {
 
 /**
  * Join a relative path under a root directory, rejecting escapes and absolute inputs.
+ * Pass `fromDir` when the path is relative to a nested folder (e.g. an item folder)
+ * but must still stay under `rootDir` (e.g. the registry source). That allows `..`
+ * to reach a parent folder without leaving the containment root.
  * @param rootDir - Absolute directory the result must stay under.
  * @param relativePath - Candidate relative path (may include surrounding whitespace).
  * @param label - Noun phrase used in error messages (e.g. `"Compiled item file target"`).
  * @param rootLabel - Human label for the root (e.g. `"project directory"`).
+ * @param fromDir - Directory to resolve `relativePath` against. Defaults to `rootDir`.
+ *   When set, `..` segments are allowed as long as the resolved path stays under `rootDir`.
  * @returns Absolute path under `rootDir`.
- * @throws Error when the path is empty, absolute, uses `..`, or escapes `rootDir`.
+ * @throws Error when the path is empty, absolute, or escapes `rootDir`.
  */
 export function joinRelativePathUnderRoot(
 	rootDir: string,
 	relativePath: string,
 	label: string,
 	rootLabel: string,
+	fromDir: string = rootDir,
 ): string {
 	const trimmed = relativePath.trim();
 	if (!trimmed) throw new Error(`${label} must not be empty.`);
 
-	if (isEscapingRelativePath(trimmed))
+	// Nested fromDir: allow `..` so scripts can live in a parent folder of the caller.
+	// Same-dir joins keep the lexical `..` ban so catalog URIs cannot walk out of `r/`.
+	const unsafe =
+		fromDir === rootDir
+			? isEscapingRelativePath(trimmed)
+			: isNonRelativePath(trimmed);
+	if (unsafe)
 		throw new Error(
 			`${label} "${relativePath}" must be a relative path under the ${rootLabel}.`,
 		);
 
-	const absolutePath = path.resolve(rootDir, trimmed);
+	const absolutePath = path.resolve(fromDir, trimmed);
 	const relative = path.relative(rootDir, absolutePath);
 	if (relative.startsWith("..") || path.isAbsolute(relative))
 		throw new Error(`${label} "${relativePath}" escapes the ${rootLabel}.`);

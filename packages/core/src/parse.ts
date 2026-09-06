@@ -69,7 +69,7 @@ function messageForCustomIssue(
 		"invalid_id:": () =>
 			String.raw`${fieldLabel} must be a single path segment (no "/", "\", or "..").`,
 		"invalid_script:": () =>
-			`${fieldLabel} must be a relative path under the registry (no absolute paths, URLs, or "..").`,
+			`${fieldLabel} must be a relative path under the registry (no absolute paths or URLs).`,
 		missing_files_or_packs: () =>
 			`${label} must declare files, an install script (beforeWrite/afterInstall), or at least one pack.`,
 		missing_source_or_packs: () =>

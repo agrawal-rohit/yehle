@@ -1055,6 +1055,52 @@ export default async function beforeWrite() {
 		await expect(runBuild()).rejects.toThrow("missing script");
 	});
 
+	it("bundles an install script that lives in a parent folder of the item", async () => {
+		writeItem(
+			tempDir,
+			"configuration/license",
+			{
+				id: "license",
+				title: "License",
+				description: "SPDX license",
+				type: "configuration",
+				beforeWrite: "../shared.before-write.ts",
+			},
+			{},
+		);
+		fs.writeFileSync(
+			path.join(tempDir, "registry/configuration/shared.before-write.ts"),
+			'export default async function beforeWrite() { return { bindings: { ok: "1" } }; }\n',
+		);
+
+		const document = await runBuild();
+		expect(document.items.license.beforeWrite).toEqual([
+			"r/license.beforeWrite.0.js",
+		]);
+		expect(
+			fs.existsSync(path.join(tempDir, "r/license.beforeWrite.0.js")),
+		).toBe(true);
+	});
+
+	it("rejects an install script that escapes the registry source", async () => {
+		writeItem(
+			tempDir,
+			"configuration/nested/license",
+			{
+				id: "license",
+				title: "License",
+				description: "Escaping script",
+				type: "configuration",
+				beforeWrite: "../../../../outside.ts",
+			},
+			{},
+		);
+
+		await expect(runBuild()).rejects.toThrow(
+			'Registry item "license" beforeWrite script "../../../../outside.ts" escapes the registry source.',
+		);
+	});
+
 	it("rejects an install script that fails to bundle", async () => {
 		writeItem(
 			tempDir,

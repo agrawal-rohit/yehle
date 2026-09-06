@@ -66,5 +66,5 @@
 			"handler": "copyright-year.ts"
 		}
 	},
-	"beforeWrite": "handler.ts"
+	"beforeWrite": "render-license-file.before-write.ts"
 }

@@ -3,7 +3,7 @@ import {
 	policyForConditionKind,
 	RegistryConditionKind,
 } from "./condition-kind";
-import { isEscapingRelativePath } from "./urls";
+import { isEscapingRelativePath, isNonRelativePath } from "./urls";
 
 /** Catalog type key reserved for the CLI `--type all` filter. */
 export const RESERVED_CATALOG_TYPE_KEY = "all";
@@ -112,12 +112,18 @@ function optionalNonEmptyString() {
 
 /**
  * Non-empty relative path that cannot escape its root.
+ * Script paths may include `..` so a shared hook can live in a parent folder;
+ * file paths may not. Absolute paths, URLs, and backslashes are always rejected.
  * @param issuePrefix - Custom issue prefix (`invalid_script` or `invalid_path`).
  * @returns Zod string schema.
  */
 function relativePathSchema(issuePrefix: "invalid_script" | "invalid_path") {
 	return nonEmptyString.superRefine((value, context) => {
-		if (isEscapingRelativePath(value))
+		const invalid =
+			issuePrefix === "invalid_script"
+				? isNonRelativePath(value)
+				: isEscapingRelativePath(value);
+		if (invalid)
 			context.addIssue({
 				code: "custom",
 				message: `${issuePrefix}:${value}`,
@@ -125,7 +131,7 @@ function relativePathSchema(issuePrefix: "invalid_script" | "invalid_path") {
 	});
 }
 
-/** Relative path to a colocated script or compiled script URI under the index. */
+/** Relative path to an item script (may use `..` under the registry) or compiled script URI. */
 const registryScriptPathSchema = relativePathSchema("invalid_script");
 
 /** Relative file path under the registry (source) or consuming project (target). */
@@ -133,7 +139,8 @@ const relativeFilePathSchema = relativePathSchema("invalid_path");
 
 /**
  * Optional install-phase field accepting one script path or a non-empty list.
- * Every entry is a colocated or compiled script — never a registry item id.
+ * Every entry is a registry script path (item-relative, `..` allowed within the
+ * registry source) or a compiled script URI — never a registry item id.
  * @returns Zod schema normalised to a string array or undefined.
  */
 function optionalInstallPhaseList() {
@@ -673,9 +680,9 @@ const packSharedFields = {
 	when: registryWhenSchema,
 	/** Other registry items this pack depends on. */
 	dependsOn: optionalNonEmptyArray(nonEmptyString),
-	/** Colocated scripts that mutate the install plan before files are written. */
+	/** Scripts relative to the item folder that mutate the install plan before files are written. */
 	beforeWrite: optionalInstallPhaseList(),
-	/** Colocated scripts that run side effects after files and packages are applied. */
+	/** Scripts relative to the item folder that run side effects after files and packages are applied. */
 	afterInstall: optionalInstallPhaseList(),
 };
 
@@ -732,9 +739,9 @@ const itemSharedFields = {
 	conditions: optionalConditionMap,
 	/** Other registry items this item depends on. */
 	dependsOn: optionalNonEmptyArray(nonEmptyString),
-	/** Colocated scripts that mutate the install plan before files are written. */
+	/** Scripts relative to the item folder that mutate the install plan before files are written. */
 	beforeWrite: optionalInstallPhaseList(),
-	/** Colocated scripts that run side effects after files and packages are applied. */
+	/** Scripts relative to the item folder that run side effects after files and packages are applied. */
 	afterInstall: optionalInstallPhaseList(),
 };
 

@@ -26,6 +26,8 @@ describe("package entry", () => {
 		expect(typeof core.collectDeclaredScriptUris).toBe("function");
 		expect(typeof core.createRejectedScriptExecutor).toBe("function");
 		expect(typeof core.joinRelativePathUnderRoot).toBe("function");
+		expect(typeof core.isEscapingRelativePath).toBe("function");
+		expect(typeof core.isNonRelativePath).toBe("function");
 		expect(typeof core.detectPackageManagerFromLockfile).toBe("function");
 		expect(typeof core.selectPackageManager).toBe("function");
 		expect(typeof core.catalogNeedsPackageManager).toBe("function");

@@ -5,6 +5,7 @@ import {
 	assertSinglePathSegment,
 	isAbsoluteHttpUrl,
 	isEscapingRelativePath,
+	isNonRelativePath,
 	joinIndexSource,
 	joinRelativePathUnderRoot,
 	publishedRegistryUrl,
@@ -54,6 +55,21 @@ describe("isEscapingRelativePath", () => {
 	it("rejects absolute URLs", () => {
 		expect(isEscapingRelativePath("https://example.com/item.json")).toBe(true);
 		expect(isEscapingRelativePath("http://example.com/item.json")).toBe(true);
+	});
+});
+
+describe("isNonRelativePath", () => {
+	it("accepts relative paths including parent segments", () => {
+		expect(isNonRelativePath("foo/bar.ts")).toBe(false);
+		expect(isNonRelativePath("../shared.ts")).toBe(false);
+		expect(isNonRelativePath("foo/../bar.ts")).toBe(false);
+	});
+
+	it("rejects absolute, backslash, Windows, and URL paths", () => {
+		expect(isNonRelativePath("/abs.ts")).toBe(true);
+		expect(isNonRelativePath("foo\\bar.ts")).toBe(true);
+		expect(isNonRelativePath("C:/foo.ts")).toBe(true);
+		expect(isNonRelativePath("https://example.com/h.js")).toBe(true);
 	});
 });
 
@@ -206,6 +222,30 @@ describe("joinRelativePathUnderRoot", () => {
 				"registry directory",
 			),
 		).toThrow("must be a relative path under the registry directory");
+	});
+
+	it("allows parent segments when resolved from a nested folder under the root", () => {
+		expect(
+			joinRelativePathUnderRoot(
+				"/tmp/root",
+				"../shared.ts",
+				"Script",
+				"registry source",
+				"/tmp/root/agent-instructions/code-standards",
+			),
+		).toBe(path.join("/tmp/root", "agent-instructions/shared.ts"));
+	});
+
+	it("rejects parent segments that escape the containment root", () => {
+		expect(() =>
+			joinRelativePathUnderRoot(
+				"/tmp/root",
+				"../../../etc/passwd",
+				"Script",
+				"registry source",
+				"/tmp/root/agent-instructions/code-standards",
+			),
+		).toThrow('Script "../../../etc/passwd" escapes the registry source.');
 	});
 });
 
