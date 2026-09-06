@@ -205,6 +205,78 @@ describe("commands/add", () => {
 		);
 	});
 
+	it("re-walks candidates when the selected package manager drops pack dependsOn", async () => {
+		const packRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			items: {
+				"eslint-npm": {
+					title: "ESLint for npm",
+					description: "npm-only eslint pack dependency",
+					type: "configuration",
+					source: "r/eslint-npm.json",
+				},
+				tooling: {
+					title: "Tooling",
+					description: "Tooling with package-manager packs",
+					type: "configuration",
+					source: "r/tooling.json",
+					packs: [
+						{
+							id: "npm",
+							title: "npm",
+							source: "r/tooling.npm.json",
+							when: { packageManager: "npm" },
+							dependsOn: ["eslint-npm"],
+						},
+					],
+				},
+			},
+		};
+
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "tooling",
+				sources: ["r/tooling.json"],
+			},
+		]);
+		mockLoadCompiledItems.mockResolvedValue(
+			new Map([
+				[
+					"r/tooling.json",
+					{ files: [{ target: "tooling.txt", content: "tooling" }] },
+				],
+			]),
+		);
+
+		await addCommand(packRegistry, indexLocation, {
+			items: ["tooling"],
+			overwrite: true,
+		});
+
+		expect(mockPrepareScriptExecution).toHaveBeenCalledWith(
+			expect.objectContaining({
+				itemIds: ["tooling"],
+				packageManager: "pnpm",
+			}),
+		);
+		expect(mockPrepareScriptExecution).not.toHaveBeenCalledWith(
+			expect.objectContaining({
+				itemIds: expect.arrayContaining(["eslint-npm"]),
+			}),
+		);
+		expect(mockBuildInstallPlan).toHaveBeenCalledWith(
+			["tooling"],
+			packRegistry.items,
+			expect.anything(),
+			"pnpm",
+		);
+		expect(mockLoadCompiledItems).not.toHaveBeenCalledWith(
+			expect.anything(),
+			expect.arrayContaining(["r/eslint-npm.json"]),
+			expect.anything(),
+		);
+	});
+
 	it("narrows script permission to pinned pack dependencies", async () => {
 		const packRegistry: Registry = {
 			types: { configuration: { label: "Configurations" } },
@@ -2054,5 +2126,347 @@ module.exports = async function beforeWrite() {
 		).rejects.toThrow(
 			'Condition "language" declares conflicting interpolation option values ("left" and "right").',
 		);
+	});
+
+	it("rejects conflicting shared and item-local interpolation option values", async () => {
+		mockBuildInstallPlan.mockReturnValue([
+			{ itemId: "demo", sources: ["r/demo.json"] },
+		]);
+		mockLoadCompiledItems.mockResolvedValue(
+			new Map([
+				["r/demo.json", { files: [{ target: "DEMO.md", content: "demo" }] }],
+			]),
+		);
+
+		const conflictRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			conditions: {
+				language: {
+					kind: RegistryConditionKind.SELECT,
+					label: "Language",
+					values: [{ value: "typescript", label: "TypeScript" }],
+				},
+			},
+			items: {
+				demo: {
+					title: "Demo",
+					description: "Demo item",
+					type: "configuration",
+					source: "r/demo.json",
+					conditions: {
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [{ value: "javascript", label: "JavaScript" }],
+						},
+					},
+				},
+			},
+		};
+
+		await expect(
+			addCommand(conflictRegistry, indexLocation, {
+				items: ["demo"],
+				overwrite: true,
+			}),
+		).rejects.toThrow(
+			'Condition "language" declares conflicting interpolation option values (shared conditions and "demo").',
+		);
+	});
+
+	it("rejects interpolation option values that only differ by bindings", async () => {
+		mockBuildInstallPlan.mockReturnValue([
+			{ itemId: "left", sources: ["r/left.json"] },
+			{ itemId: "right", sources: ["r/right.json"] },
+		]);
+		mockLoadCompiledItems.mockResolvedValue(
+			new Map([
+				["r/left.json", { files: [{ target: "LEFT.md", content: "left" }] }],
+				["r/right.json", { files: [{ target: "RIGHT.md", content: "right" }] }],
+			]),
+		);
+
+		const conflictRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			items: {
+				left: {
+					title: "Left",
+					description: "Left item",
+					type: "configuration",
+					source: "r/left.json",
+					conditions: {
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [
+								{
+									value: "typescript",
+									label: "TypeScript",
+									bindings: { ext: "ts" },
+								},
+							],
+						},
+					},
+				},
+				right: {
+					title: "Right",
+					description: "Right item",
+					type: "configuration",
+					source: "r/right.json",
+					conditions: {
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [
+								{
+									value: "typescript",
+									label: "TypeScript",
+									bindings: { ext: "tsx" },
+								},
+							],
+						},
+					},
+				},
+			},
+		};
+
+		await expect(
+			addCommand(conflictRegistry, indexLocation, {
+				items: ["left", "right"],
+				overwrite: true,
+			}),
+		).rejects.toThrow(
+			'Condition "language" declares conflicting interpolation option values ("left" and "right").',
+		);
+	});
+
+	it("rejects interpolation options when only the right side declares bindings", async () => {
+		mockBuildInstallPlan.mockReturnValue([
+			{ itemId: "left", sources: ["r/left.json"] },
+			{ itemId: "right", sources: ["r/right.json"] },
+		]);
+		mockLoadCompiledItems.mockResolvedValue(
+			new Map([
+				["r/left.json", { files: [{ target: "LEFT.md", content: "left" }] }],
+				["r/right.json", { files: [{ target: "RIGHT.md", content: "right" }] }],
+			]),
+		);
+
+		const conflictRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			items: {
+				left: {
+					title: "Left",
+					description: "Left item",
+					type: "configuration",
+					source: "r/left.json",
+					conditions: {
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [{ value: "typescript", label: "TypeScript" }],
+						},
+					},
+				},
+				right: {
+					title: "Right",
+					description: "Right item",
+					type: "configuration",
+					source: "r/right.json",
+					conditions: {
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [
+								{
+									value: "typescript",
+									label: "TypeScript",
+									bindings: { ext: "tsx" },
+								},
+							],
+						},
+					},
+				},
+			},
+		};
+
+		await expect(
+			addCommand(conflictRegistry, indexLocation, {
+				items: ["left", "right"],
+				overwrite: true,
+			}),
+		).rejects.toThrow(
+			'Condition "language" declares conflicting interpolation option values ("left" and "right").',
+		);
+	});
+
+	it("rejects interpolation options when only the left side declares bindings", async () => {
+		mockBuildInstallPlan.mockReturnValue([
+			{ itemId: "left", sources: ["r/left.json"] },
+			{ itemId: "right", sources: ["r/right.json"] },
+		]);
+		mockLoadCompiledItems.mockResolvedValue(
+			new Map([
+				["r/left.json", { files: [{ target: "LEFT.md", content: "left" }] }],
+				["r/right.json", { files: [{ target: "RIGHT.md", content: "right" }] }],
+			]),
+		);
+
+		const conflictRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			items: {
+				left: {
+					title: "Left",
+					description: "Left item",
+					type: "configuration",
+					source: "r/left.json",
+					conditions: {
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [
+								{
+									value: "typescript",
+									label: "TypeScript",
+									bindings: { ext: "ts" },
+								},
+							],
+						},
+					},
+				},
+				right: {
+					title: "Right",
+					description: "Right item",
+					type: "configuration",
+					source: "r/right.json",
+					conditions: {
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [{ value: "typescript", label: "TypeScript" }],
+						},
+					},
+				},
+			},
+		};
+
+		await expect(
+			addCommand(conflictRegistry, indexLocation, {
+				items: ["left", "right"],
+				overwrite: true,
+			}),
+		).rejects.toThrow(
+			'Condition "language" declares conflicting interpolation option values ("left" and "right").',
+		);
+	});
+
+	it("rejects interpolation option lists that differ only in length", async () => {
+		mockBuildInstallPlan.mockReturnValue([
+			{ itemId: "left", sources: ["r/left.json"] },
+			{ itemId: "right", sources: ["r/right.json"] },
+		]);
+		mockLoadCompiledItems.mockResolvedValue(
+			new Map([
+				["r/left.json", { files: [{ target: "LEFT.md", content: "left" }] }],
+				["r/right.json", { files: [{ target: "RIGHT.md", content: "right" }] }],
+			]),
+		);
+
+		const conflictRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			items: {
+				left: {
+					title: "Left",
+					description: "Left item",
+					type: "configuration",
+					source: "r/left.json",
+					conditions: {
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [
+								{ value: "typescript", label: "TypeScript" },
+								{ value: "javascript", label: "JavaScript" },
+							],
+						},
+					},
+				},
+				right: {
+					title: "Right",
+					description: "Right item",
+					type: "configuration",
+					source: "r/right.json",
+					conditions: {
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [{ value: "typescript", label: "TypeScript" }],
+						},
+					},
+				},
+			},
+		};
+
+		await expect(
+			addCommand(conflictRegistry, indexLocation, {
+				items: ["left", "right"],
+				overwrite: true,
+			}),
+		).rejects.toThrow(
+			'Condition "language" declares conflicting interpolation option values ("left" and "right").',
+		);
+	});
+
+	it("allows identical interpolation option arrays that share a reference", async () => {
+		const sharedValues = [{ value: "typescript", label: "TypeScript" }];
+		mockBuildInstallPlan.mockReturnValue([
+			{ itemId: "left", sources: ["r/left.json"] },
+			{ itemId: "right", sources: ["r/right.json"] },
+		]);
+		mockLoadCompiledItems.mockResolvedValue(
+			new Map([
+				["r/left.json", { files: [{ target: "LEFT.md", content: "left" }] }],
+				["r/right.json", { files: [{ target: "RIGHT.md", content: "right" }] }],
+			]),
+		);
+
+		const sharedRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			items: {
+				left: {
+					title: "Left",
+					description: "Left item",
+					type: "configuration",
+					source: "r/left.json",
+					conditions: {
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: sharedValues,
+						},
+					},
+				},
+				right: {
+					title: "Right",
+					description: "Right item",
+					type: "configuration",
+					source: "r/right.json",
+					conditions: {
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: sharedValues,
+						},
+					},
+				},
+			},
+		};
+
+		await addCommand(sharedRegistry, indexLocation, {
+			items: ["left", "right"],
+			overwrite: true,
+		});
+
+		expect(mockWriteFileAsync).toHaveBeenCalled();
 	});
 });

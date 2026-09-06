@@ -1,5 +1,7 @@
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	assertUniqueCompiledItemTargets,
 	buildPackageInstallCommands,
@@ -22,6 +24,15 @@ import {
 	uniqueSorted,
 } from "./packages";
 import { RegistryEcosystem } from "./schema";
+
+const createdDirs: string[] = [];
+
+afterEach(() => {
+	while (createdDirs.length > 0) {
+		const dir = createdDirs.pop();
+		if (dir) fs.rmSync(dir, { recursive: true, force: true });
+	}
+});
 
 describe("core/packages", () => {
 	describe("mergeEcosystemMaps with mergeDependencySet", () => {
@@ -89,6 +100,7 @@ describe("core/packages", () => {
 			expect(
 				mergeEcosystemMaps(mergeCommandSet, undefined, {}),
 			).toBeUndefined();
+			expect(mergeCommandSet({}, {})).toBeUndefined();
 		});
 
 		it("rejects empty and __proto__ command names", () => {
@@ -220,6 +232,15 @@ describe("core/packages", () => {
 			).toThrow(
 				'Compiled item file target "../secret.txt" must be a relative path (no absolute paths, URLs, or "..").',
 			);
+		});
+
+		it("rejects an empty target", () => {
+			expect(() =>
+				assertUniqueCompiledItemTargets(
+					[{ target: "", content: "x" }],
+					(target) => target,
+				),
+			).toThrow("Compiled item file target must be a non-empty relative path.");
 		});
 	});
 
@@ -456,6 +477,20 @@ describe("core/packages", () => {
 					() => false,
 				),
 			).rejects.toThrow('Unknown packageManager "pip"');
+		});
+
+		it("uses fs.existsSync when pathExists is omitted", async () => {
+			const projectDir = fs.mkdtempSync(
+				path.join(os.tmpdir(), "packages-select-"),
+			);
+			createdDirs.push(projectDir);
+			fs.writeFileSync(path.join(projectDir, "pnpm-lock.yaml"), "", "utf8");
+
+			await expect(
+				selectPackageManager(RegistryEcosystem.NPM, projectDir, {
+					select: vi.fn(),
+				}),
+			).resolves.toBe(NpmPackageManager.PNPM);
 		});
 	});
 

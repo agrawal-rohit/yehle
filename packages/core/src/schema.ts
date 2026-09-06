@@ -479,10 +479,9 @@ export const registryConditionSchema = z
 		if (rejectInvalidConditionMin(data, kind, context)) return;
 		if (requiresValues) {
 			if (rejectInvalidSelectableCondition(data, kind, context)) return;
-			if (
-				data.default !== undefined &&
-				!(data.values ?? []).some((entry) => entry.value === data.default)
-			) {
+			if (data.default === undefined) return;
+			// `values` is non-empty here: rejectInvalidSelectableCondition already returned.
+			if (!data.values!.some((entry) => entry.value === data.default)) {
 				addConditionIssue(context, `undeclared_default:${data.default}`);
 			}
 			return;

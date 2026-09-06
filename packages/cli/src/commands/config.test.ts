@@ -1,13 +1,23 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockTextInput = vi.fn();
+const mockReadJsonFileAsync = vi.fn();
 
 vi.mock("../cli/prompts", () => ({
 	textInput: (...args: unknown[]) => mockTextInput(...args),
 }));
+
+vi.mock("@tuckshop/core", async () => {
+	const actual =
+		await vi.importActual<typeof import("@tuckshop/core")>("@tuckshop/core");
+	return {
+		...actual,
+		readJsonFileAsync: (...args: unknown[]) => mockReadJsonFileAsync(...args),
+	};
+});
 
 import {
 	configGetCommand,
@@ -18,9 +28,14 @@ import {
 describe("commands/config", () => {
 	const tempRoots: string[] = [];
 
+	beforeEach(() => {
+		mockReadJsonFileAsync.mockResolvedValue({ version: "1.2.3" });
+	});
+
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		mockTextInput.mockReset();
+		mockReadJsonFileAsync.mockReset();
 		await Promise.all(
 			tempRoots.splice(0).map(async (root) => {
 				await fs.promises.rm(root, { recursive: true, force: true });
@@ -45,6 +60,7 @@ describe("commands/config", () => {
 			const root = await makeTempRoot();
 			const env = { XDG_CONFIG_HOME: root };
 			const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+			mockReadJsonFileAsync.mockResolvedValue({ version: "1.2.3" });
 
 			await configSetCommand("https://example.com/registry.json", env);
 
@@ -255,12 +271,13 @@ describe("commands/config", () => {
 			const root = await makeTempRoot();
 			const env = { XDG_CONFIG_HOME: root };
 			const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+			mockReadJsonFileAsync.mockResolvedValue({ version: "1.2.3" });
 
 			await configGetCommand(env);
 
 			const output = logSpy.mock.calls.map((call) => call.join(" ")).join("\n");
 			expect(output).toMatch(
-				/registry:\s+https:\/\/raw\.githubusercontent\.com\/agrawal-rohit\/tuckshop\/tuckshop@[\d.]+\/packages\/registry\/registry\.json/,
+				/registry:\s+https:\/\/raw\.githubusercontent\.com\/agrawal-rohit\/tuckshop\/tuckshop@1\.2\.3\/packages\/registry\/registry\.json/,
 			);
 			expect(output).toContain(path.join(root, "tuckshop", "config.json"));
 		});
@@ -269,6 +286,7 @@ describe("commands/config", () => {
 			const root = await makeTempRoot();
 			const env = { XDG_CONFIG_HOME: root };
 			const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+			mockReadJsonFileAsync.mockResolvedValue({ version: "1.2.3" });
 
 			await configSetCommand("https://example.com/registry.json", env);
 			logSpy.mockClear();
@@ -278,9 +296,51 @@ describe("commands/config", () => {
 			const output = logSpy.mock.calls.map((call) => call.join(" ")).join("\n");
 			expect(output).not.toContain("Restored the default registry.");
 			expect(output).toMatch(
-				/registry:\s+https:\/\/raw\.githubusercontent\.com\/agrawal-rohit\/tuckshop\/tuckshop@[\d.]+\/packages\/registry\/registry\.json/,
+				/registry:\s+https:\/\/raw\.githubusercontent\.com\/agrawal-rohit\/tuckshop\/tuckshop@1\.2\.3\/packages\/registry\/registry\.json/,
 			);
 			expect(output).toContain(path.join(root, "tuckshop", "config.json"));
+		});
+
+		it.each([
+			{
+				label: "a non-object package.json",
+				pkg: null,
+				message: "CLI package.json must be a JSON object.",
+			},
+			{
+				label: "a package.json array",
+				pkg: [],
+				message: "CLI package.json must be a JSON object.",
+			},
+			{
+				label: "a missing version",
+				pkg: {},
+				message: "CLI package.json is missing a version.",
+			},
+			{
+				label: "a blank version",
+				pkg: { version: "   " },
+				message: "CLI package.json is missing a version.",
+			},
+			{
+				label: "a version with a slash",
+				pkg: { version: "1.0.0/evil" },
+				message: "CLI package.json version is invalid.",
+			},
+			{
+				label: "a version with path traversal",
+				pkg: { version: "1.0.0.." },
+				message: "CLI package.json version is invalid.",
+			},
+		])("rejects the default registry URL when CLI package.json is $label", async ({
+			pkg,
+			message,
+		}) => {
+			const root = await makeTempRoot();
+			const env = { XDG_CONFIG_HOME: root };
+			mockReadJsonFileAsync.mockResolvedValue(pkg);
+
+			await expect(configGetCommand(env)).rejects.toThrow(message);
 		});
 	});
 });

@@ -335,10 +335,14 @@ function formatInterpolationOptionOwner(
 			return "shared conditions";
 		case "item":
 			return `"${owner.itemId}"`;
+		/* v8 ignore start */
+		// Stryker disable all: unreachable exhaustive default
 		default: {
 			const _exhaustive: never = owner;
 			return _exhaustive;
 		}
+		// Stryker restore all
+		/* v8 ignore stop */
 	}
 }
 
@@ -364,7 +368,7 @@ function assignInterpolationOptionValues(
 		existing !== undefined &&
 		interpolationOptionValueListsDiffer(existing, values)
 	) {
-		const previous = owners.get(key) ?? owner;
+		const previous = owners.get(key) ?? /* v8 ignore next */ owner;
 		throw new Error(
 			`Condition "${key}" declares conflicting interpolation option values (${formatInterpolationOptionOwner(previous)} and ${formatInterpolationOptionOwner(owner)}).`,
 		);
@@ -578,7 +582,7 @@ async function runAfterInstallScripts(
 		itemsWithScripts.map((item) =>
 			taskGroup(
 				primaryText(item.label),
-				(item.node.afterInstallScripts ?? []).map((scriptUri) =>
+				item.node.afterInstallScripts!.map((scriptUri) =>
 					task(primaryText(scriptUri), async () => {
 						await runAfterInstallHook(
 							indexLocation,

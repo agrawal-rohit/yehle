@@ -170,6 +170,52 @@ describe("utils/files", () => {
 		).rejects.toThrow("exists and is a symbolic link");
 	});
 
+	it("rejects a destination that is neither a file nor a directory", async () => {
+		const destination = path.join(tempDir, "HELLO.md");
+		const realLstat = fs.promises.lstat.bind(fs.promises);
+		vi.spyOn(fs.promises, "lstat").mockImplementation(async (targetPath) => {
+			if (path.resolve(String(targetPath)) === path.resolve(destination)) {
+				return {
+					isSymbolicLink: () => false,
+					isDirectory: () => false,
+					isFile: () => false,
+				} as fs.Stats;
+			}
+			return realLstat(targetPath);
+		});
+
+		await expect(
+			planFileWrites(tempDir, [
+				{
+					label: "Hello",
+					compiledItem: { files: [{ target: "HELLO.md", content: "hi" }] },
+				},
+			]),
+		).rejects.toThrow("exists but is neither a file nor a directory");
+	});
+
+	it("rethrows unexpected destination lstat errors", async () => {
+		const destination = path.join(tempDir, "HELLO.md");
+		const error = Object.assign(new Error("permission denied"), {
+			code: "EACCES",
+		});
+		const realLstat = fs.promises.lstat.bind(fs.promises);
+		vi.spyOn(fs.promises, "lstat").mockImplementation(async (targetPath) => {
+			if (path.resolve(String(targetPath)) === path.resolve(destination))
+				throw error;
+			return realLstat(targetPath);
+		});
+
+		await expect(
+			planFileWrites(tempDir, [
+				{
+					label: "Hello",
+					compiledItem: { files: [{ target: "HELLO.md", content: "hi" }] },
+				},
+			]),
+		).rejects.toBe(error);
+	});
+
 	it("rejects a destination whose ancestor is a symbolic link", async () => {
 		const outside = fs.mkdtempSync(
 			path.join(os.tmpdir(), "add-files-outside-"),
@@ -225,6 +271,16 @@ describe("utils/files", () => {
 
 		await expect(confirmFileOverwrites(["HELLO.md"], false)).rejects.toThrow(
 			"Installation canceled before overwriting",
+		);
+	});
+
+	it("throws when overwrite of several files is declined", async () => {
+		mockConfirmInput.mockResolvedValue(false);
+
+		await expect(
+			confirmFileOverwrites(["a.txt", "b.txt"], false),
+		).rejects.toThrow(
+			"Installation canceled before overwriting existing files.",
 		);
 	});
 

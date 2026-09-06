@@ -448,6 +448,35 @@ describe("core/shell", () => {
 			);
 		});
 
+		it("reports when a command is terminated by a signal", async () => {
+			const fakeChild = {
+				on: vi.fn(),
+			};
+
+			spawnMock.mockReturnValue(
+				fakeChild as unknown as ReturnType<typeof spawn>,
+			);
+
+			vi.mocked(fakeChild.on).mockImplementation(
+				(
+					event: string,
+					handler: (
+						code?: number | null,
+						signal?: NodeJS.Signals | null,
+					) => void,
+				) => {
+					if (event === "close") {
+						handler(null, "SIGKILL");
+					}
+					return fakeChild;
+				},
+			);
+
+			await expect(runAsync("killed-command")).rejects.toThrowError(
+				"Command failed: killed-command (terminated by SIGKILL)",
+			);
+		});
+
 		describe("parseCommand (tested via spawn calls)", () => {
 			it("parses simple command without args", () => {
 				expectParsedCommand("ls", "ls", []);
@@ -497,6 +526,12 @@ describe("core/shell", () => {
 			it("rejects an unterminated quote", () => {
 				expect(() => runAsync('echo "unfinished')).toThrowError(
 					"Unterminated double quote in command",
+				);
+			});
+
+			it("rejects an unterminated single quote", () => {
+				expect(() => runAsync("echo 'unfinished")).toThrowError(
+					"Unterminated single quote in command",
 				);
 			});
 		});

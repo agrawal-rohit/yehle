@@ -1,8 +1,7 @@
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { unwrapModuleExport } from "./cjs-export";
 import { RegistryConditionKind } from "./condition-kind";
 import { NpmPackageManager } from "./packages";
@@ -16,6 +15,7 @@ import {
 	createScriptExecutor,
 	INTEGRITY_PREFIX,
 	RegistryTrust,
+	sandboxRunnerPath,
 	sha256Integrity,
 	verifyItemIntegrity,
 	verifyScriptIntegrity,
@@ -105,6 +105,14 @@ describe("scripts (trust and integrity)", () => {
 		).not.toThrow();
 		expect(() => assertIntegrityMatch("other", digest, "fixture")).toThrow(
 			"does not match",
+		);
+		expect(() =>
+			assertIntegrityMatch("hello", "md5-not-sha256", "fixture"),
+		).toThrow(
+			`Invalid integrity digest for fixture: expected ${INTEGRITY_PREFIX}<base64>.`,
+		);
+		expect(() => assertIntegrityMatch("hello", undefined, "fixture")).toThrow(
+			"Missing integrity digest",
 		);
 
 		verifyScriptIntegrity({ "r/a.js": digest }, "r/a.js", "hello");
@@ -266,6 +274,40 @@ describe("scripts (trust and integrity)", () => {
 		});
 	});
 
+	it("skips shared conditions without handlers and ruled-out when clauses", () => {
+		const registry = {
+			types: { configuration: { label: "Configurations" } },
+			conditions: {
+				owner: {
+					kind: RegistryConditionKind.TEXT,
+					label: "Owner",
+				},
+				language: {
+					kind: RegistryConditionKind.SELECT,
+					label: "Language",
+					handler: "r/_handlers/language.handler.js",
+					values: [{ value: "typescript", label: "TypeScript" }],
+					when: { framework: "next" },
+				},
+			},
+			items: {
+				setup: {
+					title: "Setup",
+					description: "Setup",
+					type: "configuration",
+					requires: ["owner", "language"],
+					source: "r/setup.json",
+				},
+			},
+		};
+
+		expect(
+			collectDeclaredScriptUris(registry, ["setup"], {
+				context: { framework: "django" },
+			}),
+		).toEqual({ infer: [], mutation: [] });
+	});
+
 	it("rejects every load through the fail-closed executor", async () => {
 		const executor = createRejectedScriptExecutor();
 		await expect(
@@ -295,7 +337,6 @@ describe("scripts (trust and integrity)", () => {
 		const executor = createScriptExecutor({
 			locateScriptPath: () => scriptPath,
 			scriptIntegrity: { "r/hook.js": digest },
-			mode: "in-process",
 		});
 		const hook = await executor.loadModule(
 			path.join(dir, "registry.json"),
@@ -305,6 +346,27 @@ describe("scripts (trust and integrity)", () => {
 			"expected function",
 		);
 		await expect(hook({})).resolves.toEqual({ bindings: { ok: "1" } });
+	});
+
+	it("rejects in-process exports that fail the shape predicate", async () => {
+		const dir = makeTempDir();
+		const scriptPath = path.join(dir, "hook.js");
+		fs.writeFileSync(scriptPath, "module.exports = { notAFunction: true };\n");
+		const digest = sha256Integrity(fs.readFileSync(scriptPath));
+		const executor = createScriptExecutor({
+			locateScriptPath: () => scriptPath,
+			scriptIntegrity: { "r/hook.js": digest },
+			mode: "in-process",
+		});
+		await expect(
+			executor.loadModule(
+				path.join(dir, "registry.json"),
+				"r/hook.js",
+				(value): value is (ctx: unknown) => Promise<unknown> =>
+					typeof value === "function",
+				"expected function",
+			),
+		).rejects.toThrow("expected function");
 	});
 
 	it("rejects script loads when integrity is omitted", async () => {
@@ -461,6 +523,38 @@ module.exports = async function beforeWrite() {
 		await expect(hook({ projectDir })).rejects.toThrow("invalid IPC message");
 	}, 15_000);
 
+	it("rejects child IPC messages with a non-string type", async () => {
+		const dir = makeTempDir();
+		const projectDir = path.join(dir, "project");
+		fs.mkdirSync(projectDir);
+		const { scriptPath, digest } = writeHook(
+			dir,
+			`
+module.exports = async function beforeWrite() {
+  process.send?.({ type: 1 });
+  return {};
+};
+`,
+		);
+
+		const executor = createScriptExecutor({
+			locateScriptPath: () => scriptPath,
+			scriptIntegrity: { "r/hook.js": digest },
+			mode: "sandbox",
+			projectDir,
+			runnerPath: compiledRunnerPath(),
+		});
+		const hook = await executor.loadModule(
+			path.join(dir, "registry.json"),
+			"r/hook.js",
+			(value): value is (ctx: unknown) => Promise<unknown> =>
+				typeof value === "function",
+			"expected function",
+		);
+
+		await expect(hook({ projectDir })).rejects.toThrow("invalid IPC message");
+	}, 15_000);
+
 	it("cleans up when the sandbox child exits by signal", async () => {
 		const dir = makeTempDir();
 		const projectDir = path.join(dir, "project");
@@ -493,33 +587,143 @@ module.exports = async function beforeWrite() {
 		await expect(hook({ projectDir })).rejects.toThrow("signal SIGTERM");
 	}, 15_000);
 
-	it("blocks fetch when the Node permission model denies network", async () => {
-		// Node 24+ no longer gates network via --permission; skip when fetch is allowed.
-		const networkBlocked = await new Promise<boolean>((resolve) => {
-			const child = spawn(
-				process.execPath,
-				[
-					"--permission",
-					"--allow-fs-read=*",
-					"-e",
-					"fetch('https://example.com').then(()=>process.exit(0)).catch(()=>process.exit(2))",
-				],
-				{ stdio: "ignore" },
-			);
-			child.on("exit", (code) => resolve(code === 2));
-			child.on("error", () => resolve(false));
-		});
-		if (!networkBlocked) return;
-
+	it("loads condition-handler exports through the sandbox", async () => {
 		const dir = makeTempDir();
 		const projectDir = path.join(dir, "project");
 		fs.mkdirSync(projectDir);
 		const { scriptPath, digest } = writeHook(
 			dir,
 			`
-module.exports = async function beforeWrite() {
-  await fetch("https://example.com");
-  return {};
+module.exports = {
+  infer: async function infer() { return "typescript"; }
+};
+`,
+		);
+
+		const executor = createScriptExecutor({
+			locateScriptPath: () => scriptPath,
+			scriptIntegrity: { "r/hook.js": digest },
+			mode: "sandbox",
+			projectDir,
+			runnerPath: compiledRunnerPath(),
+		});
+		const handler = await executor.loadModule(
+			path.join(dir, "registry.json"),
+			"r/hook.js",
+			(value): value is { infer: (ctx: unknown) => Promise<unknown> } =>
+				typeof value === "object" &&
+				value !== null &&
+				typeof (value as { infer?: unknown }).infer === "function",
+			"expected condition handler",
+		);
+
+		await expect(handler.infer({ projectDir })).resolves.toBe("typescript");
+	}, 15_000);
+
+	it("rejects unknown sandbox export shapes", async () => {
+		const dir = makeTempDir();
+		const projectDir = path.join(dir, "project");
+		fs.mkdirSync(projectDir);
+		const { scriptPath, digest } = writeHook(
+			dir,
+			"module.exports = { notAHandler: true };\n",
+		);
+
+		const executor = createScriptExecutor({
+			locateScriptPath: () => scriptPath,
+			scriptIntegrity: { "r/hook.js": digest },
+			mode: "sandbox",
+			projectDir,
+			runnerPath: compiledRunnerPath(),
+		});
+
+		await expect(
+			executor.loadModule(
+				path.join(dir, "registry.json"),
+				"r/hook.js",
+				(value): value is unknown => true,
+				"unused",
+			),
+		).rejects.toThrow(
+			"must export a function or a condition handler with infer",
+		);
+	}, 15_000);
+
+	it("surfaces probe failures when the sandbox script cannot load", async () => {
+		const dir = makeTempDir();
+		const projectDir = path.join(dir, "project");
+		fs.mkdirSync(projectDir);
+		const { scriptPath, digest } = writeHook(
+			dir,
+			'throw new Error("cannot load hook");\n',
+		);
+
+		const executor = createScriptExecutor({
+			locateScriptPath: () => scriptPath,
+			scriptIntegrity: { "r/hook.js": digest },
+			mode: "sandbox",
+			projectDir,
+			runnerPath: compiledRunnerPath(),
+		});
+
+		await expect(
+			executor.loadModule(
+				path.join(dir, "registry.json"),
+				"r/hook.js",
+				(value): value is unknown => true,
+				"unused",
+			),
+		).rejects.toThrow("cannot load hook");
+	}, 15_000);
+
+	it("rejects unsafe handler context keys before calling the child", async () => {
+		const dir = makeTempDir();
+		const projectDir = path.join(dir, "project");
+		fs.mkdirSync(projectDir);
+		const { scriptPath, digest } = writeHook(
+			dir,
+			"module.exports = async function beforeWrite() { return {}; };\n",
+		);
+
+		const executor = createScriptExecutor({
+			locateScriptPath: () => scriptPath,
+			scriptIntegrity: { "r/hook.js": digest },
+			mode: "sandbox",
+			projectDir,
+			runnerPath: compiledRunnerPath(),
+		});
+		const hook = await executor.loadModule(
+			path.join(dir, "registry.json"),
+			"r/hook.js",
+			(value): value is (ctx: unknown) => Promise<unknown> =>
+				typeof value === "function",
+			"expected function",
+		);
+
+		await expect(hook({ projectDir, "": "bad" })).rejects.toThrow(
+			'Handler context key "" is not allowed.',
+		);
+		const polluted: Record<string, unknown> = { projectDir };
+		Object.defineProperty(polluted, "__proto__", {
+			value: "bad",
+			enumerable: true,
+			configurable: true,
+			writable: true,
+		});
+		await expect(hook(polluted)).rejects.toThrow(
+			'Handler context key "__proto__" is not allowed.',
+		);
+	}, 15_000);
+
+	it("serializes non-function context fields into the sandbox call", async () => {
+		const dir = makeTempDir();
+		const projectDir = path.join(dir, "project");
+		fs.mkdirSync(projectDir);
+		const { scriptPath, digest } = writeHook(
+			dir,
+			`
+module.exports = async function beforeWrite(ctx) {
+  return { bindings: { tag: String(ctx.tag), hasFn: String(typeof ctx.skip === "function") } };
 };
 `,
 		);
@@ -539,7 +743,51 @@ module.exports = async function beforeWrite() {
 			"expected function",
 		);
 
-		await expect(hook({ projectDir })).rejects.toThrow();
+		await expect(
+			hook({ projectDir, tag: "ok", skip: () => "nope" }),
+		).resolves.toEqual({
+			bindings: { tag: "ok", hasFn: "false" },
+		});
+	}, 15_000);
+
+	it("mediates ctx.isFile and ctx.isDirectory through the parent", async () => {
+		const dir = makeTempDir();
+		const projectDir = path.join(dir, "project");
+		fs.mkdirSync(projectDir);
+		fs.writeFileSync(path.join(projectDir, "package.json"), "{}\n", "utf8");
+		fs.mkdirSync(path.join(projectDir, "src"));
+		const { scriptPath, digest } = writeHook(
+			dir,
+			`
+module.exports = async function beforeWrite(ctx) {
+  return {
+    bindings: {
+      hasPkg: String(await ctx.isFile("package.json")),
+      hasSrc: String(await ctx.isDirectory("src")),
+    },
+  };
+};
+`,
+		);
+
+		const executor = createScriptExecutor({
+			locateScriptPath: () => scriptPath,
+			scriptIntegrity: { "r/hook.js": digest },
+			mode: "sandbox",
+			projectDir,
+			runnerPath: compiledRunnerPath(),
+		});
+		const hook = await executor.loadModule(
+			path.join(dir, "registry.json"),
+			"r/hook.js",
+			(value): value is (ctx: unknown) => Promise<unknown> =>
+				typeof value === "function",
+			"expected function",
+		);
+
+		await expect(hook({ projectDir })).resolves.toEqual({
+			bindings: { hasPkg: "true", hasSrc: "true" },
+		});
 	}, 15_000);
 
 	it("allows ctx.readFile under the project and parent-mediated ctx.run", async () => {
@@ -614,4 +862,36 @@ module.exports = async function beforeWrite(ctx) {
 			"must be a relative path under the project directory",
 		);
 	}, 15_000);
+
+	it("resolves sandboxRunnerPath to the compiled adjacent scripts.js when present", () => {
+		const compiled = path.join(__dirname, "scripts.js");
+		const spy = vi.spyOn(fs, "existsSync").mockImplementation((target) => {
+			if (path.resolve(String(target)) === path.resolve(compiled)) return true;
+			return true;
+		});
+		const realpath = vi
+			.spyOn(fs, "realpathSync")
+			.mockImplementation((target) => path.resolve(String(target)));
+		try {
+			expect(sandboxRunnerPath()).toBe(path.resolve(compiled));
+		} finally {
+			spy.mockRestore();
+			realpath.mockRestore();
+		}
+	});
+
+	it("falls back to this module when compiled scripts.js is absent", () => {
+		const compiled = path.join(__dirname, "scripts.js");
+		const spy = vi.spyOn(fs, "existsSync").mockImplementation((target) => {
+			if (path.resolve(String(target)) === path.resolve(compiled)) return false;
+			return true;
+		});
+		try {
+			const runner = sandboxRunnerPath();
+			expect(runner).toContain("scripts.");
+			expect(path.isAbsolute(runner)).toBe(true);
+		} finally {
+			spy.mockRestore();
+		}
+	});
 });

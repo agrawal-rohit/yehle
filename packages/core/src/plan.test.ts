@@ -72,6 +72,9 @@ describe("core/plan", () => {
 			expect(() => parseItemId("__proto__")).toThrow(
 				'Registry item id "__proto__" is not allowed.',
 			);
+			expect(() => parseItemId("item@__proto__")).toThrow(
+				'Registry pack id "__proto__" is not allowed.',
+			);
 			expect(() => parseItemId("../escape")).toThrow(
 				String.raw`Registry item id "../escape" must be a single path segment (no "/", "\", or "..").`,
 			);
@@ -1002,6 +1005,19 @@ describe("core/plan", () => {
 				}),
 			).toBe(false);
 		});
+
+		it("is true when an item-local condition when mentions packageManager", () => {
+			const item = makeItem({
+				conditions: {
+					lockfile: {
+						kind: RegistryConditionKind.BOOLEAN,
+						label: "Lockfile",
+						when: { packageManager: "pnpm" },
+					},
+				},
+			});
+			expect(catalogNeedsPackageManager([{ itemId: "item", item }])).toBe(true);
+		});
 	});
 
 	describe("packageManagerDropsCandidateDependsOn", () => {
@@ -1025,6 +1041,17 @@ describe("core/plan", () => {
 			expect(
 				packageManagerDropsCandidateDependsOn(
 					[{ itemId: "item", item }],
+					["item"],
+					{},
+					NpmPackageManager.PNPM,
+				),
+			).toBe(false);
+		});
+
+		it("is false when candidate items omit packs", () => {
+			expect(
+				packageManagerDropsCandidateDependsOn(
+					[{ itemId: "item", item: makeItem({ packs: undefined }) }],
 					["item"],
 					{},
 					NpmPackageManager.PNPM,
@@ -1759,6 +1786,28 @@ describe("core/plan", () => {
 			).toEqual(["defaultBranch"]);
 
 			expect(
+				collectRequiredConditionWave(
+					[
+						{
+							itemId: "pack-only",
+							item: makeItem({
+								packs: [
+									makePack({
+										id: "next",
+										title: "Next",
+										source: "r/item/next.json",
+										when: { language: "typescript" },
+									}),
+								],
+							}),
+						},
+					],
+					conditions,
+					{},
+				).map((entry) => entry.key),
+			).toEqual(["language"]);
+
+			expect(
 				collectRequiredConditionWave([{ itemId: "item", item }], conditions, {
 					defaultBranch: "main",
 				}).map((entry) => entry.key),
@@ -1929,6 +1978,33 @@ describe("core/plan", () => {
 			expect(
 				assumeContextFromSelectedItems(
 					["item@typescript"],
+					{ item },
+					{
+						language: {
+							kind: RegistryConditionKind.SELECT,
+							label: "Language",
+							values: [{ value: "typescript", label: "TypeScript" }],
+						},
+					},
+				),
+			).toEqual({ language: "typescript" });
+		});
+
+		it("skips packageManager keys when seeding pinned pack when maps", () => {
+			const item = makeItem({
+				packs: [
+					makePack({
+						id: "pnpm",
+						title: "pnpm",
+						source: "r/item/pnpm.json",
+						when: { packageManager: "pnpm", language: "typescript" },
+					}),
+				],
+			});
+
+			expect(
+				assumeContextFromSelectedItems(
+					["item@pnpm"],
 					{ item },
 					{
 						language: {
@@ -2311,6 +2387,21 @@ describe("core/plan", () => {
 			expect(
 				packWhenUsesCapturedKeys([{ itemId: "item", item }], ["flavor"]),
 			).toBe(true);
+		});
+
+		it("is false when no captured keys are provided", () => {
+			expect(
+				packWhenUsesCapturedKeys([{ itemId: "item", item: makeItem() }], []),
+			).toBe(false);
+		});
+
+		it("is false when planned items omit packs", () => {
+			expect(
+				packWhenUsesCapturedKeys(
+					[{ itemId: "item", item: makeItem({ packs: undefined }) }],
+					["flavor"],
+				),
+			).toBe(false);
 		});
 
 		it("is false for interpolation-only captured keys", () => {

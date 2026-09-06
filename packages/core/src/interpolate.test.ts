@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import Mustache from "mustache";
+import { describe, expect, it, vi } from "vitest";
 import {
 	buildInterpolationContext,
 	interpolateCompiledItem,
@@ -241,6 +242,36 @@ describe("core/interpolate", () => {
 					{ pmExec: "pnpm exec" },
 				),
 			).toThrow('Unknown interpolation key "pmExac" in command "npm.test".');
+		});
+
+		it("throws on Mustache partial tags", () => {
+			expect(() =>
+				interpolateCompiledItem(
+					{ files: [{ target: "a.txt", content: "{{>partial}}" }] },
+					{},
+				),
+			).toThrow('Unknown interpolation partial "partial" in file "a.txt".');
+		});
+
+		it("throws on a bare Mustache dot outside a section", () => {
+			expect(() =>
+				interpolateCompiledItem(
+					{ files: [{ target: "a.txt", content: "{{.}}" }] },
+					{},
+				),
+			).toThrow('Unknown interpolation key "." in file "a.txt".');
+		});
+
+		it("throws on an unhandled Mustache tag type", () => {
+			vi.spyOn(Mustache, "parse").mockReturnValueOnce([
+				["???", "x", 0, 1] as never,
+			]);
+			expect(() =>
+				interpolateCompiledItem(
+					{ files: [{ target: "a.txt", content: "{{x}}" }] },
+					{ x: "1" },
+				),
+			).toThrow('Unhandled Mustache tag type "???" in file "a.txt".');
 		});
 
 		it("does not HTML-escape interpolated values", () => {

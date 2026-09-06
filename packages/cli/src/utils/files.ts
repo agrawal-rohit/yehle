@@ -98,6 +98,7 @@ async function assertAncestorPathHasNoSymlinks(
 
 		if (current === root) return;
 		const parent = path.dirname(current);
+		/* v8 ignore next -- filesystem root stop when jail root is not an ancestor */
 		if (parent === current) return;
 		current = parent;
 	}

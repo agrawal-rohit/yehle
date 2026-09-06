@@ -19,9 +19,8 @@ type TypeFilterOption = ExplicitTypeFilterOption | undefined;
  * @param typeOption - A string, or `string[]` when the flag is repeated.
  * @returns Individual type tokens from comma-separated entries.
  */
-function splitTypeTokens(typeOption: TypeFilterOption): string[] {
-	const parts =
-		typeof typeOption === "string" ? [typeOption] : (typeOption ?? []);
+function splitTypeTokens(typeOption: ExplicitTypeFilterOption): string[] {
+	const parts = typeof typeOption === "string" ? [typeOption] : typeOption;
 	return parts.flatMap((part) =>
 		part
 			.split(",")

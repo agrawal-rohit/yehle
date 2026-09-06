@@ -407,6 +407,7 @@ export function reservedInterpolationKeys(
 	ecosystem: RegistryEcosystem = RegistryEcosystem.NPM,
 ): string[] {
 	const spec = ecosystemManagers[ecosystem][0];
+	/* v8 ignore next — every registered ecosystem declares at least one manager */
 	if (!spec) return [PACKAGE_MANAGER_KEY];
 	return [PACKAGE_MANAGER_KEY, ...Object.keys(spec.bindings)];
 }

@@ -133,10 +133,14 @@ async function runConfigAction(
 			await animatedIntro("clearing the configuration");
 			await configUnsetCommand();
 			return;
+		/* v8 ignore start */
+		// Stryker disable all: unreachable exhaustive default
 		default: {
 			const _never: never = parsedAction;
 			throw new Error(`Unhandled config action: ${String(_never)}`);
 		}
+		// Stryker restore all
+		/* v8 ignore stop */
 	}
 }
 

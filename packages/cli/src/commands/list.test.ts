@@ -548,7 +548,7 @@ describe("commands/list", () => {
 		expect(output).toContain("Alpha Theme");
 	});
 
-	it("omits a type description when metadata has none", async () => {
+	it("omits the type hint in the prompt when metadata has no description", async () => {
 		const registry = makeRegistry(
 			{
 				"theme-a": makeItem({
@@ -562,15 +562,42 @@ describe("commands/list", () => {
 			},
 		);
 
-		await listCommand(registry, "theme");
+		await listCommand(registry);
 
-		expect(
-			consoleLogSpy.mock.calls.some(
-				(call) => call.length === 1 && call[0] === undefined,
-			),
-		).toBe(false);
-		expect(
-			consoleLogSpy.mock.calls.map((call) => call[0]).join("\n"),
-		).toContain("Themes");
+		expect(mockMultiselectInput).toHaveBeenCalledWith(
+			"Which item types should be listed?",
+			{
+				options: [{ label: "Themes", value: "theme" }],
+			},
+			["theme"],
+		);
+	});
+
+	it("uses the raw type as the prompt label when metadata has no label", async () => {
+		const registry = makeRegistry(
+			{
+				"theme-a": makeItem({
+					id: "theme-a",
+					title: "Alpha Theme",
+					type: "theme",
+				}),
+			},
+			{
+				theme: {
+					label: undefined as unknown as string,
+					description: "Design tokens",
+				},
+			},
+		);
+
+		await listCommand(registry);
+
+		expect(mockMultiselectInput).toHaveBeenCalledWith(
+			"Which item types should be listed?",
+			{
+				options: [{ label: "theme", value: "theme", hint: "Design tokens" }],
+			},
+			["theme"],
+		);
 	});
 });

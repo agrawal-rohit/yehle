@@ -92,6 +92,16 @@ describe("core/fs", () => {
 				undefined,
 			);
 		});
+
+		it("rethrows filesystem errors other than missing paths", async () => {
+			vi.spyOn(fs.promises, "lstat").mockRejectedValueOnce(
+				Object.assign(new Error("permission denied"), { code: "EACCES" }),
+			);
+
+			await expect(lstatAsync("/tmp/forbidden")).rejects.toThrow(
+				"permission denied",
+			);
+		});
 	});
 
 	describe("isFileAsync", () => {

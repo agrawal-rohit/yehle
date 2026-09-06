@@ -41,6 +41,7 @@ function collectEcosystemInstallPlan(
 
 	for (const ecosystem of Object.values(RegistryEcosystem)) {
 		const dependencySet = merged[ecosystem];
+		/* v8 ignore next -- only npm exists today; keep the loop multi-ecosystem ready */
 		if (!dependencySet) continue;
 		if (!isPackageManagerForEcosystem(ecosystem, packageManager))
 			throw new Error(
@@ -131,16 +132,25 @@ export async function mergeProjectCommands(
 
 	for (const ecosystem of Object.values(RegistryEcosystem)) {
 		const ecosystemCommands = commands[ecosystem];
+		/* v8 ignore start -- only npm exists today; keep the loop multi-ecosystem ready */
 		if (!ecosystemCommands || Object.keys(ecosystemCommands).length === 0)
 			continue;
+		/* v8 ignore stop */
 
-		if (ecosystem === RegistryEcosystem.NPM) {
-			await mergeNpmProjectCommands(projectDir, ecosystemCommands, overwrite);
-		} else {
-			const exhaustive: never = ecosystem;
-			throw new Error(
-				`Unsupported ecosystem for project commands: ${String(exhaustive)}`,
-			);
+		switch (ecosystem) {
+			case RegistryEcosystem.NPM:
+				await mergeNpmProjectCommands(projectDir, ecosystemCommands, overwrite);
+				break;
+			/* v8 ignore start */
+			// Stryker disable all: unreachable exhaustive default
+			default: {
+				const exhaustive: never = ecosystem;
+				throw new Error(
+					`Unsupported ecosystem for project commands: ${String(exhaustive)}`,
+				);
+			}
+			// Stryker restore all
+			/* v8 ignore stop */
 		}
 	}
 }
@@ -241,10 +251,14 @@ async function assertProjectDirIsDirectory(projectDir: string): Promise<void> {
 			throw new Error(
 				"Cannot install packages: project directory exists and is a file.",
 			);
+		/* v8 ignore start */
+		// Stryker disable all: unreachable exhaustive default
 		default: {
 			const _exhaustive: never = kind;
 			throw new Error(`Unhandled path kind: ${String(_exhaustive)}`);
 		}
+		// Stryker restore all
+		/* v8 ignore stop */
 	}
 }
 

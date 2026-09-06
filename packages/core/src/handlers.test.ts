@@ -5,22 +5,79 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RegistryConditionKind } from "./condition-kind";
 import {
 	createHandlerRuntime,
+	getScriptExecutor,
 	inferConditionDefault,
 	localScriptPath,
 	runAfterInstallHook,
 	runBeforeWriteHook,
+	runInstallHookOptions,
+	setScriptExecutor,
 } from "./handlers";
 import { NpmPackageManager } from "./packages";
+import type { ScriptExecutor } from "./scripts";
 
 describe("core/handlers", () => {
 	let tempDir: string;
 
 	beforeEach(() => {
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "handlers-"));
+		setScriptExecutor(undefined);
 	});
 
 	afterEach(() => {
+		setScriptExecutor(undefined);
 		fs.rmSync(tempDir, { recursive: true, force: true });
+	});
+
+	describe("script executor accessors", () => {
+		it("stores and clears the active script executor", () => {
+			expect(getScriptExecutor()).toBeUndefined();
+			const executor = {
+				loadModule: vi.fn(),
+			} as unknown as ScriptExecutor;
+			setScriptExecutor(executor);
+			expect(getScriptExecutor()).toBe(executor);
+			setScriptExecutor(undefined);
+			expect(getScriptExecutor()).toBeUndefined();
+		});
+	});
+
+	describe("runInstallHookOptions", () => {
+		it("copies item identity and omits unset packIds", () => {
+			expect(
+				runInstallHookOptions(
+					{ itemId: "item" },
+					{
+						conditions: {},
+						packageManager: NpmPackageManager.NPM,
+						compiledItem: { files: [] },
+					},
+				),
+			).toEqual({
+				itemId: "item",
+				conditions: {},
+				packageManager: NpmPackageManager.NPM,
+				compiledItem: { files: [] },
+			});
+			expect(
+				runInstallHookOptions(
+					{ itemId: "item", packIds: ["pack"] },
+					{
+						conditions: { language: "ts" },
+						packageManager: NpmPackageManager.PNPM,
+						compiledItem: { files: [{ target: "a.ts", content: "a" }] },
+						bindings: { k: "v" },
+					},
+				),
+			).toEqual({
+				itemId: "item",
+				packIds: ["pack"],
+				conditions: { language: "ts" },
+				packageManager: NpmPackageManager.PNPM,
+				compiledItem: { files: [{ target: "a.ts", content: "a" }] },
+				bindings: { k: "v" },
+			});
+		});
 	});
 
 	describe("localScriptPath", () => {
@@ -979,6 +1036,298 @@ module.exports = async function beforeWrite() {
 		);
 	});
 
+	it("runBeforeWriteHook rejects a non-string binding value", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeWrite() {
+  return { bindings: { x: 1 } };
+};
+`,
+		);
+		await expect(
+			runBeforeWriteHook(
+				catalog,
+				"r/item.beforeWrite.0.js",
+				createHandlerRuntime(tempDir, {
+					isFile: vi.fn(async () => false),
+					readFile: vi.fn(async () => ""),
+					run: vi.fn(async () => ""),
+				}),
+				{
+					itemId: "item",
+					conditions: {},
+					packageManager: NpmPackageManager.NPM,
+					compiledItem: { files: [] },
+				},
+			),
+		).rejects.toThrow(
+			'Before-write hook at "r/item.beforeWrite.0.js" binding "x" must be a string.',
+		);
+	});
+
+	it("runBeforeWriteHook rejects an empty binding key", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeWrite() {
+  const bindings = {};
+  bindings[""] = "value";
+  return { bindings };
+};
+`,
+		);
+		await expect(
+			runBeforeWriteHook(
+				catalog,
+				"r/item.beforeWrite.0.js",
+				createHandlerRuntime(tempDir, {
+					isFile: vi.fn(async () => false),
+					readFile: vi.fn(async () => ""),
+					run: vi.fn(async () => ""),
+				}),
+				{
+					itemId: "item",
+					conditions: {},
+					packageManager: NpmPackageManager.NPM,
+					compiledItem: { files: [] },
+				},
+			),
+		).rejects.toThrow(
+			'Before-write hook at "r/item.beforeWrite.0.js" binding "" is not allowed.',
+		);
+	});
+
+	it("runBeforeWriteHook rejects bindings that are not a plain object", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeWrite() {
+  return { bindings: ["not-an-object"] };
+};
+`,
+		);
+		await expect(
+			runBeforeWriteHook(
+				catalog,
+				"r/item.beforeWrite.0.js",
+				createHandlerRuntime(tempDir, {
+					isFile: vi.fn(async () => false),
+					readFile: vi.fn(async () => ""),
+					run: vi.fn(async () => ""),
+				}),
+				{
+					itemId: "item",
+					conditions: {},
+					packageManager: NpmPackageManager.NPM,
+					compiledItem: { files: [] },
+				},
+			),
+		).rejects.toThrow(
+			'Before-write hook at "r/item.beforeWrite.0.js" bindings must be an object.',
+		);
+	});
+
+	it("runBeforeWriteHook rejects a non-object result", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeWrite() {
+  return "not-an-object";
+};
+`,
+		);
+		await expect(
+			runBeforeWriteHook(
+				catalog,
+				"r/item.beforeWrite.0.js",
+				createHandlerRuntime(tempDir, {
+					isFile: vi.fn(async () => false),
+					readFile: vi.fn(async () => ""),
+					run: vi.fn(async () => ""),
+				}),
+				{
+					itemId: "item",
+					conditions: {},
+					packageManager: NpmPackageManager.NPM,
+					compiledItem: { files: [] },
+				},
+			),
+		).rejects.toThrow(
+			'Before-write hook at "r/item.beforeWrite.0.js" must return an object or undefined.',
+		);
+	});
+
+	it("runBeforeWriteHook rejects commands that are not an object", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeWrite() {
+  return { commands: [] };
+};
+`,
+		);
+		await expect(
+			runBeforeWriteHook(
+				catalog,
+				"r/item.beforeWrite.0.js",
+				createHandlerRuntime(tempDir, {
+					isFile: vi.fn(async () => false),
+					readFile: vi.fn(async () => ""),
+					run: vi.fn(async () => ""),
+				}),
+				{
+					itemId: "item",
+					conditions: {},
+					packageManager: NpmPackageManager.NPM,
+					compiledItem: { files: [] },
+				},
+			),
+		).rejects.toThrow(
+			'Before-write hook at "r/item.beforeWrite.0.js" commands must be an object.',
+		);
+	});
+
+	it("runBeforeWriteHook rejects a non-object ecosystem entry", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeWrite() {
+  return { commands: { npm: "bad" } };
+};
+`,
+		);
+		await expect(
+			runBeforeWriteHook(
+				catalog,
+				"r/item.beforeWrite.0.js",
+				createHandlerRuntime(tempDir, {
+					isFile: vi.fn(async () => false),
+					readFile: vi.fn(async () => ""),
+					run: vi.fn(async () => ""),
+				}),
+				{
+					itemId: "item",
+					conditions: {},
+					packageManager: NpmPackageManager.NPM,
+					compiledItem: { files: [] },
+				},
+			),
+		).rejects.toThrow(
+			'Before-write hook at "r/item.beforeWrite.0.js" commands.npm must be an object.',
+		);
+	});
+
+	it("runBeforeWriteHook rejects removeFiles that is not an array", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeWrite() {
+  return { removeFiles: "DROP" };
+};
+`,
+		);
+		await expect(
+			runBeforeWriteHook(
+				catalog,
+				"r/item.beforeWrite.0.js",
+				createHandlerRuntime(tempDir, {
+					isFile: vi.fn(async () => false),
+					readFile: vi.fn(async () => ""),
+					run: vi.fn(async () => ""),
+				}),
+				{
+					itemId: "item",
+					conditions: {},
+					packageManager: NpmPackageManager.NPM,
+					compiledItem: { files: [] },
+				},
+			),
+		).rejects.toThrow(
+			'Before-write hook at "r/item.beforeWrite.0.js" removeFiles must be an array.',
+		);
+	});
+
+	it("runBeforeWriteHook rejects empty removeFiles entries", async () => {
+		const catalog = path.join(tempDir, "registry.json");
+		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
+		fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+		fs.writeFileSync(
+			scriptPath,
+			`
+module.exports = async function beforeWrite() {
+  return { removeFiles: [""] };
+};
+`,
+		);
+		await expect(
+			runBeforeWriteHook(
+				catalog,
+				"r/item.beforeWrite.0.js",
+				createHandlerRuntime(tempDir, {
+					isFile: vi.fn(async () => false),
+					readFile: vi.fn(async () => ""),
+					run: vi.fn(async () => ""),
+				}),
+				{
+					itemId: "item",
+					conditions: {},
+					packageManager: NpmPackageManager.NPM,
+					compiledItem: { files: [] },
+				},
+			),
+		).rejects.toThrow(
+			'Before-write hook at "r/item.beforeWrite.0.js" removeFiles entries must be non-empty strings.',
+		);
+	});
+
+	it("runBeforeWriteHook loads scripts through the installed executor", async () => {
+		const executor: ScriptExecutor = {
+			loadModule: vi.fn(async () => async () => ({
+				bindings: { fromExecutor: "1" },
+			})),
+		};
+		setScriptExecutor(executor);
+		const result = await runBeforeWriteHook(
+			path.join(tempDir, "registry.json"),
+			"r/item.beforeWrite.0.js",
+			createHandlerRuntime(tempDir, {
+				isFile: vi.fn(async () => false),
+				readFile: vi.fn(async () => ""),
+				run: vi.fn(async () => ""),
+			}),
+			{
+				itemId: "item",
+				conditions: {},
+				packageManager: NpmPackageManager.NPM,
+				compiledItem: { files: [] },
+			},
+		);
+		expect(executor.loadModule).toHaveBeenCalled();
+		expect(result.bindings).toEqual({ fromExecutor: "1" });
+	});
+
 	it("runBeforeWriteHook rejects an unknown commands ecosystem", async () => {
 		const catalog = path.join(tempDir, "registry.json");
 		const scriptPath = path.join(tempDir, "r/item.beforeWrite.0.js");
@@ -1053,6 +1402,19 @@ module.exports = async function beforeWrite() {
 				run: vi.fn(async () => ""),
 			}),
 		).toThrow("Project directory must be an absolute path.");
+	});
+
+	it("createHandlerRuntime rethrows unexpected realpath errors", () => {
+		vi.spyOn(fs, "realpathSync").mockImplementationOnce(() => {
+			throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+		});
+		expect(() =>
+			createHandlerRuntime("/project", {
+				isFile: vi.fn(async () => false),
+				readFile: vi.fn(async () => ""),
+				run: vi.fn(async () => ""),
+			}),
+		).toThrow("permission denied");
 	});
 
 	it("createHandlerRuntime isFile rejects a symlink that points outside the project", async () => {

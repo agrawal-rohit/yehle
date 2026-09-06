@@ -300,6 +300,28 @@ describe("cli/config", () => {
 		);
 	});
 
+	it("rejects a config path that is neither a file nor a directory", async () => {
+		const root = await makeTempRoot();
+		const env = { XDG_CONFIG_HOME: root };
+		const filePath = configPath(env);
+		await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+		vi.spyOn(fs.promises, "lstat").mockResolvedValue({
+			isSymbolicLink: () => false,
+			isDirectory: () => false,
+			isFile: () => false,
+			size: 0,
+		} as fs.Stats);
+
+		await expect(readConfig(env)).rejects.toThrow(
+			`Cannot read tuckshop config at ${filePath}: path is neither a file nor a directory.`,
+		);
+		await expect(
+			writeConfig({ registry: "https://example.com/registry.json" }, env),
+		).rejects.toThrow(
+			`Cannot write tuckshop config at ${filePath}: path is neither a file nor a directory.`,
+		);
+	});
+
 	it("rejects a config file that is too large", async () => {
 		const root = await makeTempRoot();
 		const env = { XDG_CONFIG_HOME: root };
@@ -319,6 +341,30 @@ describe("cli/config", () => {
 		await expect(writeConfig({ registry: "   " }, env)).rejects.toThrow(
 			'"registry" must be a non-empty string URL or file path.',
 		);
+	});
+
+	it("writes an empty config object when registry is omitted", async () => {
+		const root = await makeTempRoot();
+		const env = { XDG_CONFIG_HOME: root };
+		const filePath = configPath(env);
+
+		await writeConfig({}, env);
+
+		expect(JSON.parse(await fs.promises.readFile(filePath, "utf8"))).toEqual(
+			{},
+		);
+	});
+
+	it("treats a config file that vanishes between lstat and read as missing", async () => {
+		const root = await makeTempRoot();
+		const env = { XDG_CONFIG_HOME: root };
+		const filePath = configPath(env);
+		await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+		await fs.promises.writeFile(filePath, '{"registry":"ok"}\n', "utf8");
+		const error = Object.assign(new Error("gone"), { code: "ENOENT" });
+		vi.spyOn(fs.promises, "readFile").mockRejectedValueOnce(error);
+
+		await expect(readConfig(env)).resolves.toEqual({});
 	});
 
 	it("trims a registry value on write", async () => {

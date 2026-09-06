@@ -85,6 +85,31 @@ describe("cli/tasks", () => {
 			expect(Listr).not.toHaveBeenCalled();
 		});
 
+		test("throws when a leaf subtask has no work", async () => {
+			type TaskFn = (ctx: unknown, wrapper: unknown) => Promise<void>;
+
+			await runWithTasks("Test Goal", [{ title: "Empty leaf" }]);
+
+			const listrArgs = vi.mocked(Listr).mock.calls[0];
+			const taskConfig = (
+				listrArgs[0] as Array<{
+					task: TaskFn;
+				}>
+			)[0];
+			const mockTaskWrapper = {
+				newListr: vi.fn(async (nested: Array<{ task?: TaskFn }>) => {
+					for (const nestedTask of nested) {
+						if (nestedTask.task) await nestedTask.task({}, mockTaskWrapper);
+					}
+					return {};
+				}),
+			};
+
+			await expect(taskConfig.task({}, mockTaskWrapper)).rejects.toThrow(
+				'Subtask "Empty leaf" has no work.',
+			);
+		});
+
 		test("defaults collapseErrors to true", async () => {
 			await runWithTasks("Test Goal", async () => {});
 
@@ -132,6 +157,64 @@ describe("cli/tasks", () => {
 				expect.objectContaining({
 					rendererOptions: { collapseErrors: true },
 				}),
+			);
+		});
+
+		test("runs a parent task before nesting its subtasks", async () => {
+			const parentWork = vi.fn(async () => {});
+			const childWork = vi.fn(async () => {});
+
+			type TaskFn = (ctx: unknown, wrapper: unknown) => Promise<void>;
+
+			/**
+			 * Recursively run nested Listr task functions with a parent wrapper.
+			 * @param nested - Nested task configs from `newListr`.
+			 */
+			async function runNested(
+				nested: Array<{ task?: TaskFn }>,
+			): Promise<object> {
+				for (const nestedTask of nested) {
+					if (!nestedTask.task) continue;
+					const nestedWrapper = {
+						newListr: vi.fn(async (deeper: Array<{ task?: TaskFn }>) =>
+							runNested(deeper),
+						),
+					};
+					await nestedTask.task({}, nestedWrapper);
+				}
+				return {};
+			}
+
+			vi.mocked(Listr).mockImplementationOnce((tasksArg) => {
+				const run = vi.fn(async () => {
+					const firstTask = (
+						Array.isArray(tasksArg) ? tasksArg[0] : undefined
+					) as { task?: TaskFn } | undefined;
+
+					if (firstTask?.task) {
+						const mockTaskWrapper = {
+							newListr: vi.fn(async (nested: Array<{ task?: TaskFn }>) =>
+								runNested(nested),
+							),
+						};
+						await firstTask.task({}, mockTaskWrapper);
+					}
+				});
+				return { run } as unknown as InstanceType<typeof Listr>;
+			});
+
+			await runWithTasks("Test Goal", [
+				{
+					title: "Parent",
+					task: parentWork,
+					subtasks: [task("Child", childWork)],
+				},
+			]);
+
+			expect(parentWork).toHaveBeenCalled();
+			expect(childWork).toHaveBeenCalled();
+			expect(parentWork.mock.invocationCallOrder[0]).toBeLessThan(
+				childWork.mock.invocationCallOrder[0]!,
 			);
 		});
 

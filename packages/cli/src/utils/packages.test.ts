@@ -71,11 +71,74 @@ describe("utils/packages", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("returns early when there are no package declarations", async () => {
+	it("returns early when install planning yields no package names", async () => {
+		mockBuildPackageInstallCommands.mockReturnValue([
+			{
+				executable: "npm",
+				args: ["install", "--ignore-scripts"],
+				display: "npm install --ignore-scripts",
+			},
+		]);
+		mockMergeEcosystemMaps.mockReturnValue({
+			npm: {
+				[RegistryDependencyKind.RUNTIME]: [],
+				[RegistryDependencyKind.DEV]: [],
+			},
+		});
+
 		await expect(
-			installDeclaredPackages([], "/project", NpmPackageManager.NPM),
+			installDeclaredPackages(
+				[{ npm: { [RegistryDependencyKind.RUNTIME]: [] } }],
+				"/project",
+				NpmPackageManager.NPM,
+			),
 		).resolves.toEqual([]);
 		expect(mockConfirmInput).not.toHaveBeenCalled();
+	});
+
+	it("merges commands when package.json omits scripts", async () => {
+		const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-packages-"));
+		fs.writeFileSync(
+			path.join(projectDir, "package.json"),
+			JSON.stringify({ name: "demo" }),
+			"utf8",
+		);
+		mockMergeEcosystemMaps.mockReturnValue({ npm: { test: "vitest run" } });
+
+		try {
+			await mergeProjectCommands(projectDir, [
+				{ files: [], commands: { npm: { test: "vitest run" } } },
+			]);
+			const written = JSON.parse(
+				await fs.promises.readFile(
+					path.join(projectDir, "package.json"),
+					"utf8",
+				),
+			) as { scripts: Record<string, string> };
+			expect(written.scripts).toEqual({ test: "vitest run" });
+		} finally {
+			fs.rmSync(projectDir, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects package.json scripts that are an array", async () => {
+		const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-packages-"));
+		fs.writeFileSync(
+			path.join(projectDir, "package.json"),
+			JSON.stringify({ scripts: [] }),
+			"utf8",
+		);
+		mockMergeEcosystemMaps.mockReturnValue({ npm: { test: "vitest run" } });
+
+		try {
+			await expect(
+				mergeProjectCommands(projectDir, [
+					{ files: [], commands: { npm: { test: "vitest run" } } },
+				]),
+			).rejects.toThrow("package.json scripts must be an object.");
+		} finally {
+			fs.rmSync(projectDir, { recursive: true, force: true });
+		}
 	});
 
 	it("returns early when declarations list no package names", async () => {
@@ -182,6 +245,19 @@ describe("utils/packages", () => {
 		} finally {
 			fs.rmSync(path.dirname(projectDir), { recursive: true, force: true });
 		}
+	});
+
+	it("throws when the project directory is missing", async () => {
+		await expect(
+			installDeclaredPackages(
+				[{ npm: { [RegistryDependencyKind.DEV]: ["vitest@^3"] } }],
+				path.join(os.tmpdir(), `missing-project-${Date.now()}`),
+				NpmPackageManager.NPM,
+			),
+		).rejects.toThrow(
+			"Cannot install packages: project directory was not found.",
+		);
+		expect(mockRunArgvAsync).not.toHaveBeenCalled();
 	});
 
 	it("throws when npm commands are declared but package.json is missing", async () => {
@@ -447,6 +523,45 @@ describe("utils/packages", () => {
 					{ files: [], commands: { npm: { test: "vitest run" } } },
 				]),
 			).rejects.toThrow("exists and is a symbolic link");
+		} finally {
+			fs.rmSync(projectDir, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects package.json that is neither a file nor a directory", async () => {
+		const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-packages-"));
+		mockMergeEcosystemMaps.mockReturnValue({ npm: { test: "vitest run" } });
+		vi.spyOn(fs.promises, "lstat").mockResolvedValueOnce({
+			isSymbolicLink: () => false,
+			isDirectory: () => false,
+			isFile: () => false,
+		} as fs.Stats);
+
+		try {
+			await expect(
+				mergeProjectCommands(projectDir, [
+					{ files: [], commands: { npm: { test: "vitest run" } } },
+				]),
+			).rejects.toThrow("exists but is neither a file nor a directory");
+		} finally {
+			fs.rmSync(projectDir, { recursive: true, force: true });
+		}
+	});
+
+	it("rethrows unexpected package.json lstat errors", async () => {
+		const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "add-packages-"));
+		const error = Object.assign(new Error("permission denied"), {
+			code: "EACCES",
+		});
+		mockMergeEcosystemMaps.mockReturnValue({ npm: { test: "vitest run" } });
+		vi.spyOn(fs.promises, "lstat").mockRejectedValueOnce(error);
+
+		try {
+			await expect(
+				mergeProjectCommands(projectDir, [
+					{ files: [], commands: { npm: { test: "vitest run" } } },
+				]),
+			).rejects.toBe(error);
 		} finally {
 			fs.rmSync(projectDir, { recursive: true, force: true });
 		}

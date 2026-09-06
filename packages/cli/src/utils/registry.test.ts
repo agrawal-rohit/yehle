@@ -470,15 +470,53 @@ describe("loadRuntimeRegistry", () => {
 		).rejects.toThrow("Remote registry returned invalid JSON:");
 	});
 
-	it("rejects remote registries that return invalid JSON", async () => {
-		mockFetchOk({
-			headers: { "content-length": "12" },
-			body: "{not-json",
+	it("rejects remote registries that return an empty body", async () => {
+		mockFetch.mockResolvedValue({
+			ok: true,
+			status: 200,
+			statusText: "OK",
+			headers: {
+				get: () => null,
+			},
+			body: null,
 		});
 
 		await expect(
-			loadRuntimeRegistry("https://example.com/invalid-registry.json"),
-		).rejects.toThrow("Remote registry returned invalid JSON:");
+			loadRuntimeRegistry("https://example.com/empty-body-registry.json"),
+		).rejects.toThrow("Remote registry returned an empty body.");
+	});
+
+	it("skips empty chunks while reading a capped remote body", async () => {
+		const payload = Buffer.from(publicRegistryBody);
+		let reads = 0;
+		mockFetch.mockResolvedValue({
+			ok: true,
+			status: 200,
+			statusText: "OK",
+			headers: {
+				get: () => null,
+			},
+			body: {
+				getReader: () => ({
+					read: async () => {
+						reads += 1;
+						if (reads === 1) return { done: false, value: undefined };
+						if (reads === 2)
+							return { done: false, value: new Uint8Array(payload) };
+						return { done: true, value: undefined };
+					},
+					cancel: async () => {},
+				}),
+			},
+		});
+		mockParseRegistryDocument.mockReturnValue(sampleRegistry);
+
+		await expect(
+			loadRuntimeRegistry("https://example.com/chunked-registry.json"),
+		).resolves.toEqual({
+			registry: sampleRegistry,
+			indexLocation: "https://example.com/chunked-registry.json",
+		});
 	});
 
 	it("stringifies non-Error JSON parse failures from remote registries", async () => {
@@ -564,6 +602,22 @@ describe("loadRuntimeRegistry", () => {
 		await expect(
 			loadRuntimeRegistry("/workspace/registry.json"),
 		).rejects.toBeInstanceOf(InvalidJsonError);
+	});
+
+	it("wraps non-SyntaxError local JSON parse failures", async () => {
+		mockReadFileAsync.mockResolvedValue("{}");
+		const failure = new Error("unexpected parse boom");
+		vi.spyOn(JSON, "parse").mockImplementationOnce(() => {
+			throw failure;
+		});
+
+		await expect(
+			loadRuntimeRegistry("/workspace/registry.json"),
+		).rejects.toMatchObject({
+			message:
+				"Failed to read registry at /workspace/registry.json: unexpected parse boom",
+			cause: failure,
+		});
 	});
 });
 

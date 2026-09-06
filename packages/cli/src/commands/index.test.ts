@@ -168,6 +168,22 @@ describe("commands/index", () => {
 		);
 	});
 
+	it("treats omitted add items as an empty list", async () => {
+		const { app, actions } = createMockApp();
+		registerCommandsCli(app, mockLoadRegistry);
+
+		await actions.get("add [...items]")?.(undefined, {});
+
+		expect(mockAddCommand).toHaveBeenCalledWith(
+			registry,
+			"/workspace/registry.json",
+			{
+				items: [],
+				overwrite: undefined,
+			},
+		);
+	});
+
 	it("runs the add command action with positional items and --overwrite", async () => {
 		const { app, actions } = createMockApp();
 		registerCommandsCli(app, mockLoadRegistry);
@@ -199,6 +215,15 @@ describe("commands/index", () => {
 		expect(mockIntro).toHaveBeenCalledWith("here's the menu");
 		expect(mockListCommand).toHaveBeenCalledWith(registry, "theme");
 		expect(processExitSpy).not.toHaveBeenCalled();
+	});
+
+	it("runs the list command action when --type is omitted", async () => {
+		const { app, actions } = createMockApp();
+		registerCommandsCli(app, mockLoadRegistry);
+
+		await actions.get("list")?.({});
+
+		expect(mockListCommand).toHaveBeenCalledWith(registry, undefined);
 	});
 
 	it("forwards repeated CAC --type values as an array", async () => {
@@ -307,6 +332,17 @@ describe("commands/index", () => {
 			actions.get("config <action> [source]")?.(1),
 			'Unknown config action "1"',
 		);
+	});
+
+	it("rejects a non-string config source", async () => {
+		const { app, actions } = createMockApp();
+		registerCommandsCli(app, mockLoadRegistry);
+
+		await expectCommandError(
+			actions.get("config <action> [source]")?.("set", 42),
+			"config source must be a string.",
+		);
+		expect(mockConfigSetCommand).not.toHaveBeenCalled();
 	});
 
 	it("rejects config get with a source argument", async () => {

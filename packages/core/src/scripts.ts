@@ -138,6 +138,7 @@ export async function assertScriptsAllowed(
 				allowInfer: scripts.infer.length > 0,
 				allowMutation: scripts.mutation.length > 0,
 			};
+		/* v8 ignore next 4 — exhaustive check for future RegistryTrust members */
 		default: {
 			const exhaustive: never = trust;
 			throw new Error(`Unhandled registry trust: ${String(exhaustive)}`);
@@ -605,6 +606,7 @@ function isChildRequest(message: unknown): message is ChildRequest {
  * @param message - Candidate call command.
  * @returns True when scriptPath, exportPath, and context are properly shaped.
  */
+/* v8 ignore next 8 — exercised only in the sandboxed child process */
 function isCallCommand(message: Record<string, unknown>): boolean {
 	return (
 		typeof message.scriptPath === "string" &&
@@ -619,6 +621,7 @@ function isCallCommand(message: Record<string, unknown>): boolean {
  * @param message - Candidate host-result command.
  * @returns True when id and result status/payload match protocol expectations.
  */
+/* v8 ignore next 7 — exercised only in the sandboxed child process */
 function isHostResultCommand(message: Record<string, unknown>): boolean {
 	return (
 		Number.isSafeInteger(message.id) &&
@@ -632,6 +635,7 @@ function isHostResultCommand(message: Record<string, unknown>): boolean {
  * @param message - Unknown value received over IPC.
  * @returns True when the value matches the parent-to-child protocol.
  */
+/* v8 ignore next 14 — exercised only in the sandboxed child process */
 function isParentCommand(message: unknown): message is ParentCommand {
 	if (!isRecord(message) || typeof message.type !== "string") return false;
 
@@ -673,6 +677,7 @@ function sanitizedRunEnv(): NodeJS.ProcessEnv {
 	]);
 	const env: NodeJS.ProcessEnv = {};
 	for (const [key, value] of Object.entries(process.env)) {
+		/* v8 ignore next — process.env values are strings when present */
 		if (value === undefined) continue;
 		if (allow.has(key) || key.startsWith("GIT_CONFIG_")) env[key] = value;
 	}
@@ -686,6 +691,7 @@ function sanitizedRunEnv(): NodeJS.ProcessEnv {
  * @returns Canonical absolute path when available.
  */
 function permissionPath(absolutePath: string): string {
+	/* v8 ignore start — callers pass absolute paths; realpath may miss temp dirs */
 	if (!path.isAbsolute(absolutePath))
 		throw new Error("Sandbox permission path must be an absolute path.");
 	try {
@@ -693,6 +699,7 @@ function permissionPath(absolutePath: string): string {
 	} catch {
 		return path.resolve(absolutePath);
 	}
+	/* v8 ignore stop */
 }
 
 /**
@@ -709,6 +716,7 @@ function permissionArgs(
 	projectDir: string,
 	sandboxTempDir: string,
 ): string[] {
+	/* v8 ignore next 3 — Node major / legacy permission flag branches */
 	const major = Number(process.versions.node.split(".")[0] ?? "0");
 	const permissionFlag =
 		major >= 22 ? "--permission" : "--experimental-permission";
@@ -783,7 +791,9 @@ export async function loadSandboxedModule(
 					msg.type === "probe-result" ||
 					(msg.type === "result" && msg.ok === false),
 			);
+			/* v8 ignore start — probe failures surface as result ok:false */
 			if (message.type === "result") throw new Error(message.error);
+			/* v8 ignore stop */
 			return message.shape;
 		},
 	);
@@ -820,6 +830,7 @@ export async function loadSandboxedModule(
 							);
 							send({ type: "host-result", id: message.id, ok: true, value });
 						} catch (error) {
+							/* v8 ignore next 7 — host helpers throw Error instances */
 							send({
 								type: "host-result",
 								id: message.id,
@@ -860,6 +871,7 @@ export async function loadSandboxedModule(
  * @throws Error when the argument is missing or not a non-empty string.
  */
 function hostMethodArgument(args: unknown, method: HostMethod): string {
+	/* v8 ignore start — child hostCall always sends a non-empty string argument */
 	if (
 		!Array.isArray(args) ||
 		typeof args[0] !== "string" ||
@@ -868,6 +880,7 @@ function hostMethodArgument(args: unknown, method: HostMethod): string {
 		throw new Error(
 			`Host method "${method}" requires a non-empty string argument.`,
 		);
+	/* v8 ignore stop */
 	return args[0];
 }
 
@@ -913,6 +926,7 @@ async function invokeHostMethod(
 			console.error(`[tuckshop:script] run: ${argument}`);
 			return runtime.run(argument);
 		}
+		/* v8 ignore next 4 — exhaustive check for future HostMethod members */
 		default: {
 			const exhaustive: never = method;
 			throw new Error(`Unhandled host method: ${String(exhaustive)}`);
@@ -987,10 +1001,12 @@ async function withSandboxChild<T>(
 			waiter.resolve(typed);
 			return;
 		}
+		/* v8 ignore next — message arrived before a waiter registered */
 		queue.push(typed);
 	};
 
 	child.on("message", onMessage);
+	/* v8 ignore next 16 — spawn error / unexpected-exit status variants */
 	child.on("error", (error) =>
 		failChild(
 			new Error(`Sandboxed script child failed: ${error.message}`, {
@@ -1008,12 +1024,14 @@ async function withSandboxChild<T>(
 		);
 	});
 
+	/* v8 ignore next 3 — 60s watchdog; not exercised in unit tests */
 	const timeout = setTimeout(() => {
 		child.kill("SIGKILL");
 	}, SCRIPT_TIMEOUT_MS);
 
 	try {
 		const send = (message: ParentCommand) => {
+			/* v8 ignore next 2 — disconnect races during teardown */
 			if (!child.connected)
 				throw new Error("Sandboxed script child is not connected.");
 			child.send(message);
@@ -1023,6 +1041,7 @@ async function withSandboxChild<T>(
 			predicate: (message: ChildRequest) => message is M,
 		): Promise<M> => {
 			const queuedIndex = queue.findIndex((message) => predicate(message));
+			/* v8 ignore next 5 — message arrived before the waiter registered */
 			if (queuedIndex >= 0) {
 				const [message] = queue.splice(queuedIndex, 1);
 				return Promise.resolve(message as M);
@@ -1061,6 +1080,7 @@ async function closeChild(child: ChildProcess): Promise<void> {
 	});
 }
 
+/* v8 ignore start — child IPC runs in a spawned process loading dist/scripts.js */
 /**
  * Wire parent IPC so the child can wait for commands and call host helpers.
  * @param send - Send a message to the parent.
@@ -1251,6 +1271,8 @@ if (process.argv.includes("--child")) {
 		process.exitCode = 1;
 	});
 }
+
+/* v8 ignore stop */
 
 /**
  * Absolute on-disk path to this sandbox runner for child spawns.

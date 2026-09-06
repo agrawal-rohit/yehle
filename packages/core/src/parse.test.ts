@@ -923,6 +923,24 @@ describe("registry/parse", () => {
 			);
 		});
 
+		it("accepts an array of built-in packageManager when values", () => {
+			expect(() =>
+				parseRegistryDocument(
+					validDocument({
+						items: {
+							button: validIndexItem({
+								packs: [
+									validIndexPack({
+										when: { packageManager: ["pnpm", "npm"] },
+									}),
+								],
+							}),
+						},
+					}),
+				),
+			).not.toThrow();
+		});
+
 		it("rejects item-local option bindings that reuse a shared condition key", () => {
 			expect(() =>
 				parseRegistryDocument(
@@ -1386,6 +1404,21 @@ describe("registry/parse", () => {
 			).toThrow(
 				"Registry.scriptIntegrity.r/hook.js must be a sha256 integrity digest.",
 			);
+		});
+
+		it("keeps valid scriptIntegrity and itemIntegrity", () => {
+			const digest = "sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=";
+			expect(
+				parseRegistryDocument(
+					validDocument({
+						scriptIntegrity: { "r/hook.js": digest },
+						itemIntegrity: { "r/button/react.json": digest },
+					}),
+				),
+			).toMatchObject({
+				scriptIntegrity: { "r/hook.js": digest },
+				itemIntegrity: { "r/button/react.json": digest },
+			});
 		});
 
 		it("falls through for unmapped array too_small paths", () => {

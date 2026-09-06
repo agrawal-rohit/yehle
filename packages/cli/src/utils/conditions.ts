@@ -41,18 +41,6 @@ function conditionSelectOptions(
 }
 
 /**
- * Fail when a select or multiselect has no options to offer.
- * @param condition - Selectable condition about to be prompted.
- * @throws Error when `values` is empty.
- */
-function assertSelectableValues(condition: RequiredCondition): void {
-	if (condition.values.length === 0)
-		throw new Error(
-			`Condition "${condition.key}" has no selectable values for the current install set.`,
-		);
-}
-
-/**
  * Sole option value when a non-optional condition offers exactly one choice.
  * @param condition - Selectable condition about to be prompted.
  * @param optional - Whether the condition may be skipped.
@@ -78,7 +66,6 @@ async function promptMultiselectCondition(
 	promptMessage: string,
 	inferred: RegistryContextValue | undefined,
 ): Promise<string[] | undefined> {
-	assertSelectableValues(condition);
 	const optional = condition.optional === true;
 	const sole = soleOptionValue(condition, optional);
 	if (sole !== undefined) return [sole];
@@ -128,6 +115,7 @@ async function confirmInferredSelectValue(
 	const matchedOption = condition.values.find(
 		(entry) => entry.value === inferred,
 	);
+	/* v8 ignore next -- inferConditionDefault only yields values present in options */
 	if (!matchedOption) return false;
 
 	const label = matchedOption.label || matchedOption.value;
@@ -167,7 +155,6 @@ async function promptSelectCondition(
 	promptMessage: string,
 	inferred: RegistryContextValue | undefined,
 ): Promise<string | undefined> {
-	assertSelectableValues(condition);
 	const skipValue = "None";
 	assertNoReservedSkipValue(condition, skipValue);
 

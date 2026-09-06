@@ -624,4 +624,46 @@ describe("utils/conditions", () => {
 			"cursor",
 		);
 	});
+
+	it("confirms an inferred select using the raw value when the option has no label", async () => {
+		mockConfirmInput.mockResolvedValue(true);
+		const registry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			conditions: {
+				codingAgentIDE: {
+					kind: RegistryConditionKind.SELECT,
+					label: "Coding agent",
+					default: "cursor",
+					values: [
+						{ value: "cursor" },
+						{ value: "claude-code", label: "Claude Code" },
+					],
+				},
+			},
+			items: {
+				demo: {
+					title: "Demo",
+					description: "Demo",
+					type: "configuration",
+					source: "r/demo.json",
+					requires: ["codingAgentIDE"],
+				},
+			},
+		};
+
+		const context = await captureRequiredConditions(
+			registry,
+			"/tmp/registry.json",
+			"/tmp/project",
+			["demo"],
+		);
+
+		expect(context).toEqual({ codingAgentIDE: "cursor" });
+		expect(mockConfirmInput).toHaveBeenCalledWith(
+			expect.stringContaining("Detected"),
+			{},
+			true,
+		);
+		expect(mockConfirmInput.mock.calls[0]?.[0]).toContain("cursor");
+	});
 });
