@@ -6,6 +6,9 @@
 	"requires": [
 		"language"
 	],
+	"dependsOn": [
+		"testing-configuration"
+	],
 	"packs": [
 		{
 			"id": "typescript",

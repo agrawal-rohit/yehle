@@ -13,6 +13,7 @@
 			"when": {
 				"language": "typescript"
 			},
+			"beforeWrite": "typescript/detect-lint-staged-config.before-write.ts",
 			"dependencies": {
 				"npm": {
 					"dev": [
@@ -40,10 +41,6 @@
 				{
 					"source": "typescript/commitlint.config.js",
 					"target": "commitlint.config.js"
-				},
-				{
-					"source": "typescript/lint-staged.config.js",
-					"target": "lint-staged.config.js"
 				}
 			]
 		}

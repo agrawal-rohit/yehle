@@ -389,7 +389,7 @@ describe("commands/add", () => {
 			undefined,
 		);
 		expect(mockRunWithTasks).toHaveBeenCalledWith(
-			"Fetching compiled items",
+			"Preparing changes",
 			expect.any(Function),
 		);
 		expect(mockWriteFileAsync).toHaveBeenCalledWith(
@@ -1204,7 +1204,7 @@ module.exports = {
 		});
 
 		expect(mockRunWithTasks).toHaveBeenCalledWith(
-			"Installing items",
+			"Adding item content",
 			expect.arrayContaining([
 				expect.objectContaining({
 					title: expect.stringContaining("untitled-item"),
@@ -1470,7 +1470,7 @@ module.exports = async function afterInstall(ctx) {
 		});
 
 		expect(mockConfirmInput).toHaveBeenCalledWith(
-			"Would you like to install the required dependencies? (lifecycle scripts are disabled)",
+			"Install required dependencies?",
 			{},
 			true,
 		);
@@ -1734,7 +1734,7 @@ module.exports = async function afterInstall() {
 				"ok",
 			);
 			expect(mockRunWithTasks).toHaveBeenCalledWith(
-				"Running `afterInstall` hooks",
+				"Finishing setup",
 				expect.arrayContaining([
 					expect.objectContaining({
 						title: expect.stringContaining("Lifecycle"),
@@ -1746,7 +1746,7 @@ module.exports = async function afterInstall() {
 		}
 	});
 
-	it("runs afterInstall when the user declines package install", async () => {
+	it("finalizes setup when dependency installation is declined", async () => {
 		const fs = await import("node:fs");
 		const os = await import("node:os");
 		const handlerDir = fs.mkdtempSync(
@@ -1812,6 +1812,84 @@ module.exports = async function afterInstall() {
 
 			expect(fs.readFileSync(logPath, "utf8")).toBe("after\n");
 			expect(mockRunArgvAsync).not.toHaveBeenCalled();
+		} finally {
+			fs.rmSync(handlerDir, { recursive: true, force: true });
+		}
+	});
+
+	it("skips the Finishing setup task when no items declare afterInstall scripts", async () => {
+		// Default `mockBuildInstallPlan` returns a node without afterInstallScripts.
+		await addCommand(registry, indexLocation, {
+			items: ["pr-template-configuration"],
+			overwrite: true,
+		});
+
+		const titles = mockRunWithTasks.mock.calls.map(([title]) => title);
+		expect(titles).not.toContain("Finishing setup");
+	});
+
+	it("runs every afterInstall script for an item in declared order", async () => {
+		const fs = await import("node:fs");
+		const os = await import("node:os");
+		const handlerDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "add-after-multi-"),
+		);
+		const catalogPath = path.join(handlerDir, "registry.json");
+		const logPath = path.join(tempDir, "after-multi.log");
+		const dir = path.join(handlerDir, "r");
+		fs.mkdirSync(dir, { recursive: true });
+		fs.writeFileSync(catalogPath, "{}\n");
+		for (const name of ["alpha", "beta", "gamma"]) {
+			fs.writeFileSync(
+				path.join(dir, `lifecycle.afterInstall.${name}.js`),
+				`\nconst fs = require("node:fs");\nmodule.exports = async function afterInstall() {\n  fs.appendFileSync(${JSON.stringify(logPath)}, "${name}\\n");\n};\n`,
+			);
+		}
+
+		mockBuildInstallPlan.mockReturnValue([
+			{
+				itemId: "lifecycle",
+				sources: ["r/lifecycle.json"],
+				afterInstallScripts: [
+					"r/lifecycle.afterInstall.alpha.js",
+					"r/lifecycle.afterInstall.beta.js",
+					"r/lifecycle.afterInstall.gamma.js",
+				],
+			},
+		]);
+		mockLoadCompiledItems.mockResolvedValue(
+			new Map([
+				[
+					"r/lifecycle.json",
+					{ files: [{ target: "DONE.txt", content: "ok" }] },
+				],
+			]),
+		);
+
+		const lifecycleRegistry: Registry = {
+			types: { configuration: { label: "Configurations" } },
+			items: {
+				lifecycle: {
+					title: "Lifecycle",
+					description: "Multiple after-install scripts",
+					type: "configuration",
+					source: "r/lifecycle.json",
+					afterInstall: [
+						"r/lifecycle.afterInstall.alpha.js",
+						"r/lifecycle.afterInstall.beta.js",
+						"r/lifecycle.afterInstall.gamma.js",
+					],
+				},
+			},
+		};
+
+		try {
+			await addCommand(lifecycleRegistry, catalogPath, {
+				items: ["lifecycle"],
+				overwrite: true,
+			});
+
+			expect(fs.readFileSync(logPath, "utf8")).toBe("alpha\nbeta\ngamma\n");
 		} finally {
 			fs.rmSync(handlerDir, { recursive: true, force: true });
 		}

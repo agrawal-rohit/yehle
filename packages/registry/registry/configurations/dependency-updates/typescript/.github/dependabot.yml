@@ -56,9 +56,6 @@ updates:
           - "@commitlint/*"
           - "husky"
           - "lint-staged"
-      git-cliff:
-        patterns:
-          - "git-cliff"
       biome:
         patterns:
           - "@biomejs/*"

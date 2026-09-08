@@ -9,6 +9,7 @@
 	"secrets": [
 		"GH_ADMIN_TOKEN"
 	],
+	"beforeWrite": "filter-active-workflow-checks.before-write.ts",
 	"files": [
 		{
 			"source": ".github/workflows/settings.yml",

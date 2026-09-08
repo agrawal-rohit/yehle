@@ -35,6 +35,7 @@
 			"kind": "text",
 			"label": "SonarQube project key",
 			"description": "SonarQube project key (e.g. my-org_my-project).",
+			"handler": "sonar-project-key.handler.ts",
 			"when": {
 				"qualityTools": "sonar"
 			}
@@ -43,6 +44,7 @@
 			"kind": "text",
 			"label": "SonarQube organization",
 			"description": "SonarQube organization key.",
+			"handler": "sonar-organization.handler.ts",
 			"when": {
 				"qualityTools": "sonar"
 			}
@@ -120,26 +122,11 @@
 				"language": "typescript",
 				"qualityTools": "fallow"
 			},
+			"afterInstall": "initialize-fallow-setup.after-install.ts",
 			"files": [
 				{
 					"source": "typescript/.github/workflows/quality-fallow.yml",
 					"target": ".github/workflows/quality-fallow.yml"
-				},
-				{
-					"source": "typescript/.fallowrc.json",
-					"target": ".fallowrc.json"
-				},
-				{
-					"source": "typescript/fallow-baselines/dead-code.json",
-					"target": "fallow-baselines/dead-code.json"
-				},
-				{
-					"source": "typescript/fallow-baselines/health.json",
-					"target": "fallow-baselines/health.json"
-				},
-				{
-					"source": "typescript/fallow-baselines/dupes.json",
-					"target": "fallow-baselines/dupes.json"
 				}
 			]
 		}

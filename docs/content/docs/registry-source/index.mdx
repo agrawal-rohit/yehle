@@ -145,10 +145,10 @@ GitHub Actions expressions (`${{ ... }}`) are left untouched. HTML escaping is d
 
 | Phase | When it runs | Typical use |
 | --- | --- | --- |
-| `beforeWrite` | Before planned files are written | Generate or upsert files from conditions |
-| write | After `beforeWrite` | Static `files` plus hook upserts |
-| package install | After writes and `package.json` script merge | Declared ecosystem packages |
-| `afterInstall` | After package install (still runs if declined) | `git init`, format |
+| `beforeWrite` | Before planned files are written | Prepare Tuckshop-managed files, commands, dependencies, or bindings from conditions |
+| write | After `beforeWrite` and user confirmation | Tuckshop writes planned files to disk |
+| package install | After writes and `package.json` script merge | Declared ecosystem packages installed via package manager |
+| `afterInstall` | After package install (still runs if declined) | Run external tool initialization (`fallow init`, `graphify install`, git setup) |
 
 Hooks do **not** prompt. Put questions in conditions. Use `import type` from `@tuckshop/core` (do not runtime-import the package):
 

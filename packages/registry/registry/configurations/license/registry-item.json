@@ -63,7 +63,7 @@
 			"kind": "text",
 			"label": "Copyright year",
 			"description": "Year used in the license copyright notice.",
-			"handler": "copyright-year.ts"
+			"handler": "copyright-year.handler.ts"
 		}
 	},
 	"beforeWrite": "render-license-file.before-write.ts"

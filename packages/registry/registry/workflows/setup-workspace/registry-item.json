@@ -23,14 +23,27 @@
 			]
 		},
 		{
+			"id": "typescript-bun",
+			"title": "TypeScript (bun)",
+			"when": {
+				"language": "typescript",
+				"packageManager": "bun"
+			},
+			"files": [
+				{
+					"source": "typescript/.github/actions/setup/action.bun.yml",
+					"target": ".github/actions/setup/action.yml"
+				}
+			]
+		},
+		{
 			"id": "typescript-default",
-			"title": "TypeScript (npm, yarn, or bun)",
+			"title": "TypeScript (npm or yarn)",
 			"when": {
 				"language": "typescript",
 				"packageManager": [
 					"npm",
-					"yarn",
-					"bun"
+					"yarn"
 				]
 			},
 			"files": [

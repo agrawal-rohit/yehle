@@ -212,17 +212,17 @@ Colocate a TypeScript install script next to the manifest (or under `registry/co
 import type { BeforeWriteHook } from "@tuckshop/core";
 
 const beforeWrite: BeforeWriteHook = async (ctx) => {
- const name = await ctx.prompts.text("Project name", { required: true });
- return {
-  variables: { name },
-  files: [{ target: "HELLO.md", content: `# ${name}` }],
- };
+	const licenseId = ctx.conditions.licenseId;
+	return {
+		bindings: { customKey: String(licenseId) },
+		files: [{ target: "LICENSE", content: String(licenseId) }],
+	};
 };
 
 export default beforeWrite;
 ```
 
-Point the manifest at it with `"beforeWrite": "before-install.ts"`. Script-only items may omit `files`. Compose other registry items with `"registryDependencies"` — they install before this item. Shared conditions can declare `"handler": "conditions/language.ts"` with an `infer` hook that returns a prompt default (for example from marker files or `ctx.run("git config --get user.name")`). Condition `kind` may be `select` (default), `multiselect`, `text`, or `boolean`. Items consume those values with `"uses": ["authorName"]`; the captured value is then `ctx.conditions.authorName` in install scripts.
+Point the manifest at it with `"beforeWrite": "render-license-file.before-write.ts"`. Script-only items may omit `files`. Compose other registry items with `"dependsOn"` — they install before this item. Shared conditions can declare `"handler": "conditions/language.handler.ts"` with an `infer` hook that returns a prompt default (for example from marker files or `ctx.run("git config --get user.name")`). Condition `kind` may be `select` (default), `multiselect`, `text`, or `boolean`. Items declare those dependencies with `"requires": ["authorName"]`; the captured value is then `ctx.conditions.authorName` in install scripts.
 
 See `packages/registry/registry/configurations/license/` for an SPDX license picker that generates a `LICENSE` file during `beforeWrite`.
 
@@ -232,15 +232,15 @@ Third-party registries compile the same way — pass the registry source tree an
 import { buildRegistry } from "@tuckshop/core";
 
 await buildRegistry({
- sourceDir: path.join(packageRoot, "registry"),
- outDir: packageRoot,
+	sourceDir: path.join(packageRoot, "registry"),
+	outDir: packageRoot,
 });
 ```
 
 ### Source guidelines
 
 - Keep items atomic and colocate the manifest and every file it ships in one folder.
-- Extract reusable concerns into their own items and reference them via `registryDependencies`.
+- Extract reusable concerns into their own items and reference them via `dependsOn`.
 - Run `pnpm run build:registry` after changing items _(the pre-commit hook and `prepack` also run it)_.
 
 ### Proposing New Items

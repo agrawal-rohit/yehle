@@ -90,7 +90,7 @@ export async function installDeclaredPackages(
 	for (const name of packageNames) console.log(`  - ${name}`);
 
 	const shouldInstall = await confirmInput(
-		"Would you like to install the required dependencies? (lifecycle scripts are disabled)",
+		"Install required dependencies?",
 		{},
 		true,
 	);

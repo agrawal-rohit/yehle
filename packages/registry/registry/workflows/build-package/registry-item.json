@@ -17,6 +17,12 @@
 			"when": {
 				"language": "typescript"
 			},
+			"commands": {
+				"npm": {
+					"build": "tsc",
+					"typecheck": "tsc --noEmit"
+				}
+			},
 			"files": [
 				{
 					"source": "typescript/.github/workflows/build.yml",

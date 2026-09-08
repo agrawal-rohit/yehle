@@ -273,8 +273,8 @@ async function runBeforeWriteScripts(
 }
 
 /**
- * Write planned files with one progress tree: items as groups, files as subtasks.
- * @param plannedItems - Items that still have files to write.
+ * Write prepared files with one progress tree: items as groups, files as subtasks.
+ * @param plannedItems - Items that have files to write.
  */
 async function writePreparedItems(
 	plannedItems: PlannedItemWrites[],
@@ -282,10 +282,10 @@ async function writePreparedItems(
 	if (plannedItems.length === 0) return;
 
 	await runWithTasks(
-		"Installing items",
+		"Adding item content",
 		plannedItems.map((item) =>
 			taskGroup(
-				`Installing ${primaryText(item.label)}`,
+				primaryText(item.label),
 				item.files.map((file) =>
 					task(primaryText(file.target), async () => {
 						await writePlannedFile(file);
@@ -423,23 +423,6 @@ function printNextStepList(
 }
 
 /**
- * Print the files written for each installed item.
- * Gives the user a visible record of what landed and where.
- * @param plannedItems - Items with the file targets that were written.
- */
-function printWrittenFiles(plannedItems: PlannedItemWrites[]): void {
-	if (plannedItems.length === 0) return;
-
-	console.log();
-	console.log(chalk.bold("Files added"));
-	for (const item of plannedItems) {
-		console.log(item.label);
-		for (const file of item.files)
-			console.log(`  - ${primaryText(file.target)}`);
-	}
-}
-
-/**
  * Print numbered Next steps for pending installs and repository secrets.
  * @param pendingInstallCommands - Package install commands still left for the user.
  * @param secrets - Repository secret names to configure manually, if any.
@@ -556,7 +539,7 @@ async function candidateEntriesWithPackageManager(
 }
 
 /**
- * Run afterInstall hooks after package install, with one progress tree when any exist.
+ * Finalize installed items after file writes and dependency handling complete.
  * @param indexLocation - Absolute path or HTTPS URL of the index document.
  * @param runtime - Shared handler runtime.
  * @param conditions - Captured condition context.
@@ -564,7 +547,7 @@ async function candidateEntriesWithPackageManager(
  * @param bindings - Bindings from beforeWrite hooks.
  * @param installItems - Interpolated install items.
  */
-async function runAfterInstallScripts(
+async function finalizeInstalledItems(
 	indexLocation: string,
 	runtime: HandlerRuntime,
 	conditions: RegistryContext,
@@ -572,32 +555,30 @@ async function runAfterInstallScripts(
 	bindings: Record<string, string>,
 	installItems: InstallPlanItem[],
 ): Promise<void> {
-	const itemsWithScripts = installItems.filter(
-		(item) => (item.node.afterInstallScripts ?? []).length > 0,
-	);
+	const itemsWithScripts = installItems.flatMap((item) => {
+		const scripts = item.node.afterInstallScripts;
+		return scripts && scripts.length > 0 ? [{ item, scripts }] : [];
+	});
 	if (itemsWithScripts.length === 0) return;
 
 	await runWithTasks(
-		"Running `afterInstall` hooks",
-		itemsWithScripts.map((item) =>
-			taskGroup(
-				primaryText(item.label),
-				item.node.afterInstallScripts!.map((scriptUri) =>
-					task(primaryText(scriptUri), async () => {
-						await runAfterInstallHook(
-							indexLocation,
-							scriptUri,
-							runtime,
-							runInstallHookOptions(item.node, {
-								conditions,
-								packageManager,
-								bindings,
-								compiledItem: item.compiledItem,
-							}),
-						);
-					}),
-				),
-			),
+		"Finishing setup",
+		itemsWithScripts.map(({ item, scripts }) =>
+			task(primaryText(item.label), async () => {
+				for (const scriptUri of scripts) {
+					await runAfterInstallHook(
+						indexLocation,
+						scriptUri,
+						runtime,
+						runInstallHookOptions(item.node, {
+							conditions,
+							packageManager,
+							bindings,
+							compiledItem: item.compiledItem,
+						}),
+					);
+				}
+			}),
 		),
 	);
 }
@@ -672,7 +653,7 @@ export async function addCommand(
 		const sources = plan.flatMap((node) => node.sources ?? []);
 		let compiledItemDocuments = new Map<string, CompiledItem>();
 		if (sources.length > 0)
-			await runWithTasks("Fetching compiled items", async () => {
+			await runWithTasks("Preparing changes", async () => {
 				compiledItemDocuments = await loadCompiledItems(
 					indexLocation,
 					sources,
@@ -728,8 +709,6 @@ export async function addCommand(
 
 		await writePreparedItems(fileWrites.items);
 
-		printWrittenFiles(fileWrites.items);
-
 		await mergeProjectCommands(
 			projectDir,
 			installItems.map((item) => item.compiledItem),
@@ -749,7 +728,7 @@ export async function addCommand(
 						packageManager,
 					);
 
-		await runAfterInstallScripts(
+		await finalizeInstalledItems(
 			indexLocation,
 			runtime,
 			conditions,

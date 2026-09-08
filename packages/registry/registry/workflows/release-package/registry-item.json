@@ -13,6 +13,7 @@
 	"secrets": [
 		"GH_ADMIN_TOKEN"
 	],
+	"beforeWrite": "initialize-release-please-manifest.before-write.ts",
 	"packs": [
 		{
 			"id": "typescript",
