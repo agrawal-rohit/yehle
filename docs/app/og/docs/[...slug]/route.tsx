@@ -17,7 +17,7 @@ export async function GET(
 		<DefaultImage
 			title={page.data.title}
 			description={page.data.description}
-			site="Yehle"
+			site="Tuckshop"
 		/>,
 		{
 			width: 1200,
@@ -27,6 +27,7 @@ export async function GET(
 	);
 }
 
+/** @public Next.js App Router static params for this route. */
 export function generateStaticParams() {
 	return source.getPages().map((page) => ({
 		lang: page.locale,

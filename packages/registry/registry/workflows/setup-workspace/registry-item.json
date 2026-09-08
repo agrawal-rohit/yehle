@@ -1,0 +1,57 @@
+{
+	"id": "setup-workspace-workflow",
+	"title": "Setup Workspace",
+	"description": "Composite GitHub Action for setting up a workspace.",
+	"type": "workflow",
+	"requires": [
+		"language",
+		"nodeVersion"
+	],
+	"packs": [
+		{
+			"id": "typescript-pnpm",
+			"title": "TypeScript (pnpm)",
+			"when": {
+				"language": "typescript",
+				"packageManager": "pnpm"
+			},
+			"files": [
+				{
+					"source": "typescript/.github/actions/setup/action.pnpm.yml",
+					"target": ".github/actions/setup/action.yml"
+				}
+			]
+		},
+		{
+			"id": "typescript-bun",
+			"title": "TypeScript (bun)",
+			"when": {
+				"language": "typescript",
+				"packageManager": "bun"
+			},
+			"files": [
+				{
+					"source": "typescript/.github/actions/setup/action.bun.yml",
+					"target": ".github/actions/setup/action.yml"
+				}
+			]
+		},
+		{
+			"id": "typescript-default",
+			"title": "TypeScript (npm or yarn)",
+			"when": {
+				"language": "typescript",
+				"packageManager": [
+					"npm",
+					"yarn"
+				]
+			},
+			"files": [
+				{
+					"source": "typescript/.github/actions/setup/action.default.yml",
+					"target": ".github/actions/setup/action.yml"
+				}
+			]
+		}
+	]
+}

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in contributing to `yehle`! This guide will help you get started with the development process, from setting up your environment to submitting changes.
+Thanks for your interest in contributing to `tuckshop`! This guide will help you get started with the development process, from setting up your environment to submitting changes.
 
 ## Table of Contents
 
@@ -11,7 +11,7 @@ Thanks for your interest in contributing to `yehle`! This guide will help you ge
 - [Documentation](#documentation)
 - [Release Process](#release-process)
 - [Dependencies](#dependencies)
-- [Proposing Templates](#proposing-templates)
+- [Code Registry](#code-registry)
 - [Security](#security)
 - [Maintainer Guidelines](#maintainer-guidelines)
 - [Recognition](#recognition)
@@ -19,9 +19,10 @@ Thanks for your interest in contributing to `yehle`! This guide will help you ge
 ## Getting Help
 
 If you have questions, ideas, or need help:
-- Search existing [GitHub Discussions](https://github.com/agrawal-rohit/yehle/discussions) first
+
+- Search existing [GitHub Discussions](https://github.com/agrawal-rohit/tuckshop/discussions) first
 - Open a new discussion for questions and proposals
-- Create a [GitHub Issue](https://github.com/agrawal-rohit/yehle/issues) for bug reports
+- Create a [GitHub Issue](https://github.com/agrawal-rohit/tuckshop/issues) for bug reports
 
 Please be specific about your environment and include steps to reproduce issues when reporting bugs.
 
@@ -29,15 +30,16 @@ Please be specific about your environment and include steps to reproduce issues 
 
 1. Fork the repository
 2. Install dependencies: `pnpm install`
-3. Create a local build: `pnpm pack`
-4. Test the package locally: `npx <path-to-local-build>.tgz`
+3. Build the workspace: `pnpm run build`
+4. Build the default registry: `pnpm run build:registry`
+5. Test the CLI package locally: `pnpm --filter tuckshop pack`
 
-The project uses:
-- **Node.js** v20+ for runtime
-- **pnpm** for package management
-- **TypeScript** for type safety
-- **Biome** for linting and formatting
-- **Vitest** for testing
+The repository is a pnpm workspace with the following structure:
+
+- `packages/cli`: published as `tuckshop`
+- `packages/core`: published as `@tuckshop/core`
+- `packages/registry`: private default registry content
+- `docs`: documentation site
 
 ## Making Changes
 
@@ -51,7 +53,7 @@ The project uses:
 
 This project follows [Conventional Commits](https://www.conventionalcommits.org/):
 
-```
+```text
 type(scope): short description
 
 Optional longer description
@@ -63,20 +65,23 @@ Common types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, 
 
 ### Pull Requests
 
-- Run tests with coverage: `pnpm cov`
+- Run `pnpm run check` and `pnpm cov` before opening a pull request
 - Include tests for new features and bug fixes
+- Use a conventional commit type that reflects the change impact
 - Reference related issues using GitHub keywords (e.g., `Closes #123`)
 - Use a clear title and explain the why behind changes
 - Keep PRs focused on a single purpose
 
 ## Testing & Code Quality
 
+- Typecheck and lint: `pnpm run check`
+- Build packages: `pnpm run build`
 - Run tests with coverage: `pnpm cov`
-- Check linting: `pnpm run lint`
+- Quality gate on changed files: `pnpm run quality:changes`
+- Full codebase quality scan: `pnpm run quality` (or `pnpm run quality dead-code`, `pnpm run quality health`, etc.)
 - Format code: `pnpm run format`
-- Run type checks: `pnpm run check`
 
-Pre-commit hooks will automatically check your code quality. If they block your commit, run the appropriate fix commands and try again.
+Pre-commit hooks run lint-staged (Biome/typecheck/registry rebuild) and then `pnpm run quality:changes`. If they block your commit, fix the reported issues and try again.
 
 ## Documentation
 
@@ -92,53 +97,69 @@ Small documentation fixes (typos, clarifications) are always welcome!
 ### Overview
 
 > [!IMPORTANT]
+>
 > - [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) must be configured
-> - Ensure that `"Allow GitHub Actions to create and approve pull requests"` is checked in your repository settings *(Settings > Actions > General > Workflow permissions)*
+> - `GH_ADMIN_TOKEN` must be added to the repository secrets and able to open pull requests that trigger CI and create protected release tags
 
-This project uses a simple tag-driven release workflow powered by [npm trusted publishing](https://docs.npmjs.com/trusted-publishers). Majority of the release process is automated using [Github Actions](https://github.com/features/actions) which gets triggered when a new semver tag is pushed. The tag format determines what gets published:
+This repository uses [release-please](https://github.com/googleapis/release-please)
+for the release workflow.
 
-- **Stable releases** (`v1.2.3`) → Published to npm with the `latest` tag
-  ```bash
-  git checkout main
-  git pull origin main
-  git tag v1.2.3
-  git push origin v1.2.3
-  ```
-- **Pre-release/Release candidates** (`v1.2.3-rc.1`, `v1.2.3-beta.1`, `v1.2.3-alpha.1`) → Published with the `rc`, `beta`, or `alpha` tags
-  ```bash
-  git tag v1.2.3-rc.1    # or -beta.1, -alpha.1
-  git push origin v1.2.3-rc.1
-  ```
+### For contributors
 
-When the tag is pushed, the [Github Actions](https://github.com/features/actions) workflow performs the following steps:
+1. Follow [Conventional Commits](https://www.conventionalcommits.org/)
+2. Choose the commit type that matches the intended release impact:
+   - `fix` / `perf` -> patch
+   - `feat` -> minor
+   - `!` or `BREAKING CHANGE:` -> major
+3. Merge the pull request when the code is ready
 
-1. Installs dependencies and builds the package
-2. Publishes to npm with the appropriate tag (`latest`, `rc`, `beta`, or `alpha`)
-3. Creates a GitHub Release with a changelog generated from the conventional commits using [git-cliff](https://git-cliff.org/)
-4. Opens a pull request with the updated package version back into the `main` branch.
+Only packages whose files changed are versioned; commits under a package path
+drive that package's bump.
+
+To force a specific next version for a package, include a `Release-As: x.y.z`
+footer in a commit message on `main`.
+
+### For maintainers
+
+Every push to `main` runs the `Release` workflow:
+
+1. [release-please](https://github.com/googleapis/release-please) opens or
+   updates a single Release PR with version bumps and changelogs for whichever
+   packages have releasable changes
+2. Review the Release PR (CI must pass; one approval is required)
+3. Squash-merge the Release PR to:
+   - bump only the packages that changed
+   - create component tags (for example `tuckshop@v0.3.0`, `core@v0.3.0`)
+   - publish only the released packages to npm with trusted publishing
+
+The workflow in [`.github/workflows/release.yml`](./.github/workflows/release.yml)
+is package-agnostic: it runs release-please, then `pnpm -r publish`, which
+skips private packages and versions already on the registry. To add or rename a
+package, edit only [`release-please-config.json`](./release-please-config.json)
+and [`.release-please-manifest.json`](./.release-please-manifest.json). For a
+Python or Rust repo, keep the release-please job and swap the publish step.
+
+**Note:** `tuckshop` and `@tuckshop/core` version independently.
+`@tuckshop/registry` is private, excluded from release-please, and never
+published to npm. Because the CLI depends on core via `workspace:*`, releasing
+core also patch-bumps the CLI so a core fix always ships in a new CLI release.
 
 ### Testing Pre-releases
 
-After pushing a pre-release tag, you can test it before cutting a stable release:
+Pre-release automation is intentionally deferred for now. Stable releases use
+the Release PR flow above. If a pre-release is needed, cut it explicitly and
+test it the same way you would test a stable publish:
 
 ```bash
-# For yehle itself
-npx yehle@1.2.3-rc.1 --help
+# For tuckshop itself
+npx tuckshop@1.2.3-rc.1 --help
 
-# For your scaffolded projects
-npm install my-package@1.2.3-rc.1
+# For @tuckshop/core
+npm install @tuckshop/core@1.2.3-rc.1
 ```
 
-Found a bug? Fix it on `main` and push a new pre-release tag (e.g., `v1.2.3-rc.2`). Rinse and repeat until it's ready to be rolled out as a stable release.
-
-### Promoting to Stable
-
-Once a pre-release has been tested and you're confident it's ready:
-
-```bash
-git tag v1.2.3
-git push origin v1.2.3
-```
+Found a bug? Fix it on `main`, merge the change, and merge the next Release PR
+when you are ready to publish the next version.
 
 ## Dependencies
 
@@ -147,58 +168,106 @@ git push origin v1.2.3
 - Security updates and critical fixes are always welcome
 - Include rationale and testing notes for dependency changes
 
-## Proposing Templates
+## Code Registry
 
-`yehle` uses a filesystem-based template registry organized by language and resource type. When proposing new templates, follow this hierarchy:
+`tuckshop` uses a JSON registry inspired by [shadcn](https://ui.shadcn.com/docs/registry) to distribute all registry items _(e.g. project templates, UI components, configurations, and agent instructions)_. Each unit is a self-contained folder holding its manifest and its source files. A unit can be wired to other items through the `registryDependencies` property to make composable units.
 
-### Template Structure
+The default registry content lives under `packages/registry/registry/`. Shared registry conditions are centralized in `packages/registry/registry/conditions/conditions.json` (handlers colocated under `conditions/`). Item type display metadata is centralized in `packages/registry/registry/types.json`. Compilation is provided by `@tuckshop/core` (`buildRegistry`); `@tuckshop/registry` is content plus a short build script.
 
+### Registry Layout
+
+Every item is a folder under `packages/registry/registry/` containing a `registry-item.json` manifest alongside the files it ships. Folder paths are just for convenience, the manifest holds the actual identity.
+
+```text
+packages/registry/registry/
+├── conditions/
+│   ├── conditions.json
+│   └── language.ts
+├── types.json
+├── configuration/dependency-updater/  # id: dependency-updater
+├── configuration/build/               # id: build
+├── configuration/changelog/           # id: changelog
+├── component/button/                  # id: button
+│   ├── registry-item.json
+│   └── react/button.tsx
+└── …
 ```
-templates/
-├── shared/                          # Global shared files (applies to all languages)
-├── {language}/                      # Language-specific directory (e.g., typescript)
-│   ├── shared/                      # Language-level shared files
-│   └── {resource}/                  # Resource type (e.g., package)
-│       ├── shared/                  # Resource-level shared files
-│       └── {template}/              # Specific template (e.g., default)
+
+The compiled items are written next to the package root by `pnpm run build:registry` (`buildRegistry` from `@tuckshop/core`):
+
+- `packages/registry/registry.json` — lean index metadata (committed; regenerated and staged by the pre-commit hook)
+- `packages/registry/r/{itemId}.json` or `packages/registry/r/{itemId}/{variantId}.json` — compiled items (gitignored; generated locally and copied into the CLI npm tarball at `prepack`)
+
+`registry.json` is regenerated and staged automatically by the pre-commit hook whenever anything under `packages/registry/registry/` or the core compiler changes. Compiled item files under `r/` are build output only — not committed — and ship with the published `tuckshop` package.
+
+`registry.json` only holds index metadata for individual items, so the index stays lean as the registry grows. Source manifests keep item-relative file `source` paths, ecosystem-tagged `dependencies`, optional `beforeWrite` / `afterInstall` scripts, and variant descriptions. The build inlines those files into compact payloads under `r/`, bundles install scripts to `r/{itemId}.beforeWrite.{index}.js` and `r/{itemId}.afterInstall.{index}.js` (and pack scripts under `r/{itemId}/{packId}.…`, plus condition handlers to `r/_handlers/{key}.handler.js`), and writes a compact index entry keyed by item id. Payloads keep `target`, inlined `content`, and `dependencies` keyed by ecosystem — no item or variant identity fields. Consumers join index `source` values and script URIs against the index location. Third-party registries that host remotely should keep `registry.json` and `r/` side by side (GitHub raw, S3, or a CDN). The default registry ships payloads inside the CLI package instead.
+
+Payload `content` is the source template text. Condition defaults and install lifecycle scripts run on the client after the payload is loaded — not at compile time. **Install scripts execute only for local registries** (bundled CLI registry, a local `--registry` path, or a third-party package). Remote HTTPS registries cannot execute custom scripts. Local registries run scripts without confirmation. Compiled `scriptIntegrity` / `itemIntegrity` digests are verified before load; hooks run in a sandboxed child process.
+
+### Install scripts and condition handlers
+
+Colocate a TypeScript install script next to the manifest (or under `registry/conditions/` for shared conditions). Use `import type` from `@tuckshop/core` — do not runtime-import the package (the build rejects it).
+
+```ts
+import type { BeforeWriteHook } from "@tuckshop/core";
+
+const beforeWrite: BeforeWriteHook = async (ctx) => {
+	const licenseId = ctx.conditions.licenseId;
+	return {
+		bindings: { customKey: String(licenseId) },
+		files: [{ target: "LICENSE", content: String(licenseId) }],
+	};
+};
+
+export default beforeWrite;
 ```
 
-Files are copied in this order (files with the same name are overriden based on the copy order):
-1. `templates/shared` (global)
-2. `templates/{language}/shared` (language-specific)
-3. `templates/{language}/{resource}/shared` (resource-specific)
-4. `templates/{language}/{resource}/{template}` (template-specific)
+Point the manifest at it with `"beforeWrite": "render-license-file.before-write.ts"`. Script-only items may omit `files`. Compose other registry items with `"dependsOn"` — they install before this item. Shared conditions can declare `"handler": "conditions/language.handler.ts"` with an `infer` hook that returns a prompt default (for example from marker files or `ctx.run("git config --get user.name")`). Condition `kind` may be `select` (default), `multiselect`, `text`, or `boolean`. Items declare those dependencies with `"requires": ["authorName"]`; the captured value is then `ctx.conditions.authorName` in install scripts.
 
-### Template Files
+See `packages/registry/registry/configurations/license/` for an SPDX license picker that generates a `LICENSE` file during `beforeWrite`.
 
-- Use `.mustache` extension for templated files (e.g., `package.mustache.json`)
-- Use mustache syntax for variables: `{{ variableName }}`
-- The `<resource>` configuration is passed as the mustache context
-- Non-mustache files are copied as-is
+Third-party registries compile the same way — pass the registry source tree and output directory explicitly:
 
-### Proposing New Templates
+```ts
+import { buildRegistry } from "@tuckshop/core";
 
-When proposing a new template:
-1. Follow the existing directory structure
-2. Include all necessary files for a complete working setup
-3. Test your template with `pnpm pack` and `npx <path-to-local-build>.tgz`
-4. Document what the template provides in your pull request
-5. Include examples of generated output
+await buildRegistry({
+	sourceDir: path.join(packageRoot, "registry"),
+	outDir: packageRoot,
+});
+```
+
+### Source guidelines
+
+- Keep items atomic and colocate the manifest and every file it ships in one folder.
+- Extract reusable concerns into their own items and reference them via `dependsOn`.
+- Run `pnpm run build:registry` after changing items _(the pre-commit hook and `prepack` also run it)_.
+
+### Proposing New Items
+
+When proposing a new registry item:
+
+1. Add a new folder under `packages/registry/registry/` with a `registry-item.json` (`id`, `title`, `description`, `type`, plus `files`, `variants`, and/or `handler`) and its files
+2. Declare the item `type` in `packages/registry/registry/types.json` with a `label` and optional `description` _(required for every registry)_
+3. Include everything needed for a complete working setup; depend on existing concern items instead of copying files
+4. Run `pnpm run build:registry`, `pnpm cov`, and `pnpm --filter tuckshop pack`
+5. Document what the item provides in your pull request
+6. Include examples of generated output
 
 ## Security
 
 - **Do not** report security vulnerabilities in public issues
-- Use GitHub's [private vulnerability reporting](https://github.com/agrawal-rohit/yehle/security/advisories)
+- Use GitHub's [private vulnerability reporting](https://github.com/agrawal-rohit/tuckshop/security/advisories/new)
 
 ## Maintainer Guidelines
 
 Some guidelines for maintainers:
 
 - Changes to `main` should be added through pull requests
-- Tag format must adhere to semver standards: `vX.Y.Z` for stable releases and `vX.Y.Z-rc.N`, `-beta.N`, `-alpha.N` for pre-releases
+- Prefer merging the release-please Release PR over ad-hoc local tagging or publishing
 - Keep required checks and branch protection enabled on `main` branch
 - Avoid modifying config files in the repository without discussion:
-  - Configuration files (`cliff.toml`, `biome.json`, etc.)
+  - Configuration files (`biome.json`, `release-please-config.json`, etc.)
   - CI workflows (`.github/workflows/*`)
   - Release tooling
 
@@ -209,7 +278,7 @@ If changes to these areas are needed, open an issue to discuss first.
 Contributors are recognized through:
 
 - GitHub's contributor graph
-- Release notes (generated from commit messages)
+- Release notes (generated from conventional commits by release-please)
 - Community acknowledgments
 
 Your contributions are greatly appreciated!

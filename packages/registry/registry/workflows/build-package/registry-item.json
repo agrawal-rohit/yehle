@@ -1,0 +1,34 @@
+{
+	"id": "build-package-workflow",
+	"title": "Build Package",
+	"description": "GitHub Actions workflow for building a package.",
+	"type": "workflow",
+	"requires": [
+		"language",
+		"defaultBranch"
+	],
+	"dependsOn": [
+		"setup-workspace-workflow"
+	],
+	"packs": [
+		{
+			"id": "typescript",
+			"title": "TypeScript",
+			"when": {
+				"language": "typescript"
+			},
+			"commands": {
+				"npm": {
+					"build": "tsc",
+					"typecheck": "tsc --noEmit"
+				}
+			},
+			"files": [
+				{
+					"source": "typescript/.github/workflows/build.yml",
+					"target": ".github/workflows/build.yml"
+				}
+			]
+		}
+	]
+}

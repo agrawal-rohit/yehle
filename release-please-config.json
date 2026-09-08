@@ -1,0 +1,30 @@
+{
+	"$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+	"bootstrap-sha": "b6d4762c233f0ae13e3546830d0ff2bf54b2dd58",
+	"release-type": "node",
+	"tag-separator": "@",
+	"include-v-in-tag": true,
+	"separate-pull-requests": false,
+	"plugins": ["node-workspace"],
+	"packages": {
+		"packages/cli": {
+			"component": "tuckshop"
+		},
+		"packages/core": {
+			"component": "core"
+		}
+	},
+	"changelog-sections": [
+		{ "type": "feat", "section": "Added" },
+		{ "type": "fix", "section": "Fixed" },
+		{ "type": "perf", "section": "Changed" },
+		{ "type": "docs", "section": "Changed" },
+		{ "type": "refactor", "section": "Changed" },
+		{ "type": "style", "section": "Changed" },
+		{ "type": "test", "section": "Changed" },
+		{ "type": "build", "section": "Changed" },
+		{ "type": "ci", "section": "Changed" },
+		{ "type": "chore", "section": "Changed", "hidden": true },
+		{ "type": "deps", "section": "Changed", "hidden": true }
+	]
+}

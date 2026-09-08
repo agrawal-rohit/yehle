@@ -8,6 +8,7 @@ export function getMDXComponents(components?: MDXComponents) {
 	} satisfies MDXComponents;
 }
 
+/** @public MDX runtime hook expected by the MDX loader. */
 export const useMDXComponents = getMDXComponents;
 
 declare global {

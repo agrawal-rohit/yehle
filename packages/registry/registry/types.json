@@ -1,0 +1,14 @@
+{
+	"configuration": {
+		"label": "Configurations",
+		"description": "Project tooling configurations as per industry best practices."
+	},
+	"workflow": {
+		"label": "Workflows",
+		"description": "GitHub Actions workflows for better productivity."
+	},
+	"agent-instruction": {
+		"label": "Agent Instructions",
+		"description": "Coding agent and IDE instructions that guide AI behaviour."
+	}
+}

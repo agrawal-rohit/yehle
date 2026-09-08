@@ -1,0 +1,209 @@
+---
+title: Registry source
+description: Compiling and validating tuckshop registries with @tuckshop/core.
+---
+
+## Installing the core package
+
+```bash
+pnpm add @tuckshop/core
+```
+
+## Mental model
+
+Authors learn four things, in this order:
+
+1. **Items** copy files (and optional packages, commands, and secrets) into a project.
+2. **Conditions** are the only questions. Shared ones live in `conditions/conditions.json` and are opted into with `requires`. Local ones live on the item under `conditions`.
+3. **Packs** are optional named bundles. **Every pack whose `when` matches is installed (union).** Item-level files are the unconditional base.
+4. **Hooks generate** content from already-captured conditions. They do not prompt. They run on **local registries only**.
+
+## Decision tree
+
+| You need… | Use… |
+| --- | --- |
+| Static files only | Item `files` |
+| Answers that fill `{{keys}}` | Shared `requires` and/or item `conditions` |
+| Optional or language-specific file sets | `packs` with `when` (union match) |
+| Packages, scripts, secrets, or other items first | `dependencies`, `commands`, `secrets`, `dependsOn` |
+| Generated content from answers | `beforeWrite` / `afterInstall` (local registry) |
+
+## Compiling a registry
+
+```ts
+import path from "node:path";
+import { buildRegistry } from "@tuckshop/core";
+
+await buildRegistry({
+	sourceDir: path.join(packageRoot, "registry"),
+	outDir: packageRoot,
+});
+```
+
+That writes:
+
+- `registry.json` — index (`source`, `packs`, `requires`, `dependsOn`, scripts)
+- `r/{itemId}.json` — base compiled item when the item has item-level files/deps/commands/secrets
+- `r/{itemId}/{packId}.json` — per-pack compiled items
+- Bundled install scripts and condition handlers under `r/`
+
+Npm-ecosystem `dependencies` and `commands` identify packages and `package.json` scripts. The CLI selects a package manager (npm, pnpm, Yarn, or Bun) at install time. Packs can match that selection with `when.packageManager`. Templates can interpolate `{{packageManager}}`, `{{pmRun}}`, `{{pmExec}}`, `{{pmInstall}}`, and `{{pmPublish}}`.
+
+## Conditions
+
+Shared prompts live in `conditions/conditions.json`. Items opt in with `"requires": ["authorName"]`. Every condition declares a required `kind`:
+
+| Kind | Captured value | Notes |
+| --- | --- | --- |
+| `select` | `string` | Options may declare `bindings` (extra interpolation keys; not condition names, `packageManager`, or `pm*`) |
+| `multiselect` | `string[]` | Optional `min`; no option `bindings` |
+| `text` | `string` | Optional `default` |
+| `boolean` | `boolean` | |
+
+Conditions may declare `when` so they are only prompted after other answers match. Multiselect may declare `min` (for example `1`).
+
+Condition handlers expose `infer` to suggest a prompt default. If `infer` returns undefined, a static `default` is used when present. Handlers and install hooks run only for **local** catalogs.
+
+Item-level conditions use the same schema under `conditions`. Do not also list those keys in `requires`. Local keys must not collide with shared names.
+
+```json
+{
+	"id": "testing-configuration",
+	"requires": ["defaultBranch", "packageManager"],
+	"conditions": {
+		"coverageThreshold": {
+			"kind": "text",
+			"label": "Coverage line threshold",
+			"default": "45"
+		}
+	}
+}
+```
+
+Set `"optional": true` to allow skipping. Skipped keys stay unset (falsy in Mustache), not empty strings.
+
+## Packs
+
+Packs replace the old one-of variants model. Matching is **union**: every pack whose `when` matches is installed, layered on any item-level files.
+
+```json
+{
+	"id": "code-quality-workflow",
+	"requires": ["language", "packageManager"],
+	"dependsOn": ["setup-workspace-workflow"],
+	"conditions": {
+		"qualityTools": {
+			"kind": "multiselect",
+			"min": 1,
+			"label": "Quality tools",
+			"values": [
+				{ "value": "biome", "label": "Biome" },
+				{ "value": "sonar", "label": "SonarQube" }
+			]
+		}
+	},
+	"packs": [
+		{
+			"id": "biome",
+			"when": { "language": "typescript", "qualityTools": "biome" },
+			"files": [{ "source": "typescript/biome.json", "target": "biome.json" }],
+			"dependencies": { "npm": { "dev": ["@biomejs/biome@^2"] } }
+		}
+	]
+}
+```
+
+`when` grammar (AND across keys):
+
+- **select:** string (equals) or string[] (any-of)
+- **multiselect:** string (membership) or string[] (any-of membership)
+- **boolean:** boolean
+- **text:** forbidden in `when`
+
+An item may have base `files` **and** `packs` together (for example a shared workflow plus a language-specific config pack).
+
+Pin `item@pack` force-includes that pack and does not drop other matches.
+
+## Dependencies between items
+
+`dependsOn` installs other items first. Prefer item-level `dependsOn` when every pack needs the same dependency.
+
+## Interpolation
+
+After `beforeWrite`, Mustache runs on file contents and command values (not targets, package names, or secrets). The view is typed:
+
+1. Captured conditions (booleans stay boolean, arrays stay arrays)
+2. Select option `bindings` for the chosen value
+3. `packageManager` and `pmRun` / `pmExec` / `pmInstall` / `pmPublish` when a manager was selected
+4. beforeWrite-hook `bindings` (extra keys only)
+
+Unknown `{{key}}` throws. Sections (`{{#key}}` / `{{^key}}`) may name absent optionals. Option and hook bindings cannot reuse a condition key, `packageManager`, or `pm*`.
+
+GitHub Actions expressions (`${{ ... }}`) are left untouched. HTML escaping is disabled.
+
+## Install hooks (local registries only)
+
+| Phase | When it runs | Typical use |
+| --- | --- | --- |
+| `beforeWrite` | Before planned files are written | Prepare Tuckshop-managed files, commands, dependencies, or bindings from conditions |
+| write | After `beforeWrite` and user confirmation | Tuckshop writes planned files to disk |
+| package install | After writes and `package.json` script merge | Declared ecosystem packages installed via package manager |
+| `afterInstall` | After package install (still runs if declined) | Run external tool initialization (`fallow init`, `graphify install`, git setup) |
+
+Hooks do **not** prompt. Put questions in conditions. Use `import type` from `@tuckshop/core` (do not runtime-import the package):
+
+```ts
+import type { BeforeWriteHook } from "@tuckshop/core";
+
+const beforeWrite: BeforeWriteHook = async (ctx) => {
+	const licenseId = ctx.conditions.licenseId;
+	return {
+		files: [{ target: "LICENSE", content: String(licenseId) }],
+	};
+};
+
+export default beforeWrite;
+```
+
+`beforeWrite` may return:
+
+- `files` — **upsert by target** (replace matching targets, append new ones)
+- `removeFiles` — drop targets from the working compiled item
+- `bindings`, `commands`, `dependencies`, `secrets` — merged into the install state
+
+Working state is `ctx.compiledItem` (and `ctx.bindings` / `ctx.conditions`). There is no parallel `ctx.files` or `ctx.prompts` on install hooks.
+
+`afterInstall` must not return a value. Typical work is `ctx.run("git init")` or formatting files already on disk.
+
+Remote HTTPS registries cannot execute custom scripts or condition `infer` handlers.
+
+## Local vs remote registries
+
+| Capability | Local path | Remote HTTPS |
+| --- | --- | --- |
+| Static files / packs | Yes | Yes |
+| Conditions prompts | Yes | Yes |
+| Condition `infer` handlers | Yes | No |
+| `beforeWrite` / `afterInstall` | Yes | No |
+
+
+
+## Script security
+
+Install hooks and condition `infer` handlers are treated as executable code:
+
+- **Bundled registry** (shipped with the CLI): scripts run by default.
+- **Other local registries** (`--registry`, cwd `registry.json`, saved config): scripts run by default.
+- **Remote HTTPS registries**: scripts never run.
+
+Compiled registries include `scriptIntegrity` and `itemIntegrity` maps (`sha256-<base64>`). The CLI verifies digests before loading scripts or compiled items. Hooks run in a permissioned child process (Node's permission model denies filesystem writes and child_process; network denial depends on the Node version). `ctx.isFile` / `ctx.readFile` are confined to the project directory, and `ctx.run` is parent-mediated with a sanitized environment.
+
+## Validating compiled items
+
+```ts
+import { parseRegistryDocument } from "@tuckshop/core";
+
+const registry = parseRegistryDocument(JSON.parse(registryJson));
+```
+
+Unknown item types are allowed as long as the document shape is valid.

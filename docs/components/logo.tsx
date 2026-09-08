@@ -20,7 +20,7 @@ export default function Logo({ className, style }: Props) {
 		<>
 			<Image
 				src={logoUrl(lightSrc)}
-				alt="Yehle"
+				alt="Tuckshop"
 				width={120}
 				height={24}
 				style={style}
@@ -30,7 +30,7 @@ export default function Logo({ className, style }: Props) {
 			/>
 			<Image
 				src={logoUrl(darkSrc)}
-				alt="Yehle"
+				alt="Tuckshop"
 				width={120}
 				height={24}
 				style={style}

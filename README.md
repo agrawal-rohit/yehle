@@ -1,204 +1,144 @@
 <div align="center">
-  <img src="https://cdn.rohit-agrawal.com/work/yehle/logo.png" alt="Yehle" style="width: 30%; margin: auto" />
+  <img src="https://cdn.rohit-agrawal.com/work/tuckshop/logo.png" alt="Tuckshop" style="width: 30%; margin: auto" />
 </div>
 
 <br />
 
 <div align="center">
   <p align="center" style="width: 80%; margin: auto">
-    <img alt="Status" src="https://img.shields.io/github/actions/workflow/status/agrawal-rohit/yehle/ci.yml">
-    <img alt="Sonar Coverage" src="https://img.shields.io/sonar/coverage/agrawal-rohit_yehle?server=https%3A%2F%2Fsonarcloud.io">
-    <img alt="Downloads" src="https://img.shields.io/npm/dt/yehle">
+    <img alt="Status" src="https://img.shields.io/github/actions/workflow/status/agrawal-rohit/tuckshop/ci.yml">
+    <img alt="Coverage" src="https://img.shields.io/sonar/coverage/agrawal-rohit_tuckshop?server=https%3A%2F%2Fsonarcloud.io">
+    <img alt="Downloads" src="https://img.shields.io/npm/dt/tuckshop">
     <img alt="Biome" src="https://img.shields.io/badge/code_style-biome-60a5fa">
-    <img alt="License" src="https://img.shields.io/github/license/agrawal-rohit/yehle" />
+    <img alt="License" src="https://img.shields.io/github/license/agrawal-rohit/tuckshop" />
   </p>
 </div>
 
 <div align="center">
-  <p>✨ An opinionated <strong>scaffolding CLI</strong> for modern developers ✨</p>
+  <p>An opinionated scaffolding CLI with a default registry and a raw registry core.</p>
 </div>
 
-<br />
+`tuckshop` eliminates repetitive project setup by providing opinionated templates with pre-configured tooling, best practices, and reusable registry items. Now as a monorepo, it ships with three complementary packages:
 
-<div align="center">
-    <img src="https://cdn.rohit-agrawal.com/work/yehle/preview.gif" alt="Yehle Preview" style="margin: auto" />
-</div>
+- **`tuckshop`**: the CLI users run via `npx` to scaffold projects and add components
+- **`@tuckshop/core`**: shared internals and registry-document validation
+- **`@tuckshop/registry`**: the private default registry content bundled into the CLI
 
-<br />
+By default, `npx tuckshop` uses the bundled registry from this repository. To point the CLI at a custom registry, use `--registry`, set the `TUCKSHOP_REGISTRY` environment variable, or persist a default with `tuckshop config set`.
 
-`yehle` is a CLI tool for scaffolding modern software projects by performing common [yak-shaving](https://softwareengineering.stackexchange.com/a/388236) operations through opinionated templates, sensible tooling setup, and development best practices.
+## Quickstart
 
-I would usually spend hours re-configuring the _"same old tooling and workflow setup"_ for every new project instead of focusing on the actual functionality. `yehle` eliminates that duplicative work by generating a project structure _(based on my personal flavour)_ with essential pieces already configured _(pre-commit hooks, a linter and formatter, build and release workflows, basic documentation, etc.)_ - thus allowing me to build things I'm interested in without the distractions.
-
-## Table of Contents
-
-* [Features](#features)
-* [Supported Languages](#supported-languages)
-  * [Typescript](#typescript)
-* [Usage](#usage)
-  * [Requirements](#requirements)
-  * [Quickstart](#quickstart)
-  * [Examples](#examples)
-* [Commands Reference](#commands-reference)
-  * [`package`](#package)
-  * [`instructions`](#instructions)
-* [Contributing](#contributing)
-* [License](#license)
-
-## Features
-
-`yehle` sets you up with several best practices adopted in modern software development with pre-configured tooling that should cover most use-cases. `yehle` achieves this through:
-
-* Automatic dependency upgrades using [dependabot][]
-* Automatic builds, tests, and releases with [github actions][github-actions]
-* Automatically generated Readme with badges through [shields.io][shields]
-* Automatically generated MIT license with [spdx][spdx-license-list]
-* Automatically generated community files _(contribution guidelines, issue templates, and pull request checklists)_
-* A pre-configured [release process](CONTRIBUTING.md#release-process) for preview and production releases
-* Opinionated [templates][] that cover common use cases encountered in modern software development
-* A collection of helpful **agent instructions and skills** that can be applied to new or existing projects.
-
-[github-actions]: https://github.com/features/actions
-[shields]: https://shields.io/
-[spdx-license-list]: https://github.com/sindresorhus/spdx-license-list
-[templates]: templates/
-[dependabot]: https://github.com/dependabot
-
-## Supported Languages
-
-In addition to the general features listed above, `yehle` also configures language-specific tooling to enable unit testing, type-safety, consistent code linting/formatting, and _much more_. It currently supports the following languages:
-
-### Typescript
-
-* Unit testing with [vitest][] and test quality checks using [stryker][]
-* Commit linting with [commitlint][]
-* Pre-commit checks with [husky][]
-* Pre-configured package bundling using [tsdown][]
-* Fast and disk-efficient dependency management using [pnpm][]
-* Type-safety using [typescript][]
-* Rapid utility-first styling and theme management using [tailwindcss][]
-* Code linting and formatting with [biome][]
-* Automated changelog generation using [git-cliff][]
-* Tag-driven releases with version management and package publishing to [npm][]
-
-[vitest]: https://vitest.dev/
-[stryker]: https://stryker-mutator.io/
-[commitlint]: https://github.com/marionebl/commitlint
-[husky]: https://github.com/typicode/husky
-[biome]: https://biomejs.dev/
-[tailwindcss]: https://tailwindcss.com/
-[git-cliff]: https://git-cliff.org/
-[typescript]: https://github.com/microsoft/TypeScript
-[node]: https://nodejs.org
-[tsdown]: https://tsdown.dev/
-[npm]: https://www.npmjs.com/
-[pnpm]: https://pnpm.io/
-[npx]: https://www.npmjs.com/package/npx
-
-> [!NOTE]
-> Support for other languages is still in the works
-
-## Usage
-
-### Requirements
-
-[Node.js v20+][node]
-
-### Quickstart
-
-The easiest way to start is to call the CLI through [npx][] to generate a new project from one of the provided templates:
+List available templates from the default registry:
 
 ```bash
-npx yehle <resource>
+npx tuckshop list
 ```
 
-> [!IMPORTANT]
-> Some workflows in the generated projects may require repository secrets to be set in the GitHub project _(Settings → Secrets and variables → Actions)_. Additionally, ensure that "Allow GitHub Actions to create and approve pull requests" is checked in Settings → Actions → General. Make sure to set them to prevent [github action][github-actions] failures before releasing your code out in the world.
-
-`yehle` uses a simple tag-driven release workflow for stress-free delivery _(This same workflow is configured for projects generated with `yehle`)_. See the [release process](CONTRIBUTING.md#release-process) section in [CONTRIBUTING.md](CONTRIBUTING.md) for details.
-
-### Examples
-
-#### Create a public NPM package
+Add registry items to the current project:
 
 ```bash
-npx yehle package \
-  --name my-package \
-  --lang typescript \
-  --template default \
-  --public
+npx tuckshop add pr-template-configuration
+npx tuckshop add testing-configuration --overwrite
+npx tuckshop add
 ```
 
-#### Create a private internal Typescript library
+Use a custom registry for one invocation:
 
 ```bash
-npx yehle package \
-  --name internal-utils \
-  --lang typescript \
-  --template default
+npx tuckshop --registry https://example.com/registry.json list
 ```
 
-## Commands Reference
-
-#### <span id="package"></span>`package`
-
-Generate a new `package` for one of the [supported languages](#supported-languages) with sensible defaults, development best practices, and release workflows.
-If you're new to `yehle`, I would recommend using the interactive CLI for a guided experience.
+Persist a default registry source (stored in `~/.config/tuckshop/config.json`):
 
 ```bash
-npx yehle package
+npx tuckshop config set https://example.com/registry.json
+npx tuckshop list
 ```
 
-Once you're acquainted, you can skip through most prompts by providing the values through the CLI flags directly.
+Inspect or clear the saved source:
 
 ```bash
-npx yehle package \
-  --name my-lib \
-  --lang typescript \
-  --template default \
-  --public \
-  --include-instructions \
-  --instructions-ide-format cursor
+npx tuckshop config get
+npx tuckshop config unset
 ```
 
-**Supported Flags**
-
-- `--name <project-name>`: Name of the package
-- `--lang <language>`: Programming language that the package is built for _(for example, `typescript`)_.
-- `--template <template-name>`: The starter template for this package _(for example, `default`, `react`, etc.)_
-- `--public`: Whether the package should be optimised for publishing and contributions _(sets up public registry configuration, release workflows, and community files for open-source collaboration)_.
-- `--include-instructions`: When set, also add agent instructions for the chosen template.
-- `--instructions-ide-format <format>`: Target IDE format for generated instructions (for example, `cursor`, `windsurf`, `cline`, `claude`).
-
-#### <span id="instructions"></span>`instructions`
-
-Add IDE‑specific agent instructions to an **existing** project using the shared `templates/instructions/**` registry.
+Or set it as an environment variable for all commands:
 
 ```bash
-npx yehle instructions
+export TUCKSHOP_REGISTRY="https://example.com/registry.json"
+npx tuckshop list
 ```
 
-Once you're acquainted, you can skip the IDE selection prompt by providing the format directly:
+Registry source precedence: `--registry` flag > `TUCKSHOP_REGISTRY` env > saved config > bundled default.
+## Workspace layout
+
+```text
+packages/
+├── cli/        # published as `tuckshop`
+├── core/       # published as `@tuckshop/core`
+└── registry/   # private default registry content
+docs/           # documentation site
+```
+
+## Building a custom registry
+
+`@tuckshop/core` compiles, validates, and parses registry documents. Call `buildRegistry` with a raw registry `sourceDir` (items, `types.json`, optional `conditions/conditions.json`) and an `outDir` for compiled output:
+
+```ts
+import { buildRegistry, parseRegistryDocument } from "@tuckshop/core";
+
+await buildRegistry({ sourceDir, outDir });
+const registry = parseRegistryDocument(JSON.parse(registryJson));
+```
+
+That emits `registry.json` (the index) plus compiled items at `r/{itemId}.json` (pack-less items) or `r/{itemId}/{packId}.json` under `outDir`. Item identity is the `items` map key; each item or pack has a `source` URI. Consumers join it against the index location (`joinIndexSource`). File contents and ecosystem-tagged dependencies live in the compiled item, not the index.
+
+`@tuckshop/core` exposes:
+
+- `buildRegistry()` for compiling a registry source tree into an index plus compiled items
+- Schema types and validation for the index (`IndexItem`) and compiled items (`CompiledItem`)
+- `parseRegistryDocument()` and `parseWithSchema()` for runtime validation (unknown keys are rejected; use `compiledItemSchema` for compiled items)
+- `joinIndexSource()` for storage-agnostic index `source` joining
+
+The private `@tuckshop/registry` package holds the default opinionated content and a short build script around `buildRegistry` (`pnpm build:registry`).
+
+## Development
+
+Requirements:
+
+- Node.js 20+
+- pnpm
+
+Get started:
 
 ```bash
-npx yehle instructions --ide-format cursor
+pnpm install
+pnpm run build
 ```
 
-**Supported Flags**
+Common development commands:
 
-- `--ide-format <format>`: Target IDE format for generated instructions (for example, `cursor`, `windsurf`, `cline`, `claude`).
-
-## Contributing
-
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to report issues, propose changes, and submit pull requests.
-
-If you create a project with `yehle`, you can show support by adding this badge to your README:
-
-![Made with Yehle](https://img.shields.io/badge/made_with-yehle-FEA624)
-
-```html
-<a href="https://github.com/agrawal-rohit/yehle"><img alt="Made with Yehle" src="https://img.shields.io/badge/made_with-yehle-FEA624"></a>
+```bash
+pnpm run check          # typecheck and lint (writes fixes)
+pnpm run build          # build all packages
+pnpm run build:registry # rebuild compiled registry metadata
+pnpm cov                # run tests with coverage
+pnpm run quality:changes # quality gate on changed files (pre-PR)
+pnpm run quality         # full codebase quality scan
 ```
+
+The default registry content lives under `packages/registry/registry/`. Compilation writes `packages/registry/registry.json` (committed) and `packages/registry/r/` (gitignored build output, bundled into the CLI package at `prepack`).
+
+## Releases
+
+This repository uses [release-please](https://github.com/googleapis/release-please):
+
+1. Contributors merge code using conventional commits
+2. Every push to `main` opens or updates a Release PR with version bumps and changelog
+3. Maintainers review and squash-merge the Release PR to tag changed packages
+   (for example `tuckshop@v0.3.0`, `core@v0.3.0`) and publish only those packages to npm
+
+For details on the contributor and maintainer workflows, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

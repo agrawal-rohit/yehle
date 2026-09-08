@@ -6,7 +6,7 @@
 	--color-fd-background: hsl(0, 0%, 100%);
 	--color-fd-secondary: hsl(0, 0%, 98%);
 	--color-fd-card: hsl(0, 0%, 98%);
-	--color-fd-primary: #efa607;
+	--color-fd-primary: #dfad8d;
 }
 
 #nd-sidebar {
@@ -25,5 +25,5 @@ figure.shiki {
 }
 
 .dark {
-	--color-fd-primary: #fecb39;
+	--color-fd-primary: #dfad8d;
 }

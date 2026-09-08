@@ -2,10 +2,15 @@
 	"$schema": "https://biomejs.dev/schemas/2.3.10/schema.json",
 	"files": {
 		"includes": [
-			"bin/**",
-			"src/**/*.{js,ts,jsx,tsx,json,cjs,mjs,yaml,css}",
+			"packages/**/*.{js,ts,jsx,tsx,json,cjs,mjs,yaml,css}",
 			"docs/**/*.{js,ts,jsx,tsx,mjs,json,css}",
-			"!templates",
+			"!packages/*/dist",
+			"!packages/*/coverage",
+			"!packages/registry/registry",
+			"!packages/registry/registry.json",
+			"!packages/registry/r",
+			"!packages/cli/registry.json",
+			"!packages/cli/r",
 			"!docs/.next",
 			"!docs/.source",
 			"!docs/out",

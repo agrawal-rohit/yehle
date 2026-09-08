@@ -1,0 +1,134 @@
+{
+	"id": "code-quality-workflow",
+	"title": "Code Quality",
+	"description": "Code quality gates with linting and static analysis.",
+	"type": "workflow",
+	"requires": [
+		"language",
+		"defaultBranch"
+	],
+	"dependsOn": [
+		"setup-workspace-workflow"
+	],
+	"conditions": {
+		"qualityTools": {
+			"min": 1,
+			"kind": "multiselect",
+			"label": "Quality tools",
+			"description": "Which code quality gates should be installed?",
+			"values": [
+				{
+					"value": "biome",
+					"label": "Biome"
+				},
+				{
+					"value": "sonar",
+					"label": "SonarQube"
+				},
+				{
+					"value": "fallow",
+					"label": "Fallow"
+				}
+			]
+		},
+		"sonarProjectKey": {
+			"kind": "text",
+			"label": "SonarQube project key",
+			"description": "SonarQube project key (e.g. my-org_my-project).",
+			"handler": "sonar-project-key.handler.ts",
+			"when": {
+				"qualityTools": "sonar"
+			}
+		},
+		"sonarOrganization": {
+			"kind": "text",
+			"label": "SonarQube organization",
+			"description": "SonarQube organization key.",
+			"handler": "sonar-organization.handler.ts",
+			"when": {
+				"qualityTools": "sonar"
+			}
+		}
+	},
+	"packs": [
+		{
+			"id": "biome",
+			"title": "Biome",
+			"when": {
+				"language": "typescript",
+				"qualityTools": "biome"
+			},
+			"dependencies": {
+				"npm": {
+					"dev": [
+						"@biomejs/biome@^2"
+					]
+				}
+			},
+			"commands": {
+				"npm": {
+					"check": "{{pmExec}} biome check ."
+				}
+			},
+			"files": [
+				{
+					"source": "typescript/.github/workflows/quality-biome.yml",
+					"target": ".github/workflows/quality-biome.yml"
+				},
+				{
+					"source": "typescript/biome.json",
+					"target": "biome.json"
+				}
+			]
+		},
+		{
+			"id": "sonar",
+			"title": "SonarQube",
+			"when": {
+				"language": "typescript",
+				"qualityTools": "sonar"
+			},
+			"dependencies": {
+				"npm": {
+					"dev": [
+						"vitest@^3",
+						"@vitest/coverage-v8@^3"
+					]
+				}
+			},
+			"commands": {
+				"npm": {
+					"cov": "vitest run --coverage --passWithNoTests"
+				}
+			},
+			"secrets": [
+				"SONAR_TOKEN"
+			],
+			"files": [
+				{
+					"source": "typescript/.github/workflows/quality-sonar.yml",
+					"target": ".github/workflows/quality-sonar.yml"
+				},
+				{
+					"source": "sonar-project.properties",
+					"target": "sonar-project.properties"
+				}
+			]
+		},
+		{
+			"id": "fallow",
+			"title": "Fallow",
+			"when": {
+				"language": "typescript",
+				"qualityTools": "fallow"
+			},
+			"afterInstall": "initialize-fallow-setup.after-install.ts",
+			"files": [
+				{
+					"source": "typescript/.github/workflows/quality-fallow.yml",
+					"target": ".github/workflows/quality-fallow.yml"
+				}
+			]
+		}
+	]
+}

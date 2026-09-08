@@ -1,0 +1,54 @@
+{
+	"id": "testing-configuration",
+	"title": "Testing",
+	"description": "Testing configuration and GitHub Actions workflow for running tests with coverage.",
+	"type": "configuration",
+	"requires": [
+		"language",
+		"defaultBranch"
+	],
+	"conditions": {
+		"coverageThreshold": {
+			"kind": "text",
+			"label": "Coverage line threshold",
+			"description": "Minimum line coverage percentage (default 45).",
+			"default": "80"
+		}
+	},
+	"dependsOn": [
+		"setup-workspace-workflow"
+	],
+	"packs": [
+		{
+			"id": "typescript",
+			"title": "TypeScript",
+			"when": {
+				"language": "typescript"
+			},
+			"dependencies": {
+				"npm": {
+					"dev": [
+						"vitest@^3",
+						"@vitest/coverage-v8@^3"
+					]
+				}
+			},
+			"commands": {
+				"npm": {
+					"test": "vitest run",
+					"cov": "vitest run --coverage --passWithNoTests"
+				}
+			},
+			"files": [
+				{
+					"source": "typescript/vitest.config.ts",
+					"target": "vitest.config.ts"
+				},
+				{
+					"source": "typescript/.github/workflows/test.yml",
+					"target": ".github/workflows/test.yml"
+				}
+			]
+		}
+	]
+}
