@@ -1,1 +1,2 @@
 npx lint-staged -c ./lint-staged.config.js
+pnpm run quality:changes

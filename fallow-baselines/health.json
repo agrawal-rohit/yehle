@@ -1,0 +1,11 @@
+{
+  "finding_counts": {
+    "packages/cli/src/cli/prompts.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    }
+  },
+  "runtime_coverage_findings": [],
+  "target_keys": []
+}

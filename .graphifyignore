@@ -1,0 +1,7 @@
+fallow-baselines/**
+docs/**
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+**/__tests__/

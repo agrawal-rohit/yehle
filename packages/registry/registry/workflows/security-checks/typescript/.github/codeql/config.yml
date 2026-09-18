@@ -1,0 +1,5 @@
+name: codeql
+paths-ignore:
+  - dist
+  - coverage
+  - node_modules

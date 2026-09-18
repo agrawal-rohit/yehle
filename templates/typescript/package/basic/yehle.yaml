@@ -1,6 +1,0 @@
-subagents:
-  - researcher
-  - planner
-  - implementer
-  - verifier
-  - documentation

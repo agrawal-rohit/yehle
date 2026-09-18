@@ -7,15 +7,33 @@ export default defineConfig({
 		// Enable Jest-style global APIs (describe, test, expect) without imports
 		globals: true,
 		// Preserve Vitest's default excludes (already includes node_modules, etc.)
-		exclude: [...configDefaults.exclude, "templates/**", "**/.stryker-tmp/**"],
+		exclude: [
+			...configDefaults.exclude,
+			"packages/*/dist/**",
+			"packages/registry/registry/**",
+			"packages/registry/r/**",
+			"packages/cli/r/**",
+			"**/.stryker-tmp/**",
+		],
 		coverage: {
 			reporter: ["text", "lcov", "html"],
+			thresholds: {
+				lines: 80,
+				statements: 80,
+				functions: 80,
+				branches: 80,
+			},
 			exclude: [
 				...(configDefaults.coverage.exclude || []),
-				"templates/**",
-				"**/commitlint.config.js",
+				"**/coverage/**",
+				"packages/*/dist/**",
+				"packages/registry/registry/**",
+				"packages/registry/r/**",
+				"packages/cli/r/**",
+				"**/commitlint.config.*",
 				"**/lint-staged.config.js",
-				"bin/**",
+				"packages/cli/bin/**",
+				"packages/registry/scripts/**",
 				"**/docs/**",
 				"**/stryker.config.mjs",
 			],

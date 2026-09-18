@@ -1,0 +1,15 @@
+{
+	"compilerOptions": {
+		"target": "es2022",
+		"module": "CommonJS",
+		"types": ["node"],
+		"strict": true,
+		"lib": ["ES2022"],
+		"esModuleInterop": true,
+		"ignoreDeprecations": "6.0",
+		"moduleResolution": "bundler",
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"declaration": true
+	}
+}
